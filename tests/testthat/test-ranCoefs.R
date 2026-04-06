@@ -8,7 +8,7 @@ if (file.exists((privdata <- paste0(spaMM::projpath(),"/../tests_misc/ranCoefs/a
   if (TRUE) {
     (fitme3 <- fitme(total_red ~ sex*env + (1|rep) + (0 + env|line),
                      data = my.data, method="ML"))
-    how(fitme3) # 0.7s v3.0.34
+    how(fitme3) 
     # final precision depends on two steps ! And ultimately on HLfit/hatval precision in the refit
     testval3o <- 1559.81264462379 ## sph gives practically the same result but longer 
     zut <- try(testthat::expect_equal((res3o <- attr(attr(fitme3,"optimInfo")$optim.pars,"optr")$objective),

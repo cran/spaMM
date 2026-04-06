@@ -4,7 +4,7 @@
     refit <- .numInfo_objfn(x, hlcorcall=hlcorcall, skeleton=skeleton, 
                             transf, # signals transformed input. T or F when called from numInfo(), 
                             # TRUE when called from as_LMLT <- function(., transf=TRUE) as the argument is passed all the way down to here
-                            objective=NULL)
+                            objective=NULL, full_beta=fixef(fitobject))
     vcov(refit)
   } else {
     ranpars <- relist(x, skeleton)
@@ -19,11 +19,11 @@
 .calc_grad_side_arg <- function(skeleton, tol=1e-5) { # on canonical skeleton
   side <- relist(rep(NA,length(.unlist(skeleton))),skeleton) 
   side$lambda[skeleton$lambda<tol] <- 1
-  if ( ! is.null(rCs <- skeleton$ranCoefs)) {
+  if ( length(unlist(rCs <- skeleton$ranCoefs))) {
     diagbools <- relist(rep(FALSE,length(.unlist(rCs))),rCs) 
     for (rc_it in seq_along(rCs)) {
       np <- length(rCs[[rc_it]])
-      Xi_ncol <- floor(sqrt(np*2L))
+      Xi_ncol <- floor(sqrt(np*2L)) # partially fixed ranCoefs have a full skeleton.
       vdiagPos <- cumsum(c(1L,rev(seq(Xi_ncol-1L)+1L))) # diagpos on vector repre of half matrix, not on matrix
       diagbools[[rc_it]][vdiagPos] <- TRUE
     }
@@ -40,11 +40,12 @@
 
 .check_numDeriv_task <- function(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, moreargs, 
                                  thr=0.1, # ideally the threshold should depend on the internal steps of grad, which are O(1e-6) but "complicated" and not available in output
+                                 full_beta,
                                  ...) {
   side <- .calc_grad_side_arg(skeleton)
   uside <- unlist(side)
   gr_neg_APHL <- grad(func = .numInfo_objfn, x = unlist(skeleton), side=uside, skeleton=skeleton, hlcorcall=hlcorcall, 
-                      transf=transf, objective=proc_info$objective, moreargs=moreargs, ...)
+                      transf=transf, full_beta=full_beta, objective=proc_info$objective, moreargs=moreargs, ...)
   
   removand <- rep(FALSE, length(uside))
   uside[is.na(uside)] <- 0
@@ -94,6 +95,7 @@
   if (check_deriv) {
     thr <- .calc_grad_thr(skeleton, fitobject)
     removand <- .check_numDeriv_task(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, 
+                                     full_beta=fixef(fitobject),
                                      moreargs=.get_moreargs(fitobject), thr=unlist(thr))
     tmp[removand] <- NaN
     tmp <- relist(tmp,skeleton)
@@ -105,7 +107,9 @@
   if (transf) skeleton <- .ad_hoc_trRanpars(skeleton)
   res <- list(skeleton=skeleton, nuisance=nuisance, # nuisance should be on canonical scale as it is displayed; skeleton is typically transformed.
               vcov_beta=vcov(fitobject))
-  h <- hessian(func = .numInfo_objfn, x = unlist(skeleton), skeleton=skeleton, hlcorcall=hlcorcall, transf=transf, objective=proc_info$objective)
+  h <- hessian(func = .numInfo_objfn, x = unlist(skeleton), 
+               skeleton=skeleton, hlcorcall=hlcorcall, transf=transf, objective=proc_info$objective, 
+               full_beta=fixef(fitobject))
   # h is possibly is transformed space so it would be confusing to name it by canonNames
   outer_call <- getCall(fitobject)
   ufixed <- na.omit(unlist(outer_call$fixed))

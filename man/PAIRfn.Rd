@@ -62,7 +62,7 @@ fitme(BWT ~ 1+ corrMatrix(mm(ID,mother) | PAIRfn(ID,mother)),
 
 # : same as using a PAIR dummy variable as follows:
 #
-# Gryphon_df$PAIR <- 1 # Do not try other values.
+# Gryphon_df$PAIR <- 1 # Do not use values other than 1.
 # fitme(BWT ~ 1+ corrMatrix(PAIR | PAIRfn(ID,mother)), 
 #       data=Gryphon_df, corrMatrix=Gryphon_A)
 

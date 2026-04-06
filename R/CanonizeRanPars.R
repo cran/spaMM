@@ -34,6 +34,11 @@
   # It may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit, and also ini.value  
   if ( ! is.null(ranPars$trLambda)) {
+    ## Note that user-level fixed=list(trLambda=..) does not work, _first_ bc .preprocess() does not account for it
+    ## when setting processed$lambda.Fix, so that later lambdaType is set to "outer" rather than "fix".
+    ## This might sometimes seem to give a correct fit, with hidden bugs. Further if trLambda elements are not named,
+    ## fixed <- .modify_list(fixed, ranefParsList) 
+    ## in HLfit.obj() may produce a wrong-sized lambda vector with named and unnamed values (very confusing bug).
     lambda <- ranPars$lambda
     if (is.null(lambda)) { ## only trLambda, not lambda
       ranPars$lambda <- .dispInv(ranPars$trLambda)
@@ -51,14 +56,11 @@
     ranPars$trLambda <- NULL
     attr(ranPars,"type")$trLambda <- NULL
   } ## else ranPars$lambda unchanged  
-  if ( ! is.null(trRanCoefs <- ranPars$trRanCoefs)) {
-    constraints <- ranPars$ranCoefs # hack that uses the presence of the constraint there, jointly with $trRanCoefs =>
-    # This and similar operation in .get_refit_args() are the core implementation of partially-fixed ranCoefs, as a trivial projection of ranCoefs into a subspace
-    # This bears the cost of optimizing in more dimensions (of trRancoefs) than there are independent parameters,
-    # But is simple, in particular as there is no simple way of expressing the constraint in transformed space.
-    ranPars$ranCoefs <- trRanCoefs ## copies the non-trivial names
-    for (char_rd in names(trRanCoefs)) ranPars$ranCoefs[[char_rd]] <- 
-      .constr_ranCoefsInv(trRanCoef=trRanCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=rC_transf)
+  if ( ! is.null(trRanCoefs <- ranPars$trRanCoefs) && ! is.null(rC_transf)) { # (To inhibit transf of LowUp bounds, use explicit rC_transf=NULL)
+    ranPars$ranCoefs <- .partially_fix_trRancoefs(
+      trRanCoefs, 
+      constraints=ranPars$ranCoefs, # hack that uses the presence of the constraint there, jointly with $trRanCoefs 
+      return_tr=FALSE, rC_transf=rC_transf)
     ranPars$trRanCoefs <- NULL
     ## But:
     #attr(ranPars,"type")$ranCoefs <- attr(ranPars,"type")$trRanCoefs

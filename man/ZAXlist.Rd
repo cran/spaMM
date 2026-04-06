@@ -33,14 +33,14 @@
 
 \title{S4 classes for structured matrices}
 \description{
-A \code{ZAXlist} object is a representation of the \dQuote{\code{ZAL}} matrix as an S4 class holding a list of descriptors of each \code{ZAL} block for each random effect.
+A \code{ZAXlist} object is a representation of the \dQuote{\code{ZAL}} matrix as an S4 class holding a list of descriptors of each \code{ZAL} block for each random effect. Its \code{envir} slot may store a cached copy of the \code{ZAL} matrix. The internal \code{.get_bind} extractor gets the \code{ZAL} matrix from a \code{ZAXlist} object, using the cached copy if already available, and computing and caching  it otherwise.
 
 A \code{Kronfacto} object is a representation of a Kronecker product as an S4 class holding its factors. Methods defined for this class may avoid the computation of the Kronecker product as an actual matrix of large dimensions.
 
 This documentation is for development purposes and may be incomplete. The objects and methods are not part of the programming interface and are subject to modification without notice.
 }
 \usage{
-# new("ZAXlist", LIST=.) 
+# new("ZAXlist", LIST=., as_matrix=., envir=.) 
 # new("Kronfacto", BLOB=.) 
 }
 % perhaps define a constructor ?
@@ -48,6 +48,8 @@ This documentation is for development purposes and may be incomplete. The object
   \describe{
     \item{\code{LIST}:}{A list whose each element is a ZAL block represented as either a \code{(M|m)atrix}, 
 or a list with two elements (and additional class \code{ZA_QCHM}): \code{ZA}, and the \code{\link[Matrix]{Cholesky}} factor \code{Q_CHMfactor} of the precision matrix (\code{L=solve(Q_CHMfactor,system="Lt")}).}
+    \item{\code{as_matrix}:}{boolean: whether ZAL should be stored as a base \code{matrix}. Otherwise, a sparse \pkg{Matrix} format is used.}
+    \item{\code{envir}:}{An environment. May store a cached copy \code{mMat} of the \code{ZAL} matrix.}
     \item{\code{BLOB}:}{An environment holding \code{lhs} and \code{rhs}, the factors of the Kronecker product, and other objects initialized as promises. See the source code of the non-exported \code{.def_Kranfacto} constructor for further information.}
   }
 }

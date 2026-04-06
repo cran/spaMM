@@ -202,7 +202,7 @@
         ##    Also I would see greater inaccuracies in the "independent fits" mv tests.
         APHLs_ZX <- .calc_APHLs_from_ZX(auglinmodblob, which=whichAPHLs, processed) # with old lambda est
         if (max(abs(APHLs[[processed$objective]]-APHLs_ZX[[processed$objective]]))<
-            .spaMM.data$options$spaMM_tol$logL_tol) break
+            processed$spaMM_tol$logL_tol) break
         # else there is too much variation in processed$objective: the loop continues.
       }
     } 
@@ -293,9 +293,9 @@
 
 
 .add_unscaled_X.pv_fixef <- function(res, processed, beta_eta, etaFix, X.pv=processed$AUGI0_ZX$X.pv) {
-  if ( ! is.null(attr(X.pv,"scaled:scale"))) {
-    beta_eta <- .unscale(beta=beta_eta, X=X.pv)
-    res$X.pv <- .unscale(X.pv) ## lvalue usefully not in an environment
+  if ( ! is.null(scale <- attr(X.pv,"scaled:scale"))) {
+    beta_eta <- .unscale(beta=beta_eta, X=X.pv, scale=scale)
+    res$X.pv <- .unscale(X.pv, scale=scale) ## lvalue usefully not in an environment
   } else {
     res$X.pv <- X.pv
   }

@@ -31,12 +31,13 @@ The fit results for the residual model are accessible through the summary and va
 \examples{
 data("scotlip")
 if (spaMM.getOption("example_maxtime")>3) {
-(toyfit <- fitme(cases~1+(1|id),family=negbin1(), data=scotlip, resid.model = ~ population))
+(toyfit <- fitme(cases~1+(1|id),family=negbin1(), data=scotlip, 
+                 resid.model = ~ population))
+}
 
 # => This toy example is a bit challenging to fit because the data set is small and 
 # individual-level variation is here described both by a random effect 
-# and by a two-parameter negbin1 residual variation. The fit might often stop 
-# at a local maximum of the logLik in such cases (although there is no evidence
+# and by a two-parameter negbin1 residual variation. Such fits might often stop 
+# at a local maximum of the logLik (although there is no evidence
 # that this is presently the case).
-}
 }

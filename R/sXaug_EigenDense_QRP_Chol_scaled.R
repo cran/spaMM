@@ -38,6 +38,13 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   return( Xaug ) 
 }
 
+.calc_t_Qq_scaled <- function(sXaug, BLOB) {
+  n_u_h <- attr(sXaug,"n_u_h")
+  phipos <- (n_u_h+1L):nrow(sXaug)
+  .tcrossprod(BLOB$inv_factor_wd2hdv2w, drop0(sXaug[, BLOB$seq_n_u_h ]), 
+              chk_sparse2mat = FALSE)
+}
+
 .init_promises_decorr <- function(sXaug) {
   BLOB <- attr(sXaug,"BLOB") 
   delayedAssign("seq_n_u_h", seq_len(attr(sXaug,"n_u_h")), assign.env = BLOB )
@@ -50,11 +57,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     }
   }, assign.env = BLOB )  ## but repetitive usage is minimal?
   #
-  delayedAssign("t_Qq_scaled", {
-    n_u_h <- attr(sXaug,"n_u_h")
-    phipos <- (n_u_h+1L):nrow(sXaug)
-    .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[, BLOB$seq_n_u_h ])
-  }, assign.env = BLOB )
+  delayedAssign("t_Qq_scaled", .calc_t_Qq_scaled(sXaug, BLOB), assign.env = BLOB )
   delayedAssign("R_R_v", { # in "absdiag_R_v", "solve_d2hdv2","hatval_Z","R_scaled_v_h_blob", "logdet_R_scaled_v","Mg_invH_g"
     seq_n_u_h <- BLOB$seq_n_u_h
     # remove $u_h_cols_on_left code in version 2.1.61 since there is a bug in it: further code may require 

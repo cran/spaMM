@@ -1,6 +1,5 @@
 \name{fitmv}
 \alias{fitmv}
-\alias{X2X}
 \title{
 Fitting multivariate responses
 }
@@ -33,7 +32,7 @@ Lists of initial values or bounds. The syntax is that of the same arguments in \
   \item{method}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, as for \code{fitme} and in contrast to \code{"REML"} for the other fitting functions. Other possible values of \code{HLfit}'s \code{method} argument are handled.
 }
 \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
-\item{X2X}{ NULL, or a matrix \bold{M} by which one can specify, as \eqn{\beta=}\bold{M}\eqn{\beta^*}, fixed effects \eqn{\beta} with some coefficients shared between submodels, e.g. as shown in the \dQuote{Shared fixed effect} Example, where \eqn{\beta^*} has three distinct elements, and \eqn{\beta} has four elements including identical Intercept coefficients among the two submodels. The fixed-effect term \bold{X}\eqn{\beta} of the linear predictor thus takes the form \bold{XM}\eqn{\beta^*}, meaning that the default design matrix of the model \bold{X} is replaced by \bold{XM}. \bold{M} must have column names, labeling the \eqn{\beta^*} coefficients.}
+\item{X2X}{ NULL, or a matrix, or a call to \code{\link{genX2X}} function. This argument allows one to specify fixed-effect coefficients shared between submodels, as further detailed in the \code{\link{X2X}} documentation. The matrix must have column names, defining the names of the fixed-effect coefficients to be fitted.}
 \item{aliases}{A list; experimental feature whose usage is explained in a dedicated \code{\link{aliases}} documentation.}
 \item{\dots}{
 Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example  \code{control.HLfit} or the \code{covStruct}, \code{distMatrix}, \code{corrMatrix} or \code{adjMatrix} arguments of \code{HLCor}. }
@@ -76,6 +75,7 @@ The function proceeds by first preprocessing all submodels independently, before
 A (single) list of class \code{HLfit}, as returned by other fitting functions in \pkg{spaMM}. The main difference is that it contains a \code{families} element describing the response families, instead of the \code{family} elements of fitted objects for univariate response.
 }
 \seealso{
+See \code{\link{X2X}} for details, examples and an helper function facilitating the use of this argument. 
 See further examples in \code{\link{mv}} (modelling correlated random effects over the different submodels),
 and \code{\link{residVar}}.
 }
@@ -111,47 +111,6 @@ climv$np2 <- simulate(fitClinics, type="residual")
 #                  mod2=list(formula=np2~treatment+(+1|clinic),family=poisson(),
 #                            fixed=list(lambda=c('1'=0.5)))),              # '2': (+1|clinic) 
 #   data=climv))
-
-#### Shared fixed effect
-# Suppose we want to fit the same intercept for the two submodels 
-# (there may be cases where this is meaningful, even if not here).
-# The original fit has four coefficients corresponding to four columns 
-# of fixed-effect design matrix:
-
-head(design_X <- model.matrix(mvfit))
-#      (Intercept)_1 treatment_1 (Intercept)_2 treatment_2
-# [1,]             1           1             0           0
-#      ...
-
-# The three coefficients of the intended model are (say) 
-# "(Intercept)" "treatment_1" "treatment_2"
-# We build a matrix that relates the original 4 coefficients to these 3 ones:
-
-X_4to3 <- 
-  matrix(c(1,0,0,
-           0,1,0,
-           1,0,0,
-           0,0,1), nrow=4, ncol=3, byrow=TRUE,
-         dimnames=list(NULL, c("(Intercept)","treatment_1","treatment_2")))
-                   
-# defined such that design_X \%*\% X_4to3 will be the design matrix for the intended model, 
-# and the single "(Intercept)" coefficient of the three-parameter model will operate as 
-# a shared estimate of the "(Intercept)_1" and "(Intercept)_2" coefficients
-# of the original 4-coefficients model, as intended. 
-
-# To define such matrices, it is *strongly advised* to fit the unconstrained model first,
-# and to examine the structure of its model matrix (as shown above). 
-
-# The new fit is obtained by providing the matrix as the 'X2X' argument:
-
-(mvfit3 <- fitmv(
-    submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                   mod2=list(formula=np2~treatment+(1|clinic),
-                             family=poisson(), fixed=list(lambda=c("1"=1)))), 
-    X2X = X_4to3,
-    data=climv))
-
-# => the column names of 'X_4to3' are the fixed-effect names in all output.
 
 #### Prediction with a residual-dispersion model
 set.seed(123)

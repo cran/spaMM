@@ -29,6 +29,7 @@ if( requireNamespace("multilevel", quietly = TRUE)) {
                  data=lql, family=binomial()) 
     # down to 6.3s with "R-devel post 4.5.0"
     testthat::expect_equal(logLik(hl1),c(p_v=-20354.8828))
+    if (.is_spprec_fit(hl1)) message(paste('.is_spprec_fit(hl1) in test-Rasch: was a non-default option selected?'))
   } else cat(" requires example_maxtime>7")
 } else cat(" requires 'multilevel' package")
 cat("\n")

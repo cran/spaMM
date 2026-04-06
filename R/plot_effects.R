@@ -1,6 +1,7 @@
 pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L, focal_values=NULL, 
                          level=0.95, levels = NULL, submodel=NULL,
-                         intervals = "predVar", indiv=FALSE,...) {
+                         intervals = "predVar", indiv=FALSE, verbose=NULL, ...) {
+  verbose <- .modify_list(list(na_once=TRUE), verbose)
   was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
   if (inherits(object,"fitme") && is.null(submodel)) 
     stop("'submodel' argument required for multivariate-response fits.")
@@ -9,6 +10,7 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
     stop("'focal_var' is not found in the data.")
   }
   ori_values <- newdata[, focal_var,drop=TRUE] # drop[] bc tibbles do not automatically drop 
+  ori_values <- na.omit(ori_values)
   if (is.character(ori_values)) ori_values <- factor(ori_values)
   if (is.logical(ori_values)) {
     if (is.null(focal.values <- focal_values)) focal.values <- c(FALSE,TRUE) 
@@ -52,7 +54,8 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
   for (it in seq_along(focal.values)) {
     newdata[,focal_var] <- focal.values[it]
     pred <- predict(object,newdata,intervals = intervals, control=list(fix_predVar=NA), 
-                    level=level, ...)
+                    level=level, verbose=verbose, submodel=submodel,
+                    ...)
     CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!... as this would modify the argument of predict()
     if ( ! is.null(submodel)) {
       cumnobs <- cumsum(c(0L,attr(pred,"nobs")))
@@ -76,6 +79,7 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
     }
   }
   if (was_invColdoldList_NULL) object$envir$invColdoldList <- NULL
+  environment(.warn_NA_in_newdata)$NA_in_newdata_NOT_warned <- TRUE
   return(resu)
 }
 
@@ -83,8 +87,8 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
 
 plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data frame, but a matrix may be sufficient
                          focal_values=NULL, effects=NULL, submodel=NULL,
-                        xlab = focal_var, ylab=NULL, rgb.args=col2rgb("blue"), add=FALSE, ylim=NULL, ...) {
-  
+                        xlab = focal_var, ylab=NULL, rgb.args=col2rgb("blue"), add=FALSE, ylim=NULL, 
+                        ...) {
   # If focal_var remains NULL, the idea is probably to run over all predictor variables (not all regressors), 
   #             but this entails other graphic decisions... 
   if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, 
@@ -100,10 +104,25 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
       } else ylab <- paste("frequency(",form[[2L]],")")
     }
   } else {
+    # there are predictions even when response values were missing in the data
+    # In 'byP3' pois4mlogit 1st submodel for example there are 8 fitted values but  predict can generate 9 ones...
+    # This block deals with the 8 fitted values
     resp <- object$y
-    if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2L]])
+    if ( ! is.null(submodel)) {
+      cum_nobs <- attr(object$families,"cum_nobs")
+      yrange <- .subrange(cum_nobs, submodel)
+      resp <- resp[yrange] #   8 values
+    }
+    if (inherits(object,"pois4mlogit")) {
+      mnsizes <- object$p4m_info$multinom_info$mnsizes # 10 including one NA
+      mnsizes <- mnsizes[object$p4m_info$multinom_info$mnpos_in_template[,submodel]] # mnsizes of the 8 fitted values
+      resp <- resp/mnsizes
+      if (is.null(ylab)) {
+        form <- formula.HLfit(object,which="")[[submodel]]
+        ylab <- paste("frequency(",form[[2L]],")")
+      }
+    } else if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2L]])
   }
-  if ( ! is.null(submodel)) resp <- resp[attr(effects,"range")]
   if (is.null(ylim)) ylim <- stats::quantile(resp, c(0.025, 0.975))
   rgb.args <- as.list(rgb.args)
   if (is.null(rgb.args$maxColorValue)) rgb.args$maxColorValue <- 255

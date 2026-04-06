@@ -8,7 +8,7 @@
   ypos,off,GLMMbool,etaFix,
   lambda_est,
   wranefblob, seq_n_u_h, 
-  ZAL_scaling, # locally fixed, "resident"; only changed in return value
+  ZAL_scaling, # old comment: 'locally fixed, "resident"; only changed in return value'. ALways 1 ?
   processed, 
   Trace,
   phi_est, #H_global_scale, 
@@ -40,7 +40,7 @@
   }
 
   oldlik <- oldAPHLs[[objname]]
-  initdamping <- damping
+  initdamping <- damping # may be infinite, see .wrap_do_damped_WLS_outer()
   gainratio_grad <- zInfo$gainratio_grad
   restarted_at_e_7 <- FALSE
   first_it <- TRUE
@@ -49,6 +49,14 @@
     cat(stylefn("[")) # cat(which_LevMar_step) #=> a substep of V_IN_B: "strict_v|b" or "b_&_v_in_b"
   } 
   GLGLLM_const_w <- attr(processed$models,"GLGLLM_const_w")
+  # AUGI0_ZX <- update_sXaug_constant_arglist$AUGI0_ZX # 
+  AUGI0_ZX <- processed$AUGI0_ZX # environment
+  is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)
+  # Seek the original matrices, even when is_p4m_H is TRUE:
+  if ( is.null(ZAfix <- AUGI0_ZX$ZAfix_ori)) {
+    ZAfix <- AUGI0_ZX$ZAfix
+    X.pv <- AUGI0_ZX$X.pv
+  } else X.pv <- AUGI0_ZX$X.pv_ori
   while ( TRUE ) { ## loop on damping; each iteration produce blue + ul-greens + yellow
     # if (trace && ! is.null(v_infer_args)) {
     #   cat(c(damping)) # => what is shown after [.v_h iter...]V_h IRLS...; .dampingfactor=* damping=
@@ -107,12 +115,6 @@
       )  
     }
     v_h <- Vscaled_beta$v_h #### * ZAL_scaling =1 here
-    eta <- off + drop(processed$AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% v_h) ## length nobs 
-    
-    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
-    neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
-    newH_w.resid <- .calc_H_w.resid(neww.resid, muetablob=newmuetablob, processed=processed) # for LLF w.resid is not generally defined.
-
     if (is.null(etaFix$v_h)) { 
       if (GLMMbool) {
         u_h <- v_h
@@ -124,11 +126,24 @@
         newwranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h, lambda=lambda_est)
       } 
     } else newwranefblob <- wranefblob
+    # using local copies of model matrices, which are the original ones in p4m case:
+    eta <- off + drop(X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% v_h) ## length nobs 
+    
+    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
+    neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
+    newH_w.resid <- .calc_H_w.resid(neww.resid, muetablob=newmuetablob, processed=processed) # for LLF w.resid is not generally defined.
+
     sXaug_arglist <- c(update_sXaug_constant_arglist,
                           list(w.ranef=newwranefblob$w.ranef, 
                                #weight_X=newweight_X,
                                H_w.resid=newH_w.resid))
-    if ( ! GLMMbool) {newZAL_scaling <- 1}  ## TAG: scaling for spprec
+    if (is_p4m_H) {
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
+      # sXaug_arglist then contains (misnomed) update_sXaug_constant_arglist which contains AUGI0_ZX environment,
+      # updated by the next two lines.
+      AUGI0_ZX$X.pv <- dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
+      AUGI0_ZX$ZAfix <- .makeMatp4m(mat=ZAfix, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
+    } else if ( ! GLMMbool) {newZAL_scaling <- 1}  ## TAG: scaling for spprec
     ####
     APHLs_args$dvdu <- newwranefblob$dvdu
     APHLs_args$u_h <- u_h 
@@ -293,9 +308,14 @@
                eta=newmuetablob$sane_eta, muetablob=newmuetablob, wranefblob=newwranefblob,
                breakcond=breakcond,
                v_h=v_h, u_h=u_h, w.resid=neww.resid) # newweight_X does not exists and not needed in spprec
-  # if ( ! first_it) { # if not break in first iteration
-  #   RESU$conv_logL_not_first_it <- conv_logL
-  # }
+  if (is_p4m_H) {
+    ## dz1_p4m not needed within this fn. But 'newmuetablob' is returned
+    ## and can be used in zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) in .solve_v_h_IRLS() called 
+    ## in the next iteration of .solve_IRLS_as_spprec() 
+    replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% Vscaled_beta$beta_eta)
+    RESU$newmuetablob$dz1_p4m <- replaces_etamo - (newmuetablob$sane_eta-off)
+    RESU$dcdv_p4m <- dcdv_p4m
+  }
   if ( ! GLMMbool ) {
     RESU$ZAL_scaling <- newZAL_scaling
     # RESU$Xscal <- newXscal ## does not exist and presumably not needed.
@@ -329,14 +349,14 @@
   
 }
 
-.WLS_substitute_spprec <- function(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, mod_attr, 
+.new_WLS_equation_spprec <- function(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, mod_attr, 
                                    lambda_est, ZAL, 
-                            processed, phi_est,
+                            processed, AUGI0_ZX, phi_est,
                             wranefblob, Trace,stylefn) {
   
   # Vscaled_beta must have been provided by somethin else than damped_WLS_blob
   # drop, not as.vector(): names are then those of (final) eta and mu -> used by predict() when no new data
-  eta <- off + drop(processed$AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% Vscaled_beta$v_h)
+  eta <- off + drop(AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% Vscaled_beta$v_h)
   RESU <- list()
   if (is.null(etaFix$v_h)) { 
     v_h <- Vscaled_beta$v_h ## * ZAL_scaling (=1)
@@ -363,8 +383,7 @@
 }
 
 .solve_IRLS_as_spprec <- 
-  function(
-           ZAL, y=processed$y, 
+  function(ZAL, y=processed$y, 
            n_u_h=length(u_h), 
            #H_global_scale, 
            lambda_est, muetablob=NULL, off=processed$off, maxit.mean, etaFix,
@@ -390,7 +409,8 @@
       cat(">") 
       if (verbose["trace"]) cat(.pretty_summ_lambda(lambda_est,processed))
     }
-  pforpv <- ncol(processed$AUGI0_ZX$X.pv)
+  AUGI0_ZX <- processed$AUGI0_ZX
+  pforpv <- ncol(AUGI0_ZX$X.pv)
   nobs <- length(y)
   seq_n_u_h <- seq_len(n_u_h)
   ypos <- n_u_h+seq_len(nobs)
@@ -427,13 +447,32 @@
   ##### initial sXaug
   ZAL_scaling <- 1  ## TAG: scaling for spprec
   if (is.null(muetablob)) { ## NULL input eta allows NULL input muetablob
-    eta <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
+    eta <- off + drop(AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
     muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
   }
   ## varies within loop if ! LMM since at least the GLMweights in w.resid change
   if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
   ## needs adjMatrix and corrPars to define Qmat
-  update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, 
+  if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+    # In the case which works, there is a pair of .makeMatp4m() calls each time this function is called,
+    # which is once for any HLfit_body() call. The dynoffset is updated at the pois4mlogit() level, 
+    # HLfit_body is called in each .p4m_by_iter() iteration.
+    dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    dcdb_p4m <- .makeMatp4m(mat=AUGI0_ZX$X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
+    muetablob$dz1_p4m <- replaces_etamo - drop(.get_bind_ZAXlist(ZAL) %*% v_h +AUGI0_ZX$X.pv %*% beta_eta)
+    constant_zAug_args$ZAL <- dcdv_p4m #  "doSeeMe" # see comment on other instance of this code
+    AUGI0_ZX$ZAfix_ori <- AUGI0_ZX$ZAfix
+    AUGI0_ZX$X.pv_ori <- AUGI0_ZX$X.pv
+    AUGI0_ZX$X.pv <- dcdb_p4m
+    AUGI0_ZX$ZAfix <- .makeMatp4m(mat=AUGI0_ZX$ZAfix, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    damped_WLS_v_in_b_fn <- .do_damped_WLS_v_in_b_spprec # _p4m # is .do_damped_WLS_spprec_p4m()
+    damped_WLS_fn <- .do_damped_WLS_outer_spprec # _p4m #  is ALSO .do_damped_WLS_spprec_p4m()
+  } else { 
+    damped_WLS_v_in_b_fn <- .do_damped_WLS_v_in_b_spprec # is .do_damped_WLS_spprec()
+    damped_WLS_fn <- .do_damped_WLS_outer_spprec # is ALSO .do_damped_WLS_spprec()
+  }
+  update_sXaug_constant_arglist <- list(AUGI0_ZX=AUGI0_ZX, corrPars=corrPars, 
                                         cum_n_u_h=processed$cum_n_u_h #,H_global_scale=H_global_scale
                                         ) 
   sXaug_arglist <- c(update_sXaug_constant_arglist,
@@ -452,17 +491,24 @@
   }
   
   if ( ! is.null(for_intervals)) {
-    Vscaled_beta <- list(v_h=v_h/ZAL_scaling, beta_eta=for_intervals$beta_eta)
+    Vscaled_beta <- list(v_h=as.vector(v_h)/ZAL_scaling, beta_eta=for_intervals$beta_eta)
     fixefobjfn <- names(for_intervals$fixeflik)
   } else {
-    Vscaled_beta <- list(v_h=v_h/ZAL_scaling,beta_eta=beta_eta)
-  } 
+    Vscaled_beta <- list(v_h=as.vector(v_h)/ZAL_scaling,beta_eta=beta_eta)
+  } # : as.vector() makes sure any "u_h" attribute is removed. 
+  #     Otherwise it is kept in later arithmetic operations giving the new v_h, 
+  #     and u_h <- v_h will create u_h with a nested "u_h" attribute...
+  #     This created problems (deeply nested attrs, memory and speed issues) 
+  #     in .p4m_by_iter(), where the input v_h presumably had the "u_h" attr 
+  #     before ranef(., type="bare.init") was introduced (v4.6.44.1).
+  
   # to be evaluated once when it becomes needed:
   delayedAssign("constant_v_infer_args", list( # ultimately for the .solve_v_h_IRLS_spprec() call
-    X.pv=processed$AUGI0_ZX$X.pv, 
+    # X.pv=AUGI0_ZX$X.pv, # no longer an argument of .solve_v_h_IRLS_spprec
     ZAL=ZAL, y=y, n_u_h=n_u_h, #H_global_scale=H_global_scale,
     lambda_est=lambda_est, off=off,maxit.mean=maxit.mean,etaFix=etaFix,
     processed=processed, phi_est=phi_est, 
+    damped_WLS_v_in_b_fn=damped_WLS_v_in_b_fn,  # ie, .do_damped_WLS_v_in_b_spprec[_p4m]
     trace=trace, corrPars=corrPars, dampings_env=dampings_env))
   ## Loop controls:
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
@@ -542,12 +588,10 @@
       zInfo <- list(z2=NULL,z1=y-off,sscaled=0)
       y_eta_ <- y-muetablob$sane_eta
       ## the gradient for -p_v (or -h), independent of the scaling
-      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, 
-                                          z1_eta=y_eta_, # same as zInfo$z1 - etamo = y-off-(eta-off)
-                                          z1_sscaled_eta=y_eta_ , # same as zInfo$z1_sscaled - etamo =(sscaled=0)=  zInfo$z1 - etamo=y-off-(eta-off)
+      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=y_eta_, # same as zInfo$z1 - etamo = y-off-(eta-off)
                                           GLMMbool, v_h, wranefblob, 
                                           H_w.resid=.BLOB(sXaug)$H_w.resid,
-                                          ZAL, X.pv=processed$AUGI0_ZX$X.pv)
+                                          dLinkPred_dv=ZAL, dLinkPred_db=AUGI0_ZX$X.pv)
     } else {
       if ( ! GLMMbool) {
         # # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
@@ -566,11 +610,22 @@
                                z2=z2) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args)
       if (GLMMbool) zInfo$z2 <- NULL
-      etamo <- muetablob$sane_eta - off
       ## the gradient for -p_v (or -h), independent of the scaling
-      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, z1_eta=zInfo$z1-etamo, z1_sscaled_eta=zInfo$z1_sscaled - etamo , GLMMbool, v_h, wranefblob, 
-                                           H_w.resid=.BLOB(sXaug)$H_w.resid,
-                                          ZAL, X.pv=processed$AUGI0_ZX$X.pv)
+      
+      if (zInfo$z1_is4p4m) { 
+        dcdmu <- zInfo$z1-replaces_etamo 
+      } else {
+        etamo <- muetablob$sane_eta-off
+        dcdmu <- zInfo$z1-etamo
+      }
+      if (is_p4m_H) {
+        zInfo$m_grad_obj <- 
+          m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=dcdmu, GLMMbool=GLMMbool, v_h=v_h, 
+                                         wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, 
+                                         dLinkPred_dv=dcdv_p4m, dLinkPred_db=dcdb_p4m)
+      } else zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=dcdmu, GLMMbool=GLMMbool, v_h=v_h, 
+                                                  wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid,
+                                                  dLinkPred_dv=ZAL, dLinkPred_db=AUGI0_ZX$X.pv)
     }
     ## keep name 'w'zAug to emphasize the distinct weightings  of zaug and Xaug (should have been so everywhere)
     #####
@@ -689,7 +744,7 @@
       } 
       new_damping <- .get_new_damping(dampings_env$v[[which_LevMar_step]], which_LevMar_step)
       damped_WLS_blob <- .wrap_do_damped_WLS_outer(
-        damped_WLS_fn = .do_damped_WLS_outer_spprec,
+        damped_WLS_fn = .do_damped_WLS_outer_spprec, ZAL=ZAL,
         LevM_HL11_method=LevM_HL11_method, # contains the rescue_thr options => any possibility to simplify arguments ?
         rescue= (is_HL1_1 && rescue_thr["rescue"]), 
         which_LevMar_step=which_LevMar_step,
@@ -708,13 +763,14 @@
         #H_global_scale=H_global_scale,     
         ZAL_scaling= ZAL_scaling, 
         processed=processed, 
-        phi_est=phi_est, n_u_h=n_u_h, ZAL=ZAL,
+        phi_est=phi_est, n_u_h=n_u_h, 
         constant_v_infer_args=constant_v_infer_args,
         looseness= if ( is.null(damped_WLS_blob) ||  ## start strict
                         new_damping>1e-7) {## use strict when there are trace of difficulties (in particular, failure to improve) 
           1 } else {processed$spaMM_tol$loose_fac},
         low_pot=NULL ## explicit for clarity, but its the default
-      ) 
+      )
+
       #old_m_grad_v <- m_grad_v
       dampings_env$v[[attr(damped_WLS_blob,"step")]] <- damped_WLS_blob$damping
       ## LevM PQL
@@ -784,10 +840,10 @@
     #      In particular We need muetablob and (if ! LMM) sXaug, hence a lot of stuff.
     #  Hence, the following code is useful whether a break occurs or not. 
     if ( is.null(damped_WLS_blob) ) { ## fits nothing, but updates variables in case of standard IRLS, or of intervals
-      WLS_blob <- .WLS_substitute_spprec(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, mod_attr=mod_attr, 
-                                         lambda_est=lambda_est, ZAL, 
-                                         processed, phi_est,
-                                         wranefblob, Trace=trace, stylefn)
+      WLS_blob <- .new_WLS_equation_spprec(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, mod_attr=mod_attr, 
+                                         lambda_est=lambda_est, ZAL, processed=processed, 
+                                         AUGI0_ZX=AUGI0_ZX, phi_est=phi_est, wranefblob=wranefblob, 
+                                         Trace=trace, stylefn=stylefn)
       for (st in names(WLS_blob)) assign(st,WLS_blob[[st]]) 
       if (fpot_cond &&  ! LMMbool && is.null(for_intervals)) { # fpot_cond is FALSE except in possible private usage, 
         Mg_solve_g <- sum(.unlist(dVscaled_beta)*zInfo$m_grad_obj) # using old m_grad_obj
@@ -823,7 +879,7 @@
           processed$warned_maxit_mean <- TRUE
           if (!is.null(for_intervals)) {
             message("Iterative algorithm converges slowly.")
-          } else message("Iterative algorithm converges slowly. See help('convergence') for suggestions.")
+          } else message(cli::format_message("Iterative algorithm converges slowly. See {.topic [convergence](spaMM::convergence)} for suggestions."))
         }
       }
       break
@@ -890,6 +946,11 @@
     } 
   } ################ E N D LOOP ##############
   #if (trace>4L) browser() 
+  if (is_p4m_H) {
+    AUGI0_ZX$dcdb_p4m <- AUGI0_ZX$X.pv # ends in <fitobject>$envir$sXaug$AUGI0_ZX$dcdb_p4m
+    AUGI0_ZX$ZAfix <- AUGI0_ZX$ZAfix_ori
+    AUGI0_ZX$X.pv <- AUGI0_ZX$X.pv_ori
+  }
   if ( ! is.null(for_intervals) && for_intervals$phi_pred_OK) {
     warnobjfn <- names(for_intervals$warnlik)
     warnlik <- unlist(do.call(".calc_APHLs_from_ZX",loc_logLik_args)[warnobjfn])  
@@ -924,7 +985,7 @@
       list2env(damped_WLS_blob[varnames], envir = environment()) 
     }
   }
-  names(beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)
+  names(beta_eta) <- colnames(AUGI0_ZX$X.pv)
   RESU <- list(sXaug=sXaug, 
                ## used by calc_APHLs_from_ZX
                #fitted=fitted, ## FIXME: removed so that no shortcut a la Bates in calc_APHLs_from_ZX; reimplement the shorcut in that fn?  

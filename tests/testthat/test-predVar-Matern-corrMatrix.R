@@ -26,7 +26,7 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
     cat(cli::col_yellow("message expected here: "))
     (f5 <- HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
                 corrMatrix=MLcorMat,method="ML")) # Check that order of data is respected in the Zmatrix for this "unsafe" input.
-    # imput as precision matrix
+    # input as precision matrix
     (f6 <- fitme(migStatus ~ means + corrMatrix(1|name), data=blackcap,
                 covStruct=list(precision=as_precision(MLcorMat))))
     # Manual version of the same:

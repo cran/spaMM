@@ -96,7 +96,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
       ##     otherwise.
       #
       optPars <- .new_locoptim(init.optim, LowUp=LowUp,anyHLCor_obj_args=anyHLCor_obj_args,
-                               objfn_locoptim=.objfn_locoptim,
+                               objfn_locoptim=.objfn_locoptim, objfn.extras=LUarglist,
                                control=control.corrHLfit, 
                                user_init_optim=user_init_optim, verbose=verbose[["TRACE"]])
     }

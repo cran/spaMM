@@ -3,6 +3,14 @@ data("blackcap")
 chk <- fitme(migStatus ~ 1+ Matern(1|latitude+longitude), fixed=list(lambda=2), data=blackcap)
 if (how(chk, verbose=FALSE)$switches[["augZXy_cond"]]) stop("y-augmented method used with fixed lambda.")
 
+chk <- fitme(migStatus ~ 1+ Matern(1|latitude+longitude), data=blackcap)
+if (how(chk, verbose=FALSE)$switches[["augZXy_cond"]]) {
+  etachk <- fitme(migStatus ~ 1+ Matern(1|latitude+longitude), etaFix=list(beta=c(`(Intercept)`=1.673)), data=blackcap)
+  if (how(etachk, verbose=FALSE)$switches[["augZXy_cond"]]) {
+    # I might check the logLik but result seems OK. More in .HLfit_body_augZXy() source.
+  } else stop("Test of y-augmented method with etaFix no longer effective. (etachk)")
+} else stop("Test of y-augmented method with etaFix no longer effective. (chk)")
+
 #cat("\ntest no fixef, pw & REMLformula, by augZXy:\n")
 if (FALSE) { # old tests of functionality. May be useful for later devels
   if(requireNamespace("lme4", quietly = TRUE)) { # but it's faster than that.)

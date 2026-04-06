@@ -20,10 +20,10 @@ If added to the plot, the raw data may appear to depart from the partial-depende
 \usage{
 pdep_effects(object, focal_var, newdata = object$data, length.out = 20, 
              focal_values=NULL, level=0.95, levels = NULL, submodel=NULL,
-             intervals = "predVar", indiv = FALSE, ...)
+             intervals = "predVar", indiv = FALSE, verbose = NULL, ...)
 plot_effects(object, focal_var, newdata = object$data, focal_values=NULL, 
              effects = NULL, submodel=NULL, xlab = focal_var, ylab = NULL, 
-             rgb.args = col2rgb("blue"), add = FALSE,  ylim=NULL, ...)
+             rgb.args = col2rgb("blue"), add = FALSE, ylim = NULL, ...)
 }
 \arguments{
   \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
@@ -64,6 +64,9 @@ plot_effects(object, focal_var, newdata = object$data, focal_values=NULL,
  }
   \item{indiv}{
    Boolean: whether to return all predictions given the values of other predictors in the \code{newdata}, or only their means.
+}
+  \item{verbose}{
+   Passed to \code{\link{predict.HLfit}}, whose documentation should be consulted for further details. Element \code{na_once} is always set to TRUE within \code{pdep_effects}.
 }
   \item{\ldots}{
    Further arguments passed by \code{plot_effects} to \code{pdep_effects}, or by \code{pdep_effects} to \code{predict.HLfit}.

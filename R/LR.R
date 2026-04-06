@@ -50,6 +50,15 @@
     warning(paste("The models have the same number of parameters except for fixed effects, but spaMM did not ascertain\n",
                   "  whether the random-effect specifications are identical. You are responsible for that."), immediate. = TRUE) 
   }
+  if ((dfR1-dfR2)*(logLik(object)-logLik(object2)) <0) {
+    warnmess <- cli::format_warning(paste("(!) The model with fewer dfs has higher logLik.\n",
+                              "See Details in {.topic [LRT](spaMM::LRT)} for possible reasons.\n",
+                              " You are responsible for diagnosing them."))
+    warning(warnmess, immediate. = TRUE)
+    # pchisq(<0, df) produces 0,n, while pchisq(q, df<0) produces a warning (NaN) 
+    # Slightly negative LR stat also possible due to numerical inaccuracies, 
+    # so it's better to allow LRT computation to proceed.
+  }
   list(Rnest=Rnest, dfs=c(dfR1, dfR2))
 }
 
@@ -281,7 +290,7 @@
       nullm <- object2
     }
     if (length(XRnest)==2L) {
-      message("Models differing both by in their fixed and in their random terms. ")
+      message("Models differing both by their fixed and by their random terms. ")
       if (REML) warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect", 
               immediate.=TRUE, call.=FALSE)
       testlik <- "p_v" 
@@ -334,11 +343,11 @@
         }
         if (REML) {
           testlik <- "p_bv" 
-          if (is.null(Xnest) && RLRbool) message("Note: procedures from package 'RLRsim' may be useful for this test. See help('get_RLRsim_args').")
+          if (is.null(Xnest) && RLRbool) message(cli::format_message("Note: procedures from package 'RLRsim' may be useful for this test. See {.help [{.fun get_RLRsim_args}](spaMM::get_RLRsim_args)}."))
         } else {
           testlik <- "p_v" 
           if (is.null(Xnest)) message("Note: ML fits used to compare different random-effects or residual-dispersion models.")
-          if (RLRbool) message("Note: procedures from package 'RLRsim' may be useful for this test. See help('get_RLRsim_args').")
+          if (RLRbool) message(cli::format_message("Note: procedures from package 'RLRsim' may be useful for this test. See {.help [{.fun get_RLRsim_args}](spaMM::get_RLRsim_args)}."))
         }
       }
     } 
@@ -420,11 +429,21 @@
     optimInfo <- attr(fitobject,"optimInfo")
     outer_ests <- optimInfo$optim.pars # transparent (but potentially more comprehensive set of params)
     if ( ! is.null(outer_ests)) {
+      # Keep in mind that partially-fixed ranCoefs are implemented 
+      # through modifying the ranCoefs in the objective fn. The input value from the optimizer
+      # to the objfn does not account for the cosntraint, and standard optimizers
+      # will return this input value from the optimizer, which (by design) remains unmodified in optimInfo. 
+      # So it has to be modified here if we want the init value to satisfy the constraints.
+      if (! is.null(trRanCoefs <- outer_ests$trRanCoefs)) {
+        constraints <- optimInfo$LUarglist$ranFix$ranCoefs 
+        if (length(constraints)) outer_ests$trRanCoefs <- 
+            .partially_fix_trRancoefs(trRanCoefs, constraints)
+      }
       attr(outer_ests,"moreargs") <- optimInfo$LUarglist$moreargs # necess to canonize Matern params...
       outer_ests <- .canonizeRanPars(outer_ests, corr_info=fitobject$ranef_info$sub_corr_info, 
                                      checkComplete=FALSE,  rC_transf=.spaMM.data$options$rC_transf)
     }
-    couter_est <- c(outer_ests) # drops fancy attributes
+    outer_est <- c(outer_ests) # drops fancy attributes
   }
   if (keep_canon_user_inits &&
       length(user_inits <- .reformat_corrPars(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families))
@@ -506,7 +525,7 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
     fnname <- from$how$fnname
     if (is.null(fnname) && inherits(from,"HLfitlist")) {
       to_fn <- attr(from,"how")$fnname
-    } else if (fnname %in% c("fitme_body","fitmv_body","corrHLfit_body")) { # in programming context
+    } else if (fnname %in% c("fitme_body","pois4mlogit","fitmv_body","corrHLfit_body")) { # in programming context
       # Then .get_bare_fnname.HLfit(from) returns 'inner' function, such as "HLfit"
       # which is not necessarily appropriate.
       to_fn <- fnname
@@ -812,11 +831,31 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
 }
 
 
+.compare_mvdata_4LRT <- function(object, object2) {
+  valid1 <- attr(object$data,"validrownames")
+  valid2 <- attr(object2$data,"validrownames")
+  if ( ! identical(valid1,valid2)) {
+    subsizes1 <- sapply(valid1, length)
+    subsizes2 <- sapply(valid2, length)
+    if ( ! identical(subsizes1,subsizes2)) {
+      if ( ! identical(sort(subsizes1),sort(subsizes2))) {
+        mess <- cli::format_error("The *informative* data used by the two models differ\n (see Details of {.help [{.fun LRT}](spaMM::LRT)})")
+        stop(mess)
+      } else {
+        mess <- cli::format_warning("The *informative* data used by the two models are not obviously identical\n (see Details of {.help [{.fun LRT}](spaMM::LRT)})")
+        warning(mess)
+      }     
+    }
+  }
+}
 LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL, 
                 resp_testfn=NULL, simuland=eval_replicate, 
+                include="call",
 #                .condition = NULL, ## bc expected by simuland, but not operational,
                 ...) { 
-  if (nrow(object$data)!=nrow(object2$data)) {
+  if (inherits(object,"fitmv")) {
+    .compare_mvdata_4LRT(object, object2)
+  } else if (nrow(object$data)!=nrow(object2$data)) {
     stop("models were not both fitted to the same size of dataset.")
   }
   #if (length(list(...))) warning("...' arguments are currently ignored in LRT()", immediate. = TRUE) 
@@ -842,10 +881,10 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
   test_obj <- info$test_obj
   LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))
   if (is.na(df)) {
-    resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=NA,p_value=NA))
+    resu <- list(basicLRT = data.frame(chi2_LR=LRTori,df=NA,p_value=NA))
   } else {
     pvalue <- 1-pchisq(LRTori,df=df) ## but not valid for testing null components of variance
-    resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
+    resu <- list(basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
   }
   if (boot.repl) {
     if (boot.repl<99L && ! is.na(df)) message("Note: It is recommended to set boot.repl>=99 for Bartlett correction")
@@ -865,7 +904,15 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
                            ...
     )
     bootblob$warnings$n_omitted <- .check_bootreps(bootblob$bootreps)
-    resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT=fix_neg_LRT)
+    resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT=fix_neg_LRT,
+                              nullfit=nullfit, fullfit=fullfit)
+  }
+  if (include=="call") {
+    resu$nullfit <- getCall(nullfit)
+    resu$fullfit <- getCall(fullfit)
+  } else if (include=="fit") {
+    resu$nullfit <- nullfit
+    resu$fullfit <- fullfit
   }
   class(resu) <- c("fixedLRT",class(resu)) 
   return(resu)

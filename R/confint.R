@@ -21,10 +21,10 @@
             spaMM_boot_args$type,"'\n (this default type has been changed in version 4.4.23).")
   } else if (length(intersect(spaMM_boot_args$type,c("basic","perc","norm")))) {
     warning(
-      paste0("Hmmm. It looks like you are using 'boot_args$type' to pass\n", 
+      cli::format_warning(paste0("Hmmm. It looks like you are using 'boot_args$type' to pass\n", 
              "the boot.ci() 'type' argument. Use 'boot_args$ci_type' for that purpose.\n",
              "'boot_args$type' is for passing the spaMM_boot() 'type' argument.\n",
-             "[see help(\"confint.HLfit\") for further details].")
+             "[see {.help [{.fun confint.HLfit}](spaMM::confint.HLfit)} for further details]."))
       ,immediate. = TRUE)
   }
   #
@@ -224,8 +224,14 @@
     LUarglist <- optimInfo$LUarglist
     if (paste(lc[[1]])=="HLCor") attr(trTemplate,"moreargs") <- .get_moreargs(object)
     ## locoptim expects a fn with first arg ranefParsVec
-    objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { ## __F I X M E___ compare to numInfo procedure 
+    objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL,
+                      objfn.extras) { 
       ranefParsList <- relist(ranefParsVec,trTemplate)
+      if (length(.unlist(trTemplate$trRanCoefs)) &&
+          (length(objfn.extras[["user.lower"]]$ranCoefs) || length(objfn.extras[["user.upper"]]$ranCoefs))
+      ) ranefParsList  <- .apply_transformed_box_constr(fix=ranefParsList, skeleton=trTemplate, 
+                                            user.lower=objfn.extras[["user.lower"]], 
+                                            user.upper=objfn.extras[["user.upper"]], transf=TRUE)
       olc$fixed <- structure(.modify_list(olc$fixed,ranefParsList)) ## replaces ! some elements and keeps the "type" !
       locfit <- eval(as.call(olc)) ## HLfit call with given ranefParsVec
       resu <- (posforminimiz)*locfit$fixef[parm]
@@ -249,7 +255,7 @@
       if (paste(lc[[1]])=="HLCor") { HLcallfn_obj <- "HLCor.obj" } else HLcallfn_obj <- "HLfit.obj"
       .assignWrapper(anyObjfnCall.args$processed,
                      paste0("return_only <- \"confint_bound\""))
-      optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp,
+      optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp, objfn.extras=LUarglist,
                             objfn_locoptim=objfn, # uses posforminimiz in its definition 
                             HLcallfn.obj=HLcallfn_obj,
                             user_init_optim=user_init_optim,

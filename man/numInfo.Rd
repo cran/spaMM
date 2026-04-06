@@ -6,14 +6,21 @@ Information matrix
 }
 \description{
 Computes by numerical derivation the observed information matrix for (ideally) all parameters for mean response model, that is, the matrix of second derivatives of negative log likelihood. 
-The default value of the \code{which} argument shows all classes of parameters that should be handled, including random-effect parameters (\code{lambda}, \code{\link{ranCoefs}}, \code{\link{corrPars}}, and \code{\link{hyper}}), residual dispersion parameters (\code{phi}, \code{NB_shape} for \code{\link{negbin1}} and \code{\link{negbin2}}, and \code{beta_prec} for \code{\link{beta_resp}} and \code{\link{betabin}}), and fixed-effect coefficients (\code{beta}).
+The default value of the \code{which} argument shows all classes of parameters that should be handled (except for PQL/L fits: see Details), including random-effect parameters (\code{lambda}, \code{\link{ranCoefs}}, \code{\link{corrPars}}, and \code{\link{hyper}}), residual dispersion parameters (\code{phi}, \code{NB_shape} for \code{\link{negbin1}} and \code{\link{negbin2}}, and \code{beta_prec} for \code{\link{beta_resp}} and \code{\link{betabin}}), and fixed-effect coefficients (\code{beta}).
+
+The function calls algorithms from \pkg{numDeriv} and share their limitations. Notably, they may request a re-fit of the model with some parameters fixed at values that are out of the allowed ranges. This can be controlled by the \code{method.args} argument, passed through the \dots to these algorithms (see Examples). 
+
+PQL/L fits raise specific problems, as do other fits by methods maximizing two different likelihood approximations for different subsets of parameters (see Details).
 
 Model fits including a \code{\link{phi-resid.model}} are not fully handled, in two ways: the information matrix does not include their parameters; and if the residual dispersion model include random effects, there is good reason for the \code{numInfo} calculation to detect that the fit has not maximized marginal likelihood with respect to most parameters.
+
+
 
 }
 \usage{
 numInfo(fitobject, transf = FALSE, which = NULL, check_deriv = TRUE,
-        sing=1e-05, verbose=FALSE, refit_hacks=list(), ...)
+        sing=1e-05, verbose=FALSE, refit_hacks=list(), attrs=NULL, 
+        return.="", ...)
 }
 \arguments{
   \item{fitobject}{
@@ -40,10 +47,15 @@ Boolean: whether to print (as a list) the estimates of the parameters for which 
   \item{refit_hacks}{
   list of arguments; its name anticipates that it might allow hazardous manipulations in a later version of \pkg{spaMM}. But currently only the innocuous element \code{verbose} of the list will be taken into account. Notably, \code{refit_hacks=list(verbose=c(TRACE=TRUE))} can be used to give information on parameter values used in the computation of numerical derivatives.
   }
-  \item{\dots}{Arguments passed to \code{numDeriv::hessian} and \code{numDeriv::grad}.}
+  \item{attrs}{NULL or vector of character strings, for names of optional attributes to be added to the return value; in particular, \code{"df"} for a data frame of the parameter points and their likelihood values used to compute the information matrix.}
+  \item{return.}{character string. If set to \code{"grad"}, the function returns the numerical gradient of the objective function instead of the numerical information matrix.}
+  \item{\dots}{Arguments passed to \code{\link[numDeriv]{hessian}} and \code{\link[numDeriv]{grad}}, or functions with a similar interface. In particular, \code{method.args} can be used as shown in the Examples.}
 }
 \details{
 The computation of a second derivatives is not necessarily meaningful if a first derivative does not vanish at the parameter estimates. This may occur in particular when the objective function (say, marginal likelihood) is maximized at a boundary of the parameter space (say, at zero for \code{lambda} estimates). Further, for such values at a boundary, only one-sided derivatives can be computed, and this is not handled by \code{numDeriv::hessian}. So, some checks may be requested to detect non-zero gradients and parameters estimated at their boundaries. The boundary checks are currently performed for \code{lambda} and \code{ranCoefs} estimates, if \code{check_deriv} is set to TRUE or to NULL. Other parameters are not (yet) checked, so \code{numInfo} may sometimes fails when such other parameter estimates are at a boundary. If \code{check_deriv} is set to TRUE, an additional systematic check of the gradient with respect to all target parameters is performed. 
+
+For PQL/L fits, the gradient of the log-likelihood approximation used to infer random-effect parameters (\eqn{\theta}, say) is not zero at the fixed-effect estimates, since the fixed-effect coefficients \eqn{\beta} are then estimated by maximizing the distinct h-likelihood. Further, trying to compute the full information matrix (including fixed-effect coefficients) in this case means that fixed effects are fixed to they estimates \eqn{\hat{\beta}} when \eqn{\theta} is varied, while \eqn{\hat{\theta}} maximize the likelihood approximation only when \eqn{\beta} is refitted for any given \eqn{\theta}. Thus, the gradient for \eqn{\theta} with \eqn{\beta} fixed is also not zero. For these reasons, the only information matrix that can be safely computed excludes the fixed effects, as in the latter case the \eqn{\beta} are refitted for any given \eqn{\theta}.
+
 }
 \value{
 NULL or a matrix.
@@ -64,9 +76,23 @@ numinfo <- numInfo(lmmfit)
 #
 # update(lmmfit, control=list(refit=TRUE))
 #
-# => 1118*0.5289 and 10840*0.1024
+# => 1118*0.5289 and 10840*0.1024 to compare SEs with vs. without log-transformation.  
 
 data("blackcap")
 maternfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap) 
 numInfo(maternfit)
+
+\dontrun{
+# Using 'method.args':
+set.seed(123)
+fx <- as.vector(na.omit(stats::filter(rnorm(400L), rep(0.025,40))))
+tsl <- length(fx)
+ts1 <- data.frame(y=fx+rnorm(tsl, sd=0.1),time=seq(tsl))
+ts2 <- data.frame(y=fx+rnorm(tsl, sd=0.1),time=seq(tsl))
+toydata <- rbind(ts1,ts2)
+(fts <- fitme(y ~ 1 +AR1(1|time), data=toydata))
+# numInfo(fts) # Fails as a value of AR1 correlation parameter > 1 is tried 
+numInfo(fts, method.args=list(d=2e-5)) # OK
+}
+
 }

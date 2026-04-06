@@ -37,6 +37,7 @@ The presently designed functions are defined to solve this issue. By using such 
 \references{
 Onofri A., Terzaroli N. (2021) lmDiallel:  Linear fixed effects models for diallel crosses. Version 0.9.4. \url{https://cran.r-project.org/package=lmDiallel}.
 }
+\seealso{\code{\link{ranGCA}} and \code{\link{diallel}} for random effects terms representing symmetric or antisymmetric dyadic interactions.}
 \examples{
 
 #### Simulate dyadic data

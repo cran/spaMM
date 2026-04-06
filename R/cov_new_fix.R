@@ -231,7 +231,18 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(locform)
 } 
 
-..get_locdata <- function(newdata, locvars, na.action, vars=NULL) {
+.warn_NA_in_newdata <- local({
+  NA_in_newdata_NOT_warned <- TRUE
+  function() {
+    if ( NA_in_newdata_NOT_warned) {
+      message("NA's in required variables: prediction not possible for all 'newdata' rows.")
+      NA_in_newdata_NOT_warned <<- FALSE
+    }
+  }
+})
+
+..get_locdata <- function(newdata, locvars, na.action, vars=NULL,
+                          verbose=TRUE) {
   # so that matrix 'newdata' arguments can be used as in some other predict methods.
   # ## locvars checks only RHS variables...
   
@@ -256,7 +267,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   #   ## and trying to subset locdata according to (a subset of) validrownames:
   #   # locdata <- locdata[intersect(validrownames,rownames(locdata)),, drop=FALSE]
   #   ## may not be the solution. Ultimately this block was made to never be a solution to anything.
-  #   ## A conditiosn for slicing is a condition for slicing is is.null(validrownames <- attr(newdata,"validrownames"))
+  #   ## A condition for slicing is is.null(validrownames <- attr(newdata,"validrownames"))
   # }
   ## Context:
   ## (uni) Univariate, no newdata, no re.form -> $fv taken so lines with missing response variables are removed.
@@ -281,14 +292,16 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   #   locdata <- na.action(locdata, vars=vars)
   # } else 
     locdata <- na.action(locdata, vars=vars) # 'vars' might be ignored by na.omit etc... but not by na.action=loc.na.action
-  if (length(attr(locdata,"na.action"))) {
-    message("NA's in required variables: prediction not possible for all 'newdata' rows.")
+  if (verbose && inherits(attr(locdata,"na.action"),"omit")) {
+    # message("NA's in required variables: prediction not possible for all 'newdata' rows.")
+    .warn_NA_in_newdata()
   }
   locdata
 }
 
 
-.get_locdata <- function(newdata, locvars=NULL, locform, object, variances, na.action=na.omit ) {
+.get_locdata <- function(newdata, locvars=NULL, locform, object, variances, na.action=na.omit,
+                         verbose=TRUE) {
   # In the univariate-response case, .calc_new_X_ZAC() -> .get_locdata() with a locform containing ranefs
   # In the mv case, .calc_new_X_ZAC_mv() -> ..get_locdata() directly ('..' not '.') with suitably hacked locvars
   if (is.null(newdata)) {
@@ -310,7 +323,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     }
   } else {
     if( is.matrix(newdata) ) newdata <- as.data.frame(newdata)  
-    locdata <- ..get_locdata(newdata, locvars, na.action=na.action) 
+    locdata <- ..get_locdata(newdata, locvars, na.action=na.action, verbose=verbose) 
   }
   locdata
 }
@@ -348,7 +361,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       ## : where original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
       # At this point the columns of the new matrix may not match those of the old (the old reduced according to rankinfo).
       # Names may in principle be used to resolve this later, but in the mv case the new does not have its final names. 
-      if ( ! is.null(mv_it)) {
+      if ( ! is.null(mv_it) && ncol(X)) {
         colnames(X) <- paste0(colnames(X),"_",mv_it)
         ## older code appaered inappropriate when ori X is rank-deficient:
         # col_range <-  attr(X_ori,"col_ranges")[[mv_it]]
@@ -362,23 +375,6 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
   return(list(X = X, mf = fixef_mf)) 
 }
-
-if (FALSE) { # v3.5.121 managed to get rid of it 
-  .calc_newFrames_ranef <- function (formula, data, fitobject) {
-    formula <- .asNoCorrFormula(formula) ## strips out the correlation information, retaining the ranefs as (.|.)
-    if (is.character(formula[[2L]])) formula <- formula[-2L] ## something like ".phi" ....
-    plusForm <- .subbarsMM(formula) ## this comes from lme4 and converts (.|.) terms to (.+.) form 
-    environment(plusForm) <- environment(formula)
-    Terms <- terms(plusForm) ## assumes an Intercept implicitly
-    Terms <- delete.response(Terms)
-    #attr(Terms,"predvars") <- .calc_newpredvars(fitobject$main_terms_info$all_terms, Terms) ## for poly in ranefs ? 
-    mf <- model.frame(Terms, data, drop.unused.levels=TRUE) 
-    return(list(mf = mf))
-  }
-  # } else {
-  #   .calc_newFrames_ranef <- function (formula, data, fitobject) {list(mf=data)}
-}
-
 
 .get_newX_info <- function(locform, locdata, object, mv_it=NULL) {
   newFrames_fixed <- .calc_newFrames_fixed(formula=.stripRanefs(locform),
@@ -420,13 +416,13 @@ if (FALSE) { # v3.5.121 managed to get rid of it
 .get_newinold <- function(re.form, locform, ori_exp_ranef_strings, rd_in_mv=NULL) {
   if (is.null(rd_in_mv)) {
     ## assuming that in the univariate-response case, we call .get_newinold() only when we already tested inherits(re.form,"formula")
-    new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## to be added as attribute to the newZAlist created by .calc_normalized_ZAlist()
+    new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## to be added as attribute to the newZAlist created by .calc_normalized_newZAlist()
     newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## e.g 1 4 5
     if ( ! is.null(rd_in_mv)) newinold <- rd_in_mv[newinold]
   } else {
     # in mv case, there is a distinct call of .get_newinold in .calc_new_X_ZAC_mv (no equivalent in univariate case)
     if ( inherits(re.form,"formula")) { 
-      new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## to be added as attribute to the newZAlist created by .calc_normalized_ZAlist()
+      new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## to be added as attribute to the newZAlist created by .calc_normalized_newZAlist()
       if (is.null(rd_in_mv)) {
         newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) 
         # : unlist bc sapply(list(F), which) return list(numeric(0)), etc.
@@ -463,12 +459,35 @@ if (FALSE) { # v3.5.121 managed to get rid of it
   RESU
 }
 
+# Called post fit: 
+.calc_normalized_newZAlist <- function(Zlist, # creates ZA from Z and A, even for non-IMRF
+                                    AMatrices,
+                                    vec_normIMRF, 
+                                    strucList) {
+  if (length(Zlist) && length(AMatrices)) {
+    for (char_rd in  names(Zlist)) { # 
+      if ( ! is.null(Amatrix <- AMatrices[[char_rd]])) {
+        Z_ <- Zlist[[char_rd]]
+        rd <- as.integer(char_rd) # I cannot yet assume strucList[[char_rd]] (nor vec_normIMRF[char_rd])
+        nblocks <- ncol(Z_) %/% nrow(Amatrix)
+        if (nblocks>1L) Amatrix <- .bdiag_Amatrix(Amatrix,2L)
+        Zlist[[char_rd]] <- ..calc_normalized_ZA(
+          Z_=Z_, normIMRF=vec_normIMRF[rd], Amatrix=Amatrix, L=strucList[[rd]])
+      }
+    }
+  } 
+  return(Zlist) ## with other attributes unchanged
+}
+
+
+
 # Currently never called for mv: cf .calc_new_X_ZAC_mv() instead
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
                             control=list(simulate=FALSE),
                             locform=formula.HLfit(object, which=""), 
-                            na.action=na.omit) {
+                            na.action=na.omit,
+                            verbose=TRUE) {
   keep_ranef_covs_for_simulate <- identical(control$keep_ranef_covs_for_simulate, TRUE)
   if (keep_ranef_covs_for_simulate) {
     locvars <- all.vars(.strip_cF_args(locform[-2])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
@@ -477,7 +496,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
   need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
   locdata <- .get_locdata(newdata=newdata, locvars=locvars, locform=locform, 
                           object=object, variances=variances, 
-                          na.action=na.action) # if (need_new_design) {na.pass} else {na.action} was tried
+                          na.action=na.action, verbose=verbose) # if (need_new_design) {na.pass} else {na.action} was tried
                                                # => NA's in locdata => visible artefacts in isoscapes
   #
   RESU <- .get_newfixef_info(newdata, locform, locdata, object, re.form)
@@ -545,18 +564,18 @@ if (FALSE) { # v3.5.121 managed to get rid of it
                                 ## Same idea for composite nested ranefs...
                                 sub_oldZAlist=object$ZAlist[newinold], 
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
-        amatrices <- .get_new_AMatrices(object, newdata=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)
+        amatrices <- .get_new_AMatrices(object, newdata=locdata, newZlist=newZlist) 
         ## ! complications:
         ## even if we used perm_Q for Matern, the permutation A matrix should not be necessary 
-        ##  in building the new correlation matrix, although it night be used as well 
-        ## explict colnames should handle both cases, so that
-        ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
+        ##  in building the new correlation matrix, although it might be used as well 
+        ## explicit colnames should handle both cases, so that
+        ## newZAlist <- .calc_normalized_newZAlist( ignoring those A matrices)
         ## and 
         ## newZAlist <- object$ZAlist
         ## should be OK.
         ## But the other Amatrices should be processed before newZACpplist <- .compute_ZAXlist(.) is called
         requires_ZCpL <- (attr(newZlist,"exp_ranef_types") %in% c("Matern","Cauchy"))
-        newZAlist <- .calc_normalized_ZAlist(Zlist=newZlist,
+        newZAlist <- .calc_normalized_newZAlist(Zlist=newZlist,
                                              # newZlist has names not necessarily starting at "1"
                                              AMatrices=amatrices[names(newZlist)[ ! requires_ZCpL]],
                                              vec_normIMRF=object$ranef_info$vec_normIMRF, 

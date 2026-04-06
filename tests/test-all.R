@@ -66,7 +66,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
           priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
         }
         priv_testfiles <- setdiff(priv_testfiles,paste0(spaMM::projpath(),"/package/tests_private/knit_LM2GLMM.R"))
-        if (requireNamespace("knitR", silent=TRUE)) {
+        if (requireNamespace("knitR", quietly=TRUE)) {
           # knitspaMM.R regenerates spaMMintro.R *and* run it. So spaMMintro.R will be run twice if there was already
           # such a file when dir() was run. We avoid this by:
           priv_testfiles <- setdiff(priv_testfiles,paste0(spaMM::projpath(),"/package/tests_private/spaMMintro.R"))
@@ -96,7 +96,9 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       if (FALSE) {
         save(timings,file=paste0(spaMM::projpath(),"/timings_",packageVersion("spaMM"),"_",sums[[1]],"s.rda"))
       }
-    } else if (FALSE) { ## for R CMD check (but still assuming _LOCAL_TESTS_), but this does not work on nested files
+    } else if (FALSE &&
+               Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## This block in principle for *local* R CMD check, 
+      # but test_check appears not working on nested files, so the checks are suppressed here.
       library("testthat") # cf ?test_check for using library() here:
       library(pkg, character.only = TRUE)
       oldmaxt <- spaMM.options(example_maxtime=60) ## then slow (Rstudio -> devtools tests) 

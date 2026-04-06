@@ -109,13 +109,11 @@ if(requireNamespace("lme4", quietly = TRUE)) {
     #
     (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", family=Gamma(log)))
     (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
-    if (identical(spaMM.getOption("sparse_precision"),TRUE)) { # when sourced from test-confint-spprec
-      testthat::expect_true(diff(range(c(0.02429229, 0.04343179)-fitci))<1e-6)
-    } else testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-6) # typos in d2logMthdth2, d3logMthdth3 had an effect
-    ## v4.5.52 to v4.5.55 change in .update_port_fit_values() modified the small numerical inaccuracies:
-    # if (identical(spaMM.getOption("sparse_precision"),TRUE)) { # when sourced from test-confint-spprec
-    #   testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-6)
-    # } else testthat::expect_true(diff(range(c(0.02427631, 0.04343179)-fitci))<1e-6) # typos in d2logMthdth2, d3logMthdth3 had an effect 
+    if (packageVersion("spaMM")>"4.6.48") { # small tidying of fitting procedures at about that time
+      # has improved consistency between different 'algebra', so a single test is possible:
+      testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-6) 
+    }
+    ## Earlier changes in v4.5.52 to v4.5.55 on .update_port_fit_values() have previous affected the small numerical inaccuracies.
   }
   
 }

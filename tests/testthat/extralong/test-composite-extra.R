@@ -4,74 +4,80 @@ cat(cli::col_yellow("checks AR1 composite"))
 
 if ( ! exists("doSeeMe")) doSeeMe <- spaMM.getOption("doSeeMe") # in principle provided by parent tests file
 
-{ # test different algebras
+{ # compare different algebras (default choice of method tested in test-determine_spprec.R)
   ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
   
-  (compAR1fitsp <-  fitme(lh ~ 1 + AR1(time|time), data=ts, # control.HLfit=list(algebra="spcorr"), 
+  (compAR1fitsp <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="spprec"), 
                           lower=list(phi=1e-4),
                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  # Here dense is slightly faster but currently not selected 
-  # rel_ZAL_denseness*nr/(nc^(2/3)) is 111.0373, rel_ZAL_denseness*nr/(nc) is 24.25, 3/4 -> 75.9066
-  # so values of spprec crit are uniformly larger than in 'orpredcheck' case where sparse is faster. Hummm (__F I X M E___)
-  if ( ! compAR1fitsp$how$MME_method[1]=="AUGI0_ZX_spprec") {
-    stop("default MME_method has changed...")
-  }
-  (compAR1fit <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
+  (compAR1fitspc <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
                         lower=list(phi=1e-4),
                         fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (compAR1fitde <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="decorr"), 
-                          #lower=list(phi=1e-4, ranCoefs=list("1"=c(0.001,0.0002))), # with ad hoc lower ranCoefs... 
-                          # The ad-hoc 'fixed' and/or 'lower' to avoid singularities (ARphi->1, phi->0) and associated numerical imprecisions
+  (compAR1fitdec <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="decorr"), 
                           lower=list(phi=1e-4),
                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (crit <- diff(range(c(logLik(compAR1fitde),logLik(compAR1fit),logLik(compAR1fitsp),-28.37433))))
+  (crit <- diff(range(c(logLik(compAR1fitdec),logLik(compAR1fitspc),logLik(compAR1fitsp),-28.37433))))
   FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
                                    testthat::expect_true(crit<1e-05) ), silent=TRUE)
   doSeeMe(FIXME) 
   cat(cli::col_yellow("Warning expected here:"))
   (p1 <- predict(compAR1fitsp))
-  (p2 <- predict(compAR1fit, newdata=compAR1fit$data))
-  (p3 <- predict(compAR1fitde, newdata=compAR1fit$data))
+  (p2 <- predict(compAR1fitspc, newdata=compAR1fitsp$data))
+  (p3 <- predict(compAR1fitdec, newdata=compAR1fitsp$data))
   cat(cli::col_yellow("Warning expected here:"))
-  (p4 <- predict(compAR1fitsp, newdata=compAR1fit$data)) 
+  (p4 <- predict(compAR1fitsp, newdata=compAR1fitsp$data)) 
   (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
   FIXME <- testthat::test_that(paste0(
     "Whether the three algebras give consistent results\n for predict(<composite AR1>, newdata): crit= ",signif(crit,4)," >1e-05"),
                                testthat::expect_true(crit<1e-05) )
 }
 
-cat(cli::col_yellow("; checks ARp composite"))
-
-{ # test different algebras
+{ # Same with ARp(., p=1)
+  
+  cat(cli::col_yellow("; checks ARp composite"))
   ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
   
-  (compARpfitsp <-  fitme(lh ~ 1 + ARp(time|time, p=1), data=ts,  
+  (compAR1fitsp <-  fitme(lh ~ 1 + ARp(time|time, p=1), data=ts, control.HLfit=list(algebra="spprec"), 
                           lower=list(phi=1e-4),
                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  if ( ! compARpfitsp$how$MME_method[1]=="AUGI0_ZX_spprec") { 
-    stop("default MME_method has changed...")
-  }
-  (compARpfitde <-  fitme(lh ~ 1 + ARp(time|time), data=ts, control.HLfit=list(algebra="decorr"), 
-                          lower=list(phi=1e-4),
-                          fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (compARpfit <-  fitme(lh ~ 1 + ARp(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
-                        lower=list(phi=1e-4),
-                        fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (crit <- diff(range(c(logLik(compARpfitde),logLik(compARpfit),logLik(compARpfitsp),-28.37433))))
-  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
+  (compAR1fitspc <-  fitme(lh ~ 1 + ARp(time|time, p=1), data=ts, control.HLfit=list(algebra="spcorr"), 
+                           lower=list(phi=1e-4),
+                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
+  (compAR1fitdec <-  fitme(lh ~ 1 + ARp(time|time, p=1), data=ts, control.HLfit=list(algebra="decorr"), 
+                           lower=list(phi=1e-4),
+                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
+  (crit <- diff(range(c(logLik(compAR1fitdec),logLik(compAR1fitspc),logLik(compAR1fitsp),-28.37433))))
+  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for ARp(time|time, p=1): crit= ",signif(crit,4)," >1e-05"),
                                    testthat::expect_true(crit<1e-05) ), silent=TRUE)
   doSeeMe(FIXME) 
-  #### code missing for composite *corrFamily* ranef: (hard-coded stop())
-  # cat(cli::col_yellow("Warning expected here:"))
-  # (p1 <- predict(compARpfitsp))
-  # (p2 <- predict(compARpfit, newdata=compAR1fit$data))
-  # (p3 <- predict(compARpfitde, newdata=compAR1fit$data))
-  # cat(cli::col_yellow("Warning expected here:"))
-  # (p4 <- predict(compARpfitsp, newdata=compAR1fit$data))
-  # (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
-  # FIXME <- testthat::test_that(paste0(
-  #   "Whether the three algebras give consistent results\n for predict(<composite ARp>, newdata): crit= ",signif(crit,4)," >1e-05"),
-  #   testthat::expect_true(crit<1e-05) )
+}
+
+{ # Same with Matern
+  cat(cli::col_yellow("; checks Matern composite"))
+  ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
+  
+  (compMatfitde <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="decorr"), 
+                          lower=list(phi=1e-4),
+                          fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
+  # Inscrutable numeric changes with Matrix devel v1.6.0 => premature stop, prevented by setting xtol_rel=1e-07 or 4e-6 but not 5e-6.
+  (compMatfit <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
+                        lower=list(phi=1e-4),
+                        fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
+  (compMatfitsp <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="spprec"), 
+                          fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
+  (crit <- diff(range(c(logLik(compMatfitde),logLik(compMatfit),logLik(compMatfitsp),-26.43478))))
+  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for Matern(time|time): crit= ",signif(crit,4)," >1e-05"),
+                                   testthat::expect_true(crit<1e-05) ), silent=TRUE)
+  doSeeMe(FIXME) 
+  
+  (p1 <- predict(compMatfitsp))
+  (p2 <- predict(compMatfit))
+  (p3 <- predict(compMatfit, newdata=compMatfit$data))
+  (p4 <- predict(compMatfitsp, newdata=compMatfit$data))
+  (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
+  FIXME <- testthat::test_that(paste0(
+    "Whether spcorr and spprec give consistent results\n for predict(<composite Matern>, newdata): crit= ",signif(crit,4)," >1e-05"),
+    testthat::expect_true(crit<1e-05) )
   
 }
 
@@ -81,6 +87,7 @@ cat(cli::col_yellow("more checks of AR1 and ARp composite"))
   fix_rc <- list("1"=c(0.01,0.5,0.01))
   (fit1 <- fitme(distance ~ age + AR1(age|age), 
                  data = Orthodont,method="REML", 
+                 control.HLfit=list(algebra="spcorr"), 
                  fixed=list(ARphi=0.1,ranCoefs=fix_rc)))
   (fit1sp <- fitme(distance ~ age + AR1(age|age), 
                    data = Orthodont,method="REML", 
@@ -92,6 +99,7 @@ cat(cli::col_yellow("more checks of AR1 and ARp composite"))
                    fixed=list(ARphi=0.1,ranCoefs=fix_rc)))
   (fitp <- fitme(distance ~ age + ARp(age|age,p=1, fixed=c(p1=0.1)), 
                  data = Orthodont,method="REML", 
+                 control.HLfit=list(algebra="spcorr"), 
                  fixed=list(ranCoefs=fix_rc)))
   (fitpsp <- fitme(distance ~ age + ARp(age|age,p=1, fixed=c(p1=0.1)), 
                    data = Orthodont,method="REML", 
@@ -177,40 +185,7 @@ if (TRUE) {
 
 
 
-cat(cli::col_yellow("; checks Matern composite"))
 
-{ # test different algebras
-  ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
-  
-  (compMatfitde <-  fitme(lh ~ 1 + Matern(time|time), data=ts, # control.HLfit=list(algebra="spcorr"), 
-                          lower=list(phi=1e-4),
-                          fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  if ( ! compMatfitde$how$MME_method[1]=="sXaug_EigenDense_QRP_Chol_scaled") { # yes, dense...
-    stop("default MME_method has changed...")
-  }
-  # unscutable numeric changes with Matrix devel v1.6.0 => premature stop, prevented by setting xtol_rel=1e-07 or 4e-6 but not 5e-6.
-  (compMatfit <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
-                        lower=list(phi=1e-4),
-                        fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (compMatfitsp <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="spprec"), 
-                          fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (crit <- diff(range(c(logLik(compMatfitde),logLik(compMatfit),logLik(compMatfitsp),-26.43478))))
-  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for Matern(time|time): crit= ",signif(crit,4)," >1e-05"),
-                                   testthat::expect_true(crit<1e-05) ), silent=TRUE)
-  doSeeMe(FIXME) 
-
-  cat(cli::col_yellow("Warning expected here:"))
-  (p1 <- predict(compMatfitsp))
-  (p2 <- predict(compMatfit))
-  (p3 <- predict(compMatfit, newdata=compAR1fit$data))
-  cat(cli::col_yellow("Warning expected here:"))
-  (p4 <- predict(compMatfitsp, newdata=compAR1fit$data))
-  (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
-  FIXME <- testthat::test_that(paste0(
-    "Whether the two algebras give consistent results\n for predict(<composite Matern>, newdata): crit= ",signif(crit,4)," >1e-05"),
-    testthat::expect_true(crit<1e-05) )
-  
-}
 
 #  OK independent fit test, trivial ranCoefs + corrMatrix
 zuta <- fitme(status ~ 1+ corrMatrix(1|name), #verbose=c(TRACE=TRUE),

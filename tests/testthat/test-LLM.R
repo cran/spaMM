@@ -124,8 +124,8 @@ if (spaMM.getOption("example_maxtime")>39) {
     # (fitme(y ~1, family=beta_resp(), data= beta_dat, resid.model= ~ 1+offset(log(2+seq(100)/1000))) 
     testthat::test_that("check beta LLM",
                         testthat::expect_true(diff(c(range(logLik(beta_llm),0.08819266  )))<1e-6)) # 8 decimals were "correct" with .NBshapeFn/Inv using if/else.
-    beta_llmm <- fitme(y ~1+(1|grp), family=beta_resp(), data= beta_dat) # 0.08908       
-    beta_llmm_fix <- fitme(y ~1+(1|grp), family=beta_resp(prec=residVar(beta_llmm, which="fam_parm")), data= beta_dat) # 0.08908       
+    (beta_llmm <- fitme(y ~1+(1|grp), family=beta_resp(), data= beta_dat)) # 0.08908       
+    (beta_llmm_fix <- fitme(y ~1+(1|grp), family=beta_resp(prec=residVar(beta_llmm, which="fam_parm")), data= beta_dat)) # 0.08908       
     testthat::test_that("check beta LLMM",
                         testthat::expect_true(diff(c(range(logLik(beta_llmm),logLik(beta_llmm_fix),0.0890820607358  )))<1e-6))
     beta_llmm_het <- fitme(y ~1+(1|grp), family=beta_resp(), data= beta_dat, resid.model= ~ x_het) # 0.08908       

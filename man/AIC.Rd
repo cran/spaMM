@@ -16,12 +16,13 @@ get_any_IC(object, nsim=0L, ..., verbose=interactive(),
            also_cAIC=TRUE, short.names=NULL)
 \method{AIC}{HLfit}(object, ..., nsim=0L, k, verbose=interactive(),
                     also_cAIC=TRUE, short.names=NULL)
-\method{extractAIC}{HLfit}(fit, scale, k, ..., verbose=FALSE)
+\method{extractAIC}{HLfit}(fit, scale=0, k=2L, ..., verbose=FALSE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object, fit}{A object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
-  \item{scale, k}{Currently ignored, but are required in the definitions for consistency with the generic.}
+  \item{scale}{numeric: if scale is 0, AIC is computed; if scale is positive, Mallows' \eqn{C_p} for linear models (neither generalized nor mixed) is computed using \code{scale} as given value of residual variance (as in \code{stats::\link[stats]{extractAIC}}. No check of the model structure is performed, so if the model is not a linear model, a value is also returned but it may not make sense.}  
+  \item{k}{Numeric specifying the weight of the degrees of freedom part in the AIC formula (as in \code{stats::\link[stats]{extractAIC}}).}
   \item{verbose}{ Whether to print the model selection criteria or not. }
   \item{also_cAIC}{Whether to include the plug-in estimate of conditional AIC in the result (its computation may be slow).}
   \item{nsim}{Controls whether to include the bootstrap estimate of conditional AIC (see Details) in the result. If positive, \code{nsim} gives the number of bootstrap replicates.}

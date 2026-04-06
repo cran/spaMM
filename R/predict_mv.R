@@ -16,14 +16,14 @@
 }
 
 .get_locdataS_blob <- function(locdata, need_new_design, locformS, no_aliases, allvarsS, na.action,
-                               object, aliases, X2X=object$X2X) {
+                               object, aliases, X2X=object$X2X, verbose=TRUE) {
   loc.na.action <- function(object, vars, ...) .na.vars(object, na.action=na.action, vars=vars, ...) 
   n_subm <- length(locformS) 
   locdataS <- vector("list", n_subm)
   if (need_new_design) {
     newX.pv <- eta_fix <- NULL
     for (mv_it in seq_len(n_subm)) {
-      locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]])
+      locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]], verbose=verbose)
       if (length(aliases)) {
         for (varname in names(aliases)) locdata_it[[varname]] <- locdata_it[[aliases[[varname]][mv_it]]]
       }
@@ -37,7 +37,7 @@
                  newX.pv=newX.pv, eta_fix=eta_fix) 
   } else {
     for (mv_it in seq_len(n_subm)) {
-      locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]])
+      locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]], verbose=verbose)
       if (length(aliases)) {
         for (varname in names(aliases)) locdata_it[[varname]] <- locdata_it[[aliases[[varname]][mv_it]]]
       }
@@ -55,7 +55,7 @@
 
 .calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
-                            control=list(), na.action=na.omit) {
+                            control=list(), na.action=na.omit, verbose=TRUE) {
   locformS <- formula.HLfit(object, which="")
   if (inherits(re.form, "formula")) {
     re.formS <- vector("list", length(locformS))
@@ -132,13 +132,13 @@
   # 'loclocdata' is distinctly used below
   loclocdata <- .get_locdata(newdata=newdata, locvars=no_aliases, 
                              object=object, variances=variances, 
-                             na.action=na.pass) # see comment on evaluation of RESU$newuniqueGeo
+                             na.action=na.pass, verbose=verbose) # see comment on evaluation of RESU$newuniqueGeo
   RESU <- .get_locdataS_blob(locdata=loclocdata, # single data frame
                              need_new_design=need_new_design, locformS=locformS, 
                              no_aliases=no_aliases, allvarsS=allvarsS,
                              na.action=na.action,
                              object=object,
-                             aliases=object$aliases)
+                             aliases=object$aliases, verbose=verbose)
   ## so we have 'locdata=locdataS' in RESU, but we will locally modify 'locdataS' by selecting columns in locdataS[[mv_it]]
   ## and will create a local 'ranefdata' from this locally modified 'locdataS'.
   locdataS <- RESU$locdata
@@ -217,17 +217,17 @@
         newZlist[[new_rd]] <- structure(.Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]]),
                                         is_incid=attr(newZlist[[new_rd]],"is_incid"))
       }
-      amatrices <- .get_new_AMatrices(object, newdata=ranefdata) # .calc_newFrames_ranef(formula=ranef_form,data=ranefdata,fitobject=object)$mf)
+      amatrices <- .get_new_AMatrices(object, newdata=ranefdata, newZlist=newZlist) 
       ## ! complications:
       ## even if we used perm_Q for *fitting* Matern , the permutation A matrix should not be necessary in building the new correlation matrix, bc ./.
       ## explicit colnames should handle both cases, so that
-      ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
+      ## newZAlist <- .calc_normalized_newZAlist( ignoring those A matrices)
       ## and 
       ## newZAlist <- object$ZAlist
       ## should be OK.
       ## But the other Amatrices should be processed before newZACpplist <- .compute_ZAXlist(.) is called
       requires_ZCpL <- (attr(newZlist,"exp_ranef_types") %in% c("Matern","Cauchy"))
-      newZAlist <- .calc_normalized_ZAlist(Zlist=newZlist,
+      newZAlist <- .calc_normalized_newZAlist(Zlist=newZlist,
                                            # newZlist has names not necessarily starting at "1"
                                            AMatrices=amatrices[names(newZlist)[ ! requires_ZCpL]],
                                            vec_normIMRF=object$ranef_info$vec_normIMRF, 

@@ -71,32 +71,74 @@
   as.formula(aschar, env=environment(formula))
 }
 
-## lme4::subbars "Substitute the '+' function for the '|' function in a mixed-model formula, recursively (hence the argument name term). This provides a formula suitable for the current model.frame function."
+# 
+
+.get_poly_vars <- function (x, ..., degree = 1, coefs = NULL, raw = FALSE, simple = FALSE) {
+  mc <- match.call()
+  mcnames <- names(mc)
+  term <- mc[mcnames %in% c("","x")]
+  if (! "degree" %in% mcnames) term <- term[-length(term)]
+  term <- str2lang(paste(paste(term)[-1],collapse = " + "))
+  .subbarsMM(term)
+}
+
+
+.get_mv_vars <- function (..., xpr=NULL) {
+  if (is.null(xpr)) {xpr <- "1"} # something that model.frame() can understand ("0" OK, "2" not)
+  return(str2lang(xpr))
+}
+
+## lme4::subbars "Substitute the '+' function for the '|' function in a mixed-model formula, 
+# recursively (hence the argument name term). This provides a formula suitable 
+# for the current model.frame function."
 ## Original version shows handling of '||'
-.subbarsMM <- function (term) {   
+.subbarsMM <- function(term, poly_too=FALSE) {   
   if (is.name(term) || !is.language(term)) return(term) #  single variable (such as the LHS of a formula)
-  if (as.vector(term[[1L]], "character") %in% .spaMM.data$keywords$all_keywords)  # handles "multIMRF" and "mv", not simply ranefs
-             return(.subbarsMM(term[[2L]]))
+  asch <- as.vector(term[[1L]], "character")
+  if (asch %in% .spaMM.data$keywords$all_keywords) { # handles "multIMRF" and "mv", not simply ranefs
+    if (asch=="mv") {
+      term[[1]] <- str2lang(".get_mv_vars")
+      term <- eval(as.call(term)) # poly() being replaced by var names separated by '+' as for other terms.
+      return(term)
+    } else return(.subbarsMM(term[[2L]], poly_too=poly_too))
+  }
+  if (poly_too && asch=="poly") {
+    # Without this, .GetValidData_info() will fail at its model.frame() 
+    # step if there are NA's in the poly variables. it is a base R design issue:
+    # "Missing values are not allowed...". The deep reason in base R being that
+    # each element of poly()'s returned basis vectors depend on all values of the variable in the data
+    # that will ultimately be retained (so they depends on other terms too).
+    # Here we try to be more user-friendly (But 'Really na.action has to 
+    # come last, as functions in the formula could themselves generate NAs 
+    # (log(0) for example).' - Ripley; but log(0) will be a problem whether there is a poly() or not)
+    # and for that this block avoids calling poly() at the .GetValidData_info() 
+    #
+    # The same algo could be used to handle polym() terms but it does not
+    # because polym() should not be used in a formula,
+    # because for such terms, model.frame.default() -> makepredictcall() 
+    # does not add coefs that are required for prediction. 
+    term[[1]] <- str2lang(".get_poly_vars")
+    term <- eval(as.call(term)) # poly() being replaced by var names separated by '+' as for other terms.
+    return(term)
+  }
   if (length(term) == 2L) { 
     # an unregistered corrFamily reaches here ARp(1 | time) would become ARp(1 + time)
     # but also other syntaxes understood by R such as  I(prop.ag/10). So it's not easy to distinguish valid and invalid terms.
     # The unregistered cF generates an error in .GetValidData_info -> model.frame... which catches the list returned by execution of the constructor
-    term[[2L]] <- .subbarsMM(term[[2L]])
+    term[[2L]] <- .subbarsMM(term[[2L]], poly_too=poly_too)
     return(term)
   }
   # stopifnot(length(term) >= 3) ## inefficient
   if (is.call(term) && term[[1L]] == as.vector("|", "symbol"))  term[[1L]] <- as.vector("+", "symbol")
   # if term is   1 + <other formula terms>, term[[1]] is  +  and we reach here:
-  for (j in 2L:length(term)) term[[j]] <- .subbarsMM(term[[j]])
+  for (j in 2L:length(term)) term[[j]] <- .subbarsMM(term[[j]], poly_too=poly_too)
   term
 }
-
-
 
 .stripOffset <- function (term) { 
   nb <- .stripOffset_(term)
   ## cf comment in nobarsMM
-  if (is(term, "formula") && length(term) == 3  && ! inherits(nb,"formula")) {
+  if (is(term, "formula") && length(term) == 3L  && ! inherits(nb,"formula")) {
     nb <- as.formula(paste(deparse(nb),"~ 0")) 
   }
   ## cf comment in nobarsMM
@@ -285,7 +327,7 @@
   } else if (length(term) == 2L) return(.parseBars(term[[2]], env=env)) # this occurs if, say, 
   #  a double + + occurs by accident in a formula. If a term was ++(1|RHS) then the next nested call
   # handles term +(1|RHS) and this says to process (1|RHS), ignoring the second '+'. 
-  # Previous NULL was retruned here and the (1|RHS) was lost. Older (<2023/07/03) comments 
+  # Previous NULL was returned here and the (1|RHS) was lost. Older (<2023/07/03) comments 
   # dealt with commas, <somekeyword>(1 2|.) and multIMRF.
   #
   # This point may not be reached by the outer .parseBars() call, so the following is not consistently terminal code.
@@ -413,17 +455,20 @@ if (FALSE) { # seems correct, but ultimately not needed
   #     oricall$formula <- .preprocess_formula(formula) 
   #     mc <- oricall
   #formula <- .asNoCorrFormula(formula) ## removes spatial tags
-  frame.form <- .subbarsMM(formula) ## this converts (...|...) terms to some "+" form
+  frame.form <- .subbarsMM(formula, poly_too=TRUE) ## this converts terms to some "+" form
   if (!is.null(resid.formula)) { 
-    frame.resid.form <- .subbarsMM(resid.formula) 
+    frame.resid.form <- .subbarsMM(resid.formula, poly_too=TRUE) 
     frame.form <- paste(.DEPARSE(frame.form),"+",.DEPARSE(frame.resid.form[[2]])) ## only good to select rows 
     ## (eg, may have offset terms from the two formulas, summed by model.offset() ! )
   }
   check <- grep('$',frame.form,fixed=TRUE)
   if (length(check)) {
-    message("'$' detected in formula: suspect and best avoided. 
-            In particular, one should never need to specify the 'data' in the 'formula'. 
-            See help('good-practice') for explanations.")
+    message(cli::format_message(
+      paste("'$' detected in formula: suspect and best avoided.\n", 
+            "In particular, one should never need to specify the 'data' in the 'formula'.\n",
+            "See {.topic [good-practice](spaMM::good-practice)} for explanations.")))
+    # message("'$' detected in formula: suspect and best avoided. 
+    #         In particular, one should never need to specify the 'data' in the 'formula'. 
   }
   check <- grep('c(',frame.form,fixed=TRUE)
   if (length(check)) {
@@ -477,6 +522,23 @@ if (FALSE) { # seems correct, but ultimately not needed
   return(validname)
 }
 
+.Y_Gamma_fix_or_warn <- function(y, fix) {
+  Gamma_min_y <- .spaMM.data$options$Gamma_min_y
+  is_low_y <- (y < Gamma_min_y)
+  if (any(is_low_y)) {
+    if (fix) {
+      y[which(is_low_y)] <- Gamma_min_y
+    } else warning(paste0("Found Gamma response < (Gamma_min_y=",Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
+  }
+  is_high_y <- (y > 1/Gamma_min_y)
+  if (any(is_high_y)) {
+    if (fix) {
+      y[which(is_low_y)] <- Gamma_min_y
+    } else warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
+  }
+  y
+}
+
 .sanitize_Y <- local({
   #int_warned <- FALSE
   function(y, famfam) {
@@ -497,18 +559,8 @@ if (FALSE) { # seems correct, but ultimately not needed
         y <- safe_y # silent sanitizing # tiny negative values would stop() later
       }
     } else if (famfam=="Gamma") {
-      Gamma_min_y <- .spaMM.data$options$Gamma_min_y
-      is_low_y <- (y < Gamma_min_y)
-      if (any(is_low_y)) {
-        #y[which(is_low_y)] <- Gamma_min_y
-        warning(paste0("Found Gamma response < (Gamma_min_y=",Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
-      }
-      is_high_y <- (y > 1/Gamma_min_y)
-      if (any(is_high_y)) {
-        #y[which(is_low_y)] <- Gamma_min_y
-        warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
-      }
-    }else if (famfam=="beta_resp") {
+      y <- .Y_Gamma_fix_or_warn(y, fix=FALSE)
+    } else if (famfam=="beta_resp") {
       if (any(y < 0 | y > 1)) {
         stop("Found Beta responses outside valid (0,1) range.")
       }

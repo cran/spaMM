@@ -1,5 +1,10 @@
+# corr algo has Xscal that can be p4m_ized without affecting $AUGI0_ZX  
+# spprec directly builds sXaug from $AUGI0_ZX, which must therefore contain 
+# design matrices p4m_ized (to create p4m_ized sXaug) and not (as input for .makeMatp4m).
+# $AUGI0_ZX is an envir, which could creates= additional risks of misusing is p4m_ized elements alsewhere. 
+# Hence its contents are fixed before leaving the fn.
 .solve_v_h_IRLS_spprec <- # only for LevM && is_HL_1_1
-  function(X.pv, 
+  function(# X.pv, # removed as argument bc apparently never different from processed$AUGI0_ZX$X.pv
            ZAL, y, ## could be taken fom processed ? 
            n_u_h, 
            #H_global_scale, 
@@ -19,8 +24,14 @@
            looseness,
            LevMarblob=NULL,
            corrPars,
-           dampings_env
+           dampings_env,
+           damped_WLS_v_in_b_fn
   ) {
+    AUGI0_ZX <- processed$AUGI0_ZX
+    if ( is.null(ZAfix <- AUGI0_ZX$ZAfix_ori)) {
+      ZAfix <- AUGI0_ZX$ZAfix
+      X.pv <- AUGI0_ZX$X.pv
+    } else X.pv <- AUGI0_ZX$X.pv_ori
     pforpv <- ncol(X.pv)
     nobs <- length(y)
     seq_n_u_h <- seq_len(n_u_h)
@@ -38,10 +49,20 @@
 
     ##### initial sXaug
     ZAL_scaling <- 1  ## TAG: scaling for spprec
-    eta  <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
+    eta  <- off + drop(X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
     muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
     w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
+    
+    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
+      muetablob$dz1_p4m <- replaces_etamo - (eta-off)
+      constant_zAug_args$ZAL <- dcdv_p4m #  "doSeeMe" # see comment on other instance of this code
+      AUGI0_ZX$X.pv <- dcdb_p4m
+      AUGI0_ZX$ZAfix <- .makeMatp4m(mat=ZAfix, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    }
     ## needs adjMatrix and corrPars to define Qmat
     update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, cum_n_u_h=processed$cum_n_u_h) 
     sXaug_arglist <- c(update_sXaug_constant_arglist,
@@ -82,8 +103,20 @@
                                z2=z2) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) 
       if (GLMMbool) zInfo$z2 <- NULL 
-      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, GLMMbool=GLMMbool, v_h=v_h, 
-                                     wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL=ZAL, X.pv=X.pv, etamo=muetablob$sane_eta - off)
+      if (zInfo$z1_is4p4m) { 
+        dcdmu <- zInfo$z1-replaces_etamo 
+      } else {
+        etamo <- muetablob$sane_eta-off
+        dcdmu <- zInfo$z1-etamo
+      }
+      if (is_p4m_H) {
+        zInfo$m_grad_obj <- 
+          m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=dcdmu, GLMMbool=GLMMbool, v_h=v_h, 
+                                         wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, 
+                                         dLinkPred_dv=dcdv_p4m, dLinkPred_db=dcdb_p4m)
+      } else zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=dcdmu, GLMMbool=GLMMbool, v_h=v_h, 
+                                                  wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid,
+                                                  dLinkPred_dv=ZAL, dLinkPred_db=AUGI0_ZX$X.pv)
 
       zInfo$gainratio_grad <- zInfo$m_grad_obj # needed for .do_damped_WLS_v_in_b_spprec()
       zInfo$scaled_grad <- zInfo$m_grad_obj # used as LM_z=zInfo["scaled_grad"] in .do_damped_WLS_v_in_b_spprec
@@ -98,33 +131,40 @@
       m_grad_v <- zInfo$m_grad_obj[seq_n_u_h]
       pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=m_grad_v)
       low_pot <- (pot4improv < pot_tol)
-      damped_WLS_blob <- .do_damped_WLS_v_in_b_spprec(sXaug=sXaug, zInfo=zInfo, 
-                                        old_Vscaled_beta=Vscaled_beta,
-                                        oldAPHLs=oldAPHLs,
-                                        APHLs_args = constant_APHLs_args,
-                                        damping=.get_new_damping(dampings_env$v[["v_in_b"]],"v_in_b"),
-                                        Trace=trace,
-                                        ypos=ypos,off=off,
-                                        GLMMbool=GLMMbool,etaFix=etaFix,
-                                        lambda_est=lambda_est,
-                                        wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
-                                        update_sXaug_constant_arglist=update_sXaug_constant_arglist,
-                                        ZAL_scaling=ZAL_scaling,
-                                        processed=processed, 
-                                        phi_est=phi_est, #H_global_scale=H_global_scale, 
-                                        n_u_h=n_u_h, ZAL=ZAL,
-                                        which_LevMar_step = "v",
-                                        low_pot = structure(low_pot,pot_tol=pot_tol),
-                                        stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
-                                        outer=FALSE
-      ) 
+      damped_WLS_blob <- 
+        damped_WLS_v_in_b_fn(
+          sXaug=sXaug, zInfo=zInfo, ZAL=ZAL,
+          old_Vscaled_beta=Vscaled_beta,
+          oldAPHLs=oldAPHLs,
+          APHLs_args = constant_APHLs_args,
+          damping=.get_new_damping(dampings_env$v[["v_in_b"]],"v_in_b"),
+          Trace=trace,
+          ypos=ypos,off=off,
+          GLMMbool=GLMMbool,etaFix=etaFix,
+          lambda_est=lambda_est,
+          wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
+          update_sXaug_constant_arglist=update_sXaug_constant_arglist,
+          ZAL_scaling=ZAL_scaling,
+          processed=processed, 
+          phi_est=phi_est, #H_global_scale=H_global_scale, 
+          n_u_h=n_u_h, 
+          which_LevMar_step = "v",
+          low_pot = structure(low_pot,pot_tol=pot_tol),
+          stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
+          outer=FALSE) 
       list2env(damped_WLS_blob[c("w.resid", ## !important! 
-                                 "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "sXaug")], envir = environment()) 
+                                 "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "sXaug",
+                                 "dcdv_p4m")], 
+               envir = environment()) 
       # for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
       #              "w.resid", 
       #              "sXaug")) assign(st,damped_WLS_blob[[st]]) 
-      if ( ! GLMMbool ) {
-        #Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the corr_method
+      if (is_p4m_H) { 
+        constant_zAug_args$ZAL <- dcdv_p4m # "doSeeMe" # dcdv_p4m seems logical    
+        #   #             given this 'ZAL' is used for the y2_sscaled term, in factor with sscaled (\varsigma)
+        #   #             so not from the term "in red". 
+      } else if ( ! GLMMbool ) {
+        # no Xscal <- ... updating here bc there is no Xscal in spprec code
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling # presumably the TAGged 1
       }
       
@@ -163,9 +203,15 @@
       break_info$maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
     } else break_info$maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),0) # outer beta
     names(beta_eta) <- colnames(X.pv)
-    RESU <- list(sXaug=sXaug, 
-                 #fitted=fitted, 
-                 #weight_X=weight_X, 
+    if (is_p4m_H) {
+      AUGI0_ZX$dcdb_p4m <- AUGI0_ZX$X.pv
+      AUGI0_ZX$X.pv <- AUGI0_ZX$X.pv_ori
+      AUGI0_ZX$ZAfix <- AUGI0_ZX$ZAfix_ori
+    }
+    
+    RESU <- list(# sXaug=sXaug, 
+                 # fitted=fitted, 
+                 # weight_X=weight_X, 
                  nobs=nobs, pforpv=pforpv, seq_n_u_h=seq_n_u_h, u_h=u_h, 
                  muetablob=muetablob, 
                  lambda_est=lambda_est,

@@ -102,7 +102,7 @@
 }
 
 
-.add_boot_results <- function(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT) {
+.add_boot_results <- function(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT, nullfit, fullfit) {
   bootreps <- bootblob$bootreps
   colnames(bootreps)[1:2] <- paste0(c("full.","null."),test_obj) # which may already be the case
   if (is.matrix(bootreps)) {
@@ -111,8 +111,8 @@
     if (anyNA(bootreps)) bootreps <- na.omit(bootreps)
     if (nrow(bootreps)) {
       bootdL <- bootreps[,1L]-bootreps[,2L]
-      if (resu$fullfit$models$eta=="etaHGLM" &&
-          resu$nullfit$models$eta!="etaHGLM") { # comparing MM to fixed-effect one
+      if (fullfit$models$eta=="etaHGLM" &&
+          nullfit$models$eta!="etaHGLM") { # comparing MM to fixed-effect one
         # no diagnosis ; but it looks like allowing lambda=0 in the fit would be the solution (sigh ___F I X M E____ see 'singw' code) 
       } else if (fix_neg_LRT && any(bootdL < -2e-04)) {
         neg_values <- bootdL[bootdL<0]
@@ -293,7 +293,8 @@
                              seed=seed
       )
       bootblob$warnings$n_omitted <- .check_bootreps(bootblob$bootreps)
-      resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT=TRUE)
+      resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT=TRUE,
+                                nullfit=nullfit, fullfit=fullfit)
     } ## end bootstrap
   } else { ## nothing operativ yet
     warning("code missing here")

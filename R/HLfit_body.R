@@ -9,7 +9,6 @@ HLfit_body <- function(processed,
   ranFix <- .post_process_respfamilies(processed$family, ranFix=fixed, families=processed$families) ## assign 'extra' COMPoisson or negbin pars and cleans ranFix of them
   # next line to be called before we extract anything (lambda, ranCoefs... ) from ranFix:
   ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
-  #data <- processed$data
   verbose <- processed$verbose
   
   predictor <- attr(processed$predictor,"no_offset") 
@@ -44,8 +43,8 @@ HLfit_body <- function(processed,
   #   hence any local copy of ZAlist should come after that call. (but local copy removed)
   ## 
   ranFix$lambda <- 
-    .reformat_lambda(ranFix$lambda, nrand, 
-                     namesTerms=attr(processed$ZAlist,"namesTerms"), full_lambda=TRUE) # necessary to standardize names before next line
+    .reformat_lambda(ranFix$lambda, processed=processed, nrand=nrand, 
+                     full_lambda=TRUE) # necessary to standardize names before next line
   if (any(ranFix$lambda==0,na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
   lam_fix_or_outer_or_NA <- processed$reserve$repNAnrand
   lam_fix_or_outer_or_NA[names(ranFix$lambda)] <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
@@ -73,7 +72,9 @@ HLfit_body <- function(processed,
     whichadj <- which(attr(processed$ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2017
     fixed_adjacency_info <- .get_fixed_adjacency_info(whichadj, LMatrices, cum_n_u_h, corr_est, ranFix, init.HLfit)
     # only APHLs:
-    return(.nothing_to_fit(phi.Fix, off, models, etaFix, processed$rand.families, cum_n_u_h, 
+    return(.nothing_to_inner_fit(phi.Fix, 
+                           # off,
+                           models, etaFix, processed$rand.families, cum_n_u_h, 
                            lam_fix_or_outer_or_NA, vec_n_u_h, n_u_h, fixed_adjacency_info, ZAL, BinomialDen, processed)) 
     # => Possible error with .do_TRACE bc the exit tracing code does not find the 'res' variable, not locally defined in the case. I could add res <- ... here.
   }   ### RETURN !! ## not of class HLfit, and p_bv is not returned.
@@ -104,9 +105,10 @@ HLfit_body <- function(processed,
   ## Initial estimate for beta  (etaFix does NOT act directly in .wrap_IRLS -> .solve_IRLS...)
   ###
   if ( ! is.null(processed$X_off_fn)) { # (__F I X M E___?) currently X_off_fn does not allow partial beta's (with potential mess with initial beta_eta )
-    beta_eta <- numeric(0)
+    beta_eta <- numeric(0) 
+    #    both X_off and etaFix$beta are scaled here (check sur .p4m_by_outer_beta)
     processed$off <- off <- processed$X_off_fn(etaFix$beta) # .solve_IRLS_as_ZX() uses processed$off
-    # AUGI0_ZX$X.pv must correspondly have been reduced by .preprocess
+    # AUGI0_ZX$X.pv must correspondingly have been reduced by .preprocess
   } else {
     off <- processed$off
     beta_eta <- .get_init_beta(processed, pforpv, init.HLfit) # (note that this correctly avoids is.null(beta_eta) ***when*** pforpv=0) 
@@ -360,8 +362,10 @@ HLfit_body <- function(processed,
     ## (1) Provide leverages 
     leverages <- loopout_blob$leverages # may be NULL, but 
     # not NULL if std_dev_res_needed_4_inner_estim (typically phiHGLM, inner-estimated phiGLM)
-    outer_phiGLM <- (length(models$phi)==1L && models$phi=="phiGLM" && 
-                       is.null(processed$phi.Fix))
+    outer_phiGLM <- ( ! is.null(phi_est) && 
+                        length(models$phi)==1L && models$phi=="phiGLM" && 
+                      #  is.null(loopout_blob$phi_est) && # possibly a valid condition but probably redundant
+                        is.null(processed$phi.Fix)) 
     if (outer_phiGLM) {
       leverages <- .calc_std_leverages(
         models, 
@@ -371,7 +375,7 @@ HLfit_body <- function(processed,
         need_ranefPars_estim=need_ranefPars_estim, 
         need_simple_lambda=need_simple_lambda, 
         phi.Fix=NULL, # key to get leverages
-        phi_est=phi_est # presumably unchanged in loop otherwise leverages computed within it (whole point here)
+        phi_est=phi_est # non-NULL to always get the phi leverages (cf gamma correction in .hatvals2std_lev() )
       )
     } 
     if (nrand && is.null(warningEnv$leveLam1)) { # .calcRanefPars was not called

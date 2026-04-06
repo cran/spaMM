@@ -1,6 +1,6 @@
 # 'constructor' for sXaug_Matrix_CHM_H_scaled object
 # from Xaug which already has a *scaled* ZAL 
-def_sXaug_Matrix_CHM_H_scaled <- function(
+def_sXaug_Matrix_CHM_H_scaled <- function( # calls def_sXaug_Matrix_QRP_CHM_scaled() when 'signs' allow it.
     Xaug,weight_X,w.ranef,H_global_scale, 
     force_QRP_global=.spaMM.data$options$force_QRP_global # formal default=FALSE
       # but set to TRUE for some NON-LevM cases 
@@ -350,12 +350,14 @@ def_sXaug_Matrix_CHM_H_scaled <- function(
   if (which=="logdet_sqrt_d2hdv2") { return(BLOB$logdet_sqrt_d2hdv2)} 
   if (which=="logdet_r22") { return(BLOB$logdet_r22) }
   if (which=="beta_cov_info_from_sXaug") { 
-    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, 
-                                          tcrossfac=solve(BLOB$CHMfactor,system="Lt", b=.sparseDiagonal(n=ncol(BLOB$CHMfactor), shape="g"))))
+    tcrossfac <- solve(BLOB$CHMfactor,system="Lt", 
+                       b=.sparseDiagonal(n=ncol(BLOB$CHMfactor), shape="g"))
+    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, tcrossfac=tcrossfac))
   } 
   if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     if (TRUE) {
-      tcrossfac_beta_v_cov <- solve(BLOB$CHMfactor,system="Lt", b=.sparseDiagonal(n=ncol(BLOB$CHMfactor), shape="g"))
+      tcrossfac_beta_v_cov <- solve(BLOB$CHMfactor,system="Lt", 
+                                    b=.sparseDiagonal(n=ncol(BLOB$CHMfactor), shape="g"))
       tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
       tcrossfac_beta_v_cov <- as.matrix(tPmat %*% tcrossfac_beta_v_cov)
       rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled

@@ -4,9 +4,10 @@
 \alias{Beta-distribution-random-effects}
 \alias{Beta}
 \alias{prior.weights}
+\alias{rand.family}
 \title{Fit mixed models with given correlation matrix}
 \description{
-  This function fits GL(M)Ms as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001). It may be called on its own but is now better seen as a backend for the main fitting function \code{fitme} (or \code{fitmv} for multivariate-response models). This documentation completes the documentation of the latter functions with respect to some arguments they pass to \code{HLfit} and with respect to the structure of the objects they return.
+Fits GL(M)Ms as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001). It may be called on its own but is now better seen as a backend for the main fitting function \code{fitme} (or \code{fitmv} for multivariate-response models),
   
   On its own, \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where X is the design matrix of fixed effects and Z is a design matrix of random effects (typically an incidence matrix with 0s and 1s, but not necessarily). Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
   Estimation of the latter parameters is performed by a form of fit of debiased residuals, which allows fitting a structured-dispersion model (Smyth et al. 2001).  However, evaluation of the debiased residuals can be slow in particular for large datasets. For models without structured dispersion, it is then worth using the \code{\link{fitme}} function. Ths function (as well as \code{\link{corrHLfit}}) can optimize the likelihood of \code{HLfit} fits for different given values of the dispersion parameters (\dQuote{outer optimization}), thereby avoiding the need to estimate debiased residuals. 
@@ -18,7 +19,6 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
       control.glm = list(), init.HLfit = list(), fixed=list(), ranFix, 
       etaFix = list(), prior.weights = NULL, weights.form = NULL, 
       processed = NULL)
-## see 'rand.family' argument for inverse.Gamma
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -34,10 +34,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \item{rand.family}{
   A \code{family} object describing the distribution of the random effect, or a \code{list} of 
   family objects for different random effects (see Examples). Possible options are
-  \code{gaussian()}, \code{Gamma(log)}, \code{Gamma(identity)} (see Details), \code{Beta(logit)}, \code{inverse.Gamma(-1/mu)}, and \code{inverse.Gamma(log)}.
-  For discussion of these alternatives see Lee and Nelder 2001 or Lee et al. 2006, p. 178-.
-  Here the family gives the distribution of a random effect \eqn{u} 
-  and the link gives \code{v} as function of \eqn{u} (see Details).
+  \code{gaussian()}, \code{Gamma(log)}, \code{Gamma(identity)}, \code{Beta(logit)}, \code{inverse.Gamma(-1/mu)}, and \code{inverse.Gamma(log)}: in these expressions of form family(link), the family gives the distribution of a random effect \eqn{u} and the link gives \code{v} as function of \eqn{u}. See \code{\link{random-effects}} for further description.
   If there are several random effects and only one family is given, this family holds for all random effects.
 }
   \item{resid.model}{Used to specify a model for the dispersion parameter of the mean-response distribution family. See the \code{\link{resid.model}} documentation, and the more specific \code{\link{phi-resid.model}} one for the \eqn{phi} parameter of gaussian and Gamma response families.}
@@ -45,13 +42,16 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   A model \code{formula} that controls the estimation of dispersion parameters and the computation of restricted likelihood (\code{p_bv}), where the conditioning inherent in REML is defined by a model different from the predictor \code{formula}. A simple example (useless in practice) of its effect is to replicate an ML fit by specifying \code{method="REML"} and an \code{REMLformula} with no fixed effect. The latter implies that no conditioning is performed and that \code{p_bv} equals the marginal likelihood (or its approximation), \code{p_v}. One of the examples in \code{\link{update.HLfit}} shows how \code{REMLformula} can be useful, but otherwise this argument may never be needed for standard REML or ML fits. For non-standard likelihood ratio tests using \code{REMLformula}, see \code{\link{fixedLRT}}.    
 }
   \item{verbose}{
-    A vector of booleans or integers. The \code{inner} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls, and much more useful. The \code{phifit} element controls messages about the progress of \code{\link{phi-resid.model}} fits (see the latter documentation). 
+    A vector of booleans or integers. The \code{inner} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful (and generally more useful) when \code{verbose} is passed through a higher-level function such as \code{fitme}, where \code{verbose(TRACE=TRUE)} allows information to be displayed for each set of correlation and dispersion parameter values considered by the optimiser. The \code{phifit} element controls messages about the progress of \code{\link{phi-resid.model}} fits (see the latter documentation). 
+    See \code{\link{verbose}} for further information, mostly useless except for development purposes. 
   }
   \item{method}{Character: the fitting method. 
-  allowed values include \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models, and \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} family. See (see \code{\link{method}}) for details, and further possible values for those curious to experiment. \bold{The default is REML} (standard REML for LMMs, 
-  an extended definition for other models). REML can be viewed as a form of conditional inference, and non-standard conditionings can be called by using a non-standard \code{REMLformula}.
+  allowed values include \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models, and \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} family. See (see \code{\link{method}}) for details, and further possible values for those curious to experiment. REML can be viewed as a form of conditional inference, and non-standard conditionings can be called by using a non-standard \code{REMLformula}.
+  
+  \bold{The default is REML} (standard REML for LMMs, 
+  an extended definition for other models) but \bold{is overridden} when called by \code{fitme} or \code{fitmv}, where \bold{the default is ML}. 
 }
-  \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihood in the \eqn{h}-likelihood literature.}
+  \item{HLmethod}{Alternative specification of \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihood in the \eqn{h}-likelihood literature.}
   \item{control.HLfit}{
   A list of parameters controlling the fitting algorithms, which should mostly be ignored in routine use. 
   See \code{\link{control.HLfit}} for possible controls.
@@ -90,11 +90,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
  \bold{I. Approximations of likelihood:} see \code{\link{method}}.
 
-  \bold{II. Possible structure of Random effects:} see \code{\link{random-effects}}, but note that \code{HLfit} does not fit models with autocorrelated random effects.
-
-  \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
+  \bold{II. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
   
-  \bold{IV. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor). Further, post-fit functions (in particular those extracting various forms of residuals) may be inconsistent in their handling of prior weights.
+  \bold{III. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor). Further, post-fit functions (in particular those extracting various forms of residuals) may be inconsistent in their handling of prior weights.
 }
 \value{
 An object of class \code{HLfit}, which is a list with many elements, not all of which are documented. 
@@ -131,7 +129,7 @@ The covariance matrix of \eqn{\beta} estimates is not included as such, but can 
 \item{y}{the response vector; for binomial data, the frequency response.}
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}
-\item{leve_phi,lev_lambda}{Leverages (see \code{\link{hatvalues}} extractor);}
+\item{lev_phi,lev_lambda}{Leverages (see \code{\link{hatvalues}} extractor);}
 \item{dfs}{list (possibly structured): some information about degrees of freedom for different components of the model. But its details may be difficult to interpret and the \code{\link{DoF}} extractor should be used;} 
 \item{how}{A list containing the information properly extracted by the \code{\link{how}} function;}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
@@ -144,15 +142,12 @@ Lee, Y., Nelder, J. A. (2001)  Hierarchical generalised linear models: A
 synthesis of generalised linear models, random-effect models and structured
 dispersions. Biometrika 88, 987-1006.
 
-Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via
-h-likelihood. Chapman & Hall: London.
-
 Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heteroscedastic regression. Statistical Modelling 1, 161-175. 
 }
 \seealso{
 \code{\link{HLCor}} for estimation with given spatial correlation parameters;
 \code{\link{corrHLfit}} for joint estimation with spatial correlation parameters;
-\code{\link{fitme}} as an alternative to all these functions.
+\code{\link{fitme}} as a \bold{preferred alternative to all these functions}.
 }
 
 \examples{

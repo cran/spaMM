@@ -64,7 +64,7 @@
 
 .wrap_do_damped_WLS_outer <- function(damped_WLS_fn, LevM_HL11_method, which_LevMar_step, old_relV_beta, constant_v_infer_args, 
                                       looseness, damping, rescue,
-                                      ...) { ## I cannot always list(...) bc it contains promises that are not always defined
+                                      ...) { 
   loc_LevMar_step <- which_LevMar_step
   if (which_LevMar_step=="V_IN_B" || LevM_HL11_method[["b_step"]]=="v_in_b") { # i.e. we have previous inferred the need for the nested procedure
     ## each step of the damping loop  updates b and includes a v_h_IRLS
@@ -79,12 +79,13 @@
   } else v_infer_args <- NULL
   # run the damping loop in all cases
   damped_WLS_blob <- structure(
-    damped_WLS_fn(v_infer_args=v_infer_args, which_LevMar_step=loc_LevMar_step, damping=damping, outer=TRUE,
+    damped_WLS_fn(v_infer_args=v_infer_args, # ! may be empty list, but check the ... ! ## I cannot always list(...) bc it contains promises that are not always defined
+                  which_LevMar_step=loc_LevMar_step, damping=damping, outer=TRUE,
                   stylefn=switch(loc_LevMar_step,
                                  v=.spaMM.data$options$stylefns$vloop,
                                  "strict_v|b"=.spaMM.data$options$stylefns$strictv,
                                  .spaMM.data$options$stylefns$betaloop ),
-                  ...), # ... important args in the ... (which _F I X M E__ is a debugging issue as list(...) in a browser fails...)
+                  ...), # ... important args in the ... 
     step=which_LevMar_step
   )
   # optional *single* "v_in_b" IRLS for given beta REPLACES the previous one
@@ -122,8 +123,8 @@
   which_i_llblock
 }
 
-.calc_Xscal_newscaled <- function(newXscal, newZAL_scaling, ZAL, which_i_llblock, n_u_h, seq_n_u_h, processed) {
-  if (inherits(ZAL,"ZAXlist")) ZAL <- .ad_hoc_cbind(ZAL@LIST, as_matrix=.eval_as_mat_arg(processed) )
+.calc_Xscal_newscaled <- function(newXscal, newZAL_scaling, ZAL, which_i_llblock, n_u_h, seq_n_u_h, processed, X=NULL) {
+  if (inherits(ZAL,"ZAXlist")) ZAL <- .get_bind_ZAXlist(ZAL)
   if (TRUE) { ## alternative clause shows the meaning, but this version is distinctly faster. 
     scaledZAL <- .m_Matrix_times_Dvec(ZAL, newZAL_scaling)
     if (inherits(ZAL,"Matrix")) {
@@ -133,7 +134,7 @@
       newXscal[n_u_h+seq(nrow(scaledZAL)),seq_n_u_h] <- scaledZAL
     }
     # This must keep the attributes, in particular attr(newXscal,"AUGI0_ZX") 
-  } else newXscal <- .make_Xscal(ZAL, ZAL_scaling = newZAL_scaling, processed=processed)
+  } else newXscal <- .make_Xscal(ZAL, ZAL_scaling = newZAL_scaling, processed=processed, X=X)
   return(newXscal) 
 }
 
@@ -182,7 +183,8 @@
 .wrap_v_h_IRLS <- function(v_h, beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
                            processed, lambda_est, v_infer_args, Trace, IRLS_fn) {
   if (GLMMbool) {
-    u_h <- v_h 
+    u_h <- v_h # keeps v_h attributes... maybe as.vector() to remove them? 
+               # (see comments on ...v_h=as.vector(v_h)... in .solve_IRLS_as_spprec()) 
     newwranefblob <- wranefblob ## keep input wranefblob since GLMM and lambda_est not changed
   } else {
     u_h <- processed$u_h_v_h_from_v_h(v_h)

@@ -6,31 +6,26 @@
   fixtyp[is.na(ufixed)] <- "outer"
   # so that ranPars_in_refit will have apparently conflicting info such as "outer" "fix"   "outer" on $ranCoefs$`1` and "outer" "outer" "outer" on $trRanCoefs$`1`
   # so we use the presence of both ranCoefs and trRanCoefs to distinguish the user setting and the internal optim over 3 params
-  ranPars_in_refit <- structure(.modify_list(fixed,optPars),
+  ranPars_in_refit <- structure(.modify_list(fixed,optPars), # hummm there is a .merge_fixed() function. ____F I X M E____?
                                 type=.modify_list(relist(fixtyp,fixed), #attr(fixed,"type"),
                                                   .relist_rep("outer",optPars)))
   ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info,moreargs=moreargs)
   
-  #any_nearly_singular_covmat <- FALSE
-  if (! is.null(optPars$trRanCoefs)) {
-    constraints <- fixed$ranCoefs # hack that uses the presence of the constraint here, jointly with $trRanCoefs
-    ranCoefs <- optPars$trRanCoefs # copy names...
-    for (char_rd in names(ranCoefs)) {
-      ranCoefs[[char_rd]] <- 
-        .constr_ranCoefsInv(trRanCoef=ranCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
-      # covmat <- .C_calc_cov_from_ranCoef(ranCoefs[[char_rd]])
-      #if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE # use of this removed 2019/12/16
-    }
+  if ( ! is.null(trRanCoefs <- optPars$trRanCoefs)) {
+    ranCoefs <- .partially_fix_trRancoefs(trRanCoefs, constraints=fixed$ranCoefs, return_tr=FALSE)
+    # hack: ranCoefs needed below even if constraints are NULL in which case .partially_fix_trRancoefs() wraps .ranCoefsInv()
   }
   init_refit <- list()
   if ( is.null(refit_info) ) { ## not the case with SEM
-    refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=FALSE) # defines default for refit_info
+    refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=FALSE,
+                       beta=TRUE) # defines default for refit_info
   } else if ( is.list(refit_info) ) { ## never the default
-    refit_info <- .modify_list( list(phi=FALSE, lambda=(! is.null(optPars$trRanCoefs)), ranCoefs=FALSE), 
+    refit_info <- .modify_list( list(phi=FALSE, lambda=(! is.null(optPars$trRanCoefs)), ranCoefs=FALSE,
+                                     beta=TRUE), 
                                 refit_info) 
     ## lambda=TRUE becomes the default (test random-slope 'ares' shows the effect)
   } else {
-    refit_info <- list(phi=refit_info,lambda=refit_info,ranCoefs=refit_info) # default with SEM is all FALSE
+    refit_info <- list(phi=refit_info,lambda=refit_info,ranCoefs=refit_info, beta=refit_info) # default with SEM is all FALSE
   }
   # refit: (change ranPars_in_refit depending on what's already in and on refit_info)
   if (identical(refit_info$phi,TRUE)) {
@@ -75,7 +70,7 @@
   }
   ## refit, or rescale by augZXy_phi_est even if no refit:
   if ( ! is.null(augZXy_phi_est)  || identical(refit_info$ranCoefs,TRUE)) {
-    if (! is.null(optPars$trRanCoefs)) {
+    if (! is.null(trRanCoefs)) {
       for (char_rd in names(ranCoefs)) {
         rancoef <- ranCoefs[[char_rd]] # full size even for DiagFamily fit; at this point the vector no longer has NA so isDiagFamily has been set to FALSE
         if ( ! is.null(augZXy_phi_est)) {
@@ -96,6 +91,23 @@
         }
       }
     }      
+  }
+  if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale # trBeta is never used by default (spaMM option tr_beta).... (but check ADFun experiment if modifying this)
+    sc_fixef <- .spaMM.data$options$.betaInv(trBeta)
+    ranPars_in_refit$trBeta <- NULL
+  } else {
+    sc_fixef <- ranPars_in_refit$beta # assuming they were scaled, as in optPars
+    ranPars_in_refit$beta <- NULL
+  }
+  if ( ! is.null(sc_fixef)) {
+    X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
+    fixef <- .unscale(X.pv, sc_fixef)
+    # always unscaled values in init.HLfit or etaFix:
+    if (identical(refit_info$beta,TRUE)) {
+      init_refit$fixef <- fixef
+    } else {
+      HLCor.args$etaFix$beta <- fixef
+    }
   }
   if (length(init_refit)) HLCor.args$init.HLfit <- .modify_list(HLCor.args$init.HLfit, init_refit) 
   return(list(HLCor.args=HLCor.args, ranPars_in_refit=ranPars_in_refit))

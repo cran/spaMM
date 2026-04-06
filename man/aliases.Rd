@@ -3,20 +3,20 @@
 
 \title{Variable aliases for multivariate-response fits}
 \description{
-Consider the \code{toy_iris} dataset defined in the Examples, noting in particular
+Consider the \code{toy_iris} dataset defined in the Examples, noting in particular the lines of code
 \preformatted{
 u <- rnorm(10,sd=1)
 id_y <- gl(10,5)
 id_b <- rep(seq(10),5)
 }
-an the subsequent use of \code{u[id_y]} and \code{u[id_b]} in the expectations of Poisson draws. Suppose that we try to a multivariate-response model with two Poisson responses to it (yes, it is an artificial example, as a multivariate fit may not be necessary here, but if you know what \code{\link{pois4mlogit}} does, then a less artificial example can be defined from a similar dataset with binomial samples instead of Poisson ones). A fit by 
+and the subsequent use of \code{u[id_y]} and \code{u[id_b]} in the expectations of Poisson draws. Suppose that we fit to a multivariate-response model with two Poisson responses to it. A fit by 
 \preformatted{
 fitmv(submodels = list(
     list(yellow ~ 1+(1|id_y), family = poisson()),
     list(blue ~ 1+(1|id_b), family = poisson())),
     data = toy_iris)
 }
-does not match the data-generating algorithm, because the fit of the \code{(1|id_y)} and \code{(1|id_b)} random effects does not take into account that the latent values of these random effects are sampled from a single vector \code{u} of 10 latent values. A matching fit should fit a single random-effect variance and produce a single predicted vector for \code{u}, rather than two distinct vectors of predicted values. 
+does not match the data-generating algorithm, because the fit of the \code{(1|id_y)} and \code{(1|id_b)} random effects does not take into account that the latent values of these random effects are sampled from a single vector \code{u} of 10 latent values. One should rather fit a single random-effect variance and produce a single predicted vector for \code{u}, rather than two distinct vectors of predicted values. 
 
 Conversely, a fit such as  
 \preformatted{

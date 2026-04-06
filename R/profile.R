@@ -27,19 +27,44 @@ spaMM.options <- function(..., warn=TRUE) {
 
 spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
 
+
+if (FALSE) {
+  # currently triggers 
+  # "error: there is no package called 'rlang'" when testing on CRAN
+  # if installed package can be loaded from temporary location.
+  .cli_packageStartupMessage <- function() {
+    mess <- paste0("spaMM (Rousset & Ferdy, 2014, version ", version, 
+                   ## not sure this will always work and makes sense only for devel version :
+                   # ", packaged ", utils::packageDescription("spaMM")$Packaged,
+                   ") is loaded.", 
+                   "\nSee {.topic [spaMM](spaMM::spaMM)} for a short introduction,",
+                   "\n'news(package='spaMM')' for news,",
+                   "\nand 'citation('spaMM')' for proper citation.",
+                   "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
+    # https://github.com/r-lib/cli/issues/589:
+    cli::cli_inform(mess, class = "packageStartupMessage")
+    if (.spaMM.data$options$dec2spp) 
+      packageStartupMessage(cli::style_bold(cli::style_underline("This development version uses 'spprec' method\n")),
+                            "in many cases where 'decorr' one has been previously used.")
+  }
+}
+
 # additional (wrt .onLoad) operations when the package is visible to the user (:: not required to call a function)
 ".onAttach" <- function (lib, pkg) {
   version <- utils::packageVersion("spaMM")
-  packageStartupMessage("spaMM (Rousset & Ferdy, 2014, version ", version, 
-                        ## not sure this will always work and makes sense only for devel version :
-                        # ", packaged ", utils::packageDescription("spaMM")$Packaged,
-                        ") is loaded.", 
-                        "\nType 'help(spaMM)' for a short introduction,",
-                        "\n'news(package='spaMM')' for news,",
-                        "\nand 'citation('spaMM')' for proper citation.",
-                        "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
-  #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
-  
+  # if (FALSE) {
+  #   .cli_packageStartupMessage() 
+  # } else {
+    mess <- paste0("spaMM (Rousset & Ferdy, 2014, version ", version, 
+                   ## not sure this will always work and makes sense only for devel version :
+                   # ", packaged ", utils::packageDescription("spaMM")$Packaged,
+                   ") is loaded.", 
+                   "\nSee 'help('spaMM')' for a short introduction,",
+                   "\n'news(package='spaMM')' for news,",
+                   "\nand 'citation('spaMM')' for proper citation.",
+                   "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
+    packageStartupMessage(mess)
+  # }
 }
 
 # Whatever's needed for operation of the namespace (allows ::: or ::)

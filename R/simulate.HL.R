@@ -148,10 +148,11 @@
                                                       # even those with a resid.model as it has fixed effects only.  
                                                       # and "presumably" also even for count models with prior weights (in beta_resp, at least):
                                                       # only variable prior weights btwn_sims (how?) should make it FALSE but the code ignores that possibility.
-    if (is.null(resp_range)) { # univariate
-      mu_all <- mu[[1L]] 
-    } else {
-      mu_all <- attr(mu[[1L]],"mv")[[mv_it]]
+    mu_all <- mu[[1L]] 
+    if ( ! is.null(mv_it)) { # multivariate
+      mu_all <- structure(attr(mu_all,"mv")[[mv_it]], 
+                          p0=attr(mu_all,"p0")[[mv_it]], 
+                          mu_U=attr(mu_all,"mu_U")[[mv_it]])
       if (is.null(mu_all)) {
         # this should no longer occur. See comments above the .r_resid_var_over_cols() call.
         warning("Suspect structure of .r_resid_var_over_cols()'s mu argument. Zero-truncation info may be lost.")
@@ -164,17 +165,15 @@
                           famfam=famfam, family=family, nsim=nsim) # vector or nsim-col matrix
     if (as_matrix && is.null(dim(block))) dim(block) <- c(length(block),1L) # forces matrix for mv code using rbind()
   } else {
-    for (sim_it in seq_len(nsim)) {
-      if (is.null(resp_range)) {
-        mu_it <- mu[[sim_it]]
-      } else {
-        mu_it <- attr(mu[[sim_it]],"mv")[[mv_it]]
-        if (is.null(mu_it)) mu_it <- structure(mu[[sim_it]][resp_range], 
-                                               p0=attr(mu[[sim_it]],"p0")[[mv_it]], 
-                                               mu_U=attr(mu[[sim_it]],"mu_U")[[mv_it]])
-      }
-      block[ ,sim_it] <- .r_resid_var(mu_it, 
-                                      phiW=phiW[ ,sim_it], # rlevant rowas have been selected in the mv case 
+    for (sim_jt in seq_len(nsim)) {
+      mu_jt <- mu[[sim_jt]]
+      if ( ! is.null(mv_it)) {
+        mu_jt <- structure(attr(mu_jt, "mv")[[mv_it]], 
+                           p0=attr(mu_jt,"p0")[[mv_it]], 
+                           mu_U=attr(mu_jt,"mu_U")[[mv_it]])
+      } 
+      block[ ,sim_jt] <- .r_resid_var(mu_jt, 
+                                      phiW=phiW[ ,sim_jt], # rlevant rowas have been selected in the mv case 
                                       sizes=sizes, 
                                       family_par= family_par,  
                                       zero_truncated=zero_truncated, famfam=famfam, family=family, nsim=1L)
@@ -203,8 +202,8 @@
                            rd_in_mv=rd_in_mv,
                            sub_oldZAlist=object$ZAlist, # OK if we use only colnames, not attributes of the list...
                            lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-      amatrices <- .get_new_AMatrices(object,newdata=newdata_it) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
-      ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
+      amatrices <- .get_new_AMatrices(object,newdata=newdata_it, newZlist=Zlist) # 
+      ZAlist_it <- .calc_normalized_newZAlist(Zlist=Zlist,
                                            AMatrices=amatrices,
                                            vec_normIMRF=object$ranef_info$vec_normIMRF,
                                            strucList=object$strucList[rd_in_mv])
@@ -229,11 +228,6 @@
   # * we need design matrices for all ranefs
   # * we need values of all the original variables
   # hence we use an "## effective '.noFixef'" : formula with only ranefs of the fit. But 1st version fails for mv; second may be more straightforward anyway
-  #old_ranef_form <- formula.HLfit(object, which="")[-2L] 
-  #old_ranef_form <- as.formula(paste("~",(paste(.process_bars(old_ranef_form),collapse="+")))) ## 
-  #frame_ranefs <- .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf 
-  #exp_ranef_terms <- .process_bars(old_ranef_form[[2L]], # barlist must remain missing here
-  #                                 expand=TRUE, which. = "exp_ranef_terms")
   if (is.null(vec_nobs <- object$vec_nobs)) { #  *univariate*-resp model 
     old_ranef_form <- as.formula(paste("~",(paste(attr(object$ZAlist,"exp_ranef_strings"),collapse="+")))) 
     exp_ranef_terms <- attr(object$ZAlist, "exp_ranef_terms")
@@ -242,8 +236,8 @@
                          sub_oldZAlist=object$ZAlist,
                          # Note no levels_type="seq_len" here: important to get correct matrix for Matern...
                          lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-    amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)
-    newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
+    amatrices <- .get_new_AMatrices(object,newdata=newdata, newZlist=Zlist) 
+    newZAlist <- .calc_normalized_newZAlist(Zlist=Zlist,
                                          AMatrices=amatrices,
                                          vec_normIMRF=object$ranef_info$vec_normIMRF, 
                                          strucList=object$strucList)
@@ -523,9 +517,10 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
       } else { # standard simulation withOUT ranefs
         control$fix_predVar <- FALSE
         mu <- predict(object,newdata=newdata,binding=NA,control=control, verbose=verbose)
-        is_mu_fix_btwn_sims <- TRUE
+        cum_nobs <- attr(mu,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE; will be needed for .calc_phiW()
+        attr(mu,"new_X_ZACblob") <- NULL
         mu <- replicate(needed,mu,simplify=FALSE) # always a list at this stage
-        cum_nobs <- attr(mu[[1]],"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE
+        is_mu_fix_btwn_sims <- TRUE
       }
     } else { ## MIXED MODEL
       if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
@@ -564,8 +559,9 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         control$fix_predVar <- FALSE
         mu <- predict(object,newdata=newdata,binding=NA,control=control, verbose=verbose, ...)
         cum_nobs <- attr(mu,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE; will be needed for .calc_phiW()
-        is_mu_fix_btwn_sims <- TRUE
+        attr(mu,"new_X_ZACblob") <- NULL
         mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
+        is_mu_fix_btwn_sims <- TRUE
       } else if ( inherits(re.form,"formula") || is.na(re.form) ) { ## explicit re.form; or {unconditional MIXED MODEL, type= "marginal" }
         if (verbtype) {
           if (inherits(re.form,"formula")) {
@@ -583,15 +579,16 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                              binding=NA,control=control, 
                              verbose=verbose, ...)
         # ... for that purpose, re.form is used to identify those ranefs and to provide the design matrices for them
-        # These designn matrices will a priori not be further used (or only in a trivial way,  times zero-valued ranefs),
+        # These design matrices will a priori not be further used (or only in a trivial way,  times zero-valued ranefs),
         # but other elements of the new_X_ZACblob attribute will be used.
+        new_X_ZACblob <- attr(eta_fixed_cond,"new_X_ZACblob")
+        attr(eta_fixed_cond,"new_X_ZACblob") <- NULL
         nr <- nrow(newdata)
         if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionally|ranef or marginally) hence no selection of matrix
           ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
         } else { # new sampling design
-          new_X_ZACblob <- attr(eta_fixed_cond,"new_X_ZACblob")
           # new_X_ZACblob provided design matrices for ranefs conditioned upon (as controlled by re.form)
           # .calc_ZAlist_newdata() adds design matrices for ranefs treated marginally ( <=> ranefs NOT set to zero, but drawn marginally )
           newZAlist <-  .calc_ZAlist_newdata(object, newdata, new_X_ZACblob=new_X_ZACblob) # new_X_ZACblob$newZAlist not clearly used
@@ -603,7 +600,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           vec_n_u_h <- unlist(lapply(ZALlist,.ncol)) ## nb cols each design matrix = nb realizations each ranef
           cum_n_u_h <- cumsum(c(0,vec_n_u_h))
         }
-        cum_nobs <- attr(eta_fixed_cond,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE
+        cum_nobs <- new_X_ZACblob$cum_nobs # presence expected given control$simulate=TRUE
         lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)}))
         lcrandfamfam[conditioned_upon] <- "conditional" 
         fittedLambda <- object$lambda.object$lambda_est

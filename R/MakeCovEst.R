@@ -254,7 +254,7 @@
           Xscal <- .make_Xscal(ZAL=locZAL, ZAL_scaling = ZAL_scaling, processed=processed)
           weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid,
                                      H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
-          sXaug <- do.call(processed$corr_method,
+          sXaug <- do.call(processed$sXaug_method,
                            list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
           ####################################################################################################
         } else sXaug <- NULL

@@ -1,6 +1,6 @@
 cat(cli::col_yellow("\nTest of adjacency (long fits):"))
 
-if (spaMM.getOption("example_maxtime")>61) { # actually faster ~23s
+if (spaMM.getOption("example_maxtime")>61) { # actually faster ~19s
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   data("adjlg")
   fit.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),

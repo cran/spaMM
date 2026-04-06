@@ -30,8 +30,7 @@ fitmv_body <- function(processed,
   if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
   sparse_precision <- proc1$is_spprec
   #
-  init$lambda <- .reformat_lambda(init$lambda, nrand=length(processed$ZAlist), 
-                                  namesTerms=attr(processed$ZAlist,"namesTerms"), full_lambda=FALSE)
+  init$lambda <- .reformat_lambda(init$lambda, processed=processed, full_lambda=FALSE)
   init$phi <- .reformat_phi(init$phi, n_models=length(processed$unmerged), full_phi=FALSE) # input list -> provide names to list -> output named list
   # Automatically reformatting lower,upper, init NB_shape and COMP_nu would be less trivial as it should have the following format:
   if (length(na.omit(init$NB_shape))!=length(names(init$NB_shape)) ||
@@ -60,7 +59,9 @@ fitmv_body <- function(processed,
   init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies 
   fixed <- optim_blob$fixed
   corr_types <- optim_blob$corr_types
+  # if (.safe_true(processed[["verbose"]]["get_LUarglist"][[1L]])) return(optim_blob$LUarglist)
   LUarglist <- optim_blob$LUarglist
+  if (identical(control$getFromTheDepths,"LUarglist")) .sendFromTheDepths(LUarglist=LUarglist, class="spaMM.FTD.LU")
   moreargs <- LUarglist$moreargs
   LowUp <- optim_blob$LowUp
   lower <- LowUp$lower ## list ! which elements may have length >1 !
@@ -96,8 +97,8 @@ fitmv_body <- function(processed,
   needHLCor_specific_args <- (length(unlist(lower$corrPars, use.names = FALSE)) || 
                                 length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF","corrFamily"))))
   if (needHLCor_specific_args) {
-    HLcallfn.obj <- "HLCor.obj" 
-    HLcallfn <- "HLCor"
+    HLcallfn.obj <- "HLCor.obj" # for optimization
+    HLcallfn <- "HLCor" # for post-optimization refit
     control.dist <- vector("list",length(moreargs))
     for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist 
     HLCor.args[["control.dist"]] <- control.dist ## always reconstructed locally, not in the fitme_body call
@@ -138,7 +139,7 @@ fitmv_body <- function(processed,
         } ## else default visible in SEMbetalambda
         ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
         loclist <- list(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
-                        LowUp=LowUp,init.corrHLfit=init.optim, ## F I X M E usage of user_init_optim probably not definitive
+                        LowUp=LowUp,init.corrHLfit=init.optim, 
                         control.corrHLfit=control,
                         verbose=verbose[["iterateSEM"]],
                         nb_cores=nb_cores)
@@ -150,7 +151,7 @@ fitmv_body <- function(processed,
       } else {
         optPars <- .new_locoptim(init.optim, ## try to use gradient? But neither minqa nor _LN_BOBYQA use gradients. optim() can
                                  LowUp, 
-                                 control, objfn_locoptim=.objfn_locoptim, 
+                                 control, objfn_locoptim=.objfn_locoptim, objfn.extras=LUarglist,
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 
                                  user_init_optim=user_init_optim,
                                  grad_locoptim=NULL, verbose=verbose[["TRACE"]])
@@ -161,6 +162,19 @@ fitmv_body <- function(processed,
       refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
       HLCor.args <- refit_args$HLCor.args
       ranPars_in_refit <- refit_args$ranPars_in_refit
+      if ( ! is.null(processed$X_off_fn) && # outer beta
+           ! is.null(beta <- refit_args$HLCor.args$init.HLfit$fixef) # and we refit beta (which is the default)
+           ) { 
+        processed$off <- environment(processed$X_off_fn)$ori_off
+        X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
+        processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
+                                             sparse_precision=processed$is_spprec, 
+                                             as_mat=.eval_as_mat_arg(processed))
+        # HLCor.args$init.HLfit$fixef <- beta # mustr have been provided by .get_refit_args(); unscaled
+        processed$port_env$port_fit_values$fixef <- NULL
+        processed$X_off_fn <- NULL # _____F I X M E_____ possible future programming problems if 'processed' is recycled
+        processed$vecdisneeded <- processed$vecdisneeded_ori 
+      } 
     } ## end if ...getCall... else
     #
     # refit_info is list if so provided by user, else typically boolean. An input NA should have been converted to something else (not documented).
@@ -177,7 +191,7 @@ fitmv_body <- function(processed,
     }
     # At this point there may be null elements in the init.HLfit$phi list, but .denullify() should handle this.
     # 'cover_residM_reinit' fit in test-mv-extra covers this code.
-  } else if (len_ranPars <- length(unlist(HLCor.args$fixed, use.names = FALSE))){ ## Set attribute
+  } else if (len_ranPars <- length(unlist(HLCor.args$fixed, use.names = FALSE))) { ## Set attribute
     HLCor.args$fixed <- structure(HLCor.args$fixed,
                                     type = relist(rep("fix", len_ranPars), HLCor.args$fixed),
                                     moreargs=moreargs) ## moreargs needed if user handles fixed(<transformed params>) ('hyper' tests)

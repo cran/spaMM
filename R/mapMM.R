@@ -357,10 +357,12 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
       coordinates <- unique(unlist(lapply(info_olduniqueGeo,colnames)))
     } else coordinates <- colnames(info_olduniqueGeo)
   }
-  if (length(coordinates)!=2L) {
+  if (length(coordinates)>2L) {
+    stop(paste0("Use the 'coordinates' argument to select two coordinates among: ",paste0(coordinates, collapse=", ")))
+  } else if (length(coordinates)<2L) {
     stop(paste0("'mapMM' plots only 2D maps, while coordinates are of length ",length(coordinates)))
   }
-  pred <- predict(fitobject,binding="fitted")
+  pred <- predict(fitobject,binding="fitted",...)
   x <- pred[,coordinates[1]]
   y <- pred[,coordinates[2]]
   Zvalues <- pred[,attr(pred,"fittedName")]

@@ -1,16 +1,22 @@
-.reformat_lambda <- function(user_lFix, nrand, namesTerms=NULL, full_lambda) {
+.reformat_lambda <- function(user_lFix, 
+                             #
+                             processed, 
+                             nrand=length(processed$ZAlist), 
+                             namesTerms=attr(processed$ZAlist,"namesTerms"),
+                             #
+                             full_lambda) {
   if ( ! nrand) return(NULL) # ignores extra lambda # _F I X M E__ add a warning in that case ?
   seq_nrand <- seq_len(nrand)
   if (full_lambda) { # 
-    template <- rep(NA,nrand)
+    template <- rep(NA,nrand) # even for isRandomSLope (otherwise they won't be fitted as ranCoefs)
     names(template) <- seq_nrand # (character)
-  } else if (is.null(user_lFix)) { # NULL input -> NULL output
+  } else if ( ! length(user_lFix)) { # NULL input -> NULL output
     return(NULL)
   } else {
     template <- user_lFix # reformats but not full-length; do not introduce (nor remove) NA/NaN's
     if (is.null(names(template))) names(template) <- seq_along(template)
   }
-  if ( ! is.null(user_lFix)) {
+  if ( length(user_lFix)) {
     user_names <- names(user_lFix)
     if (length(unique(user_names))!=length(user_names)) stop("Repeated names in names of user-specified lambda. Check your input.")
     # 'user'_names are not necessarily 1,2... (fitted values have names from rhs of ranef terms) 
@@ -89,9 +95,11 @@
 }
 
 # 3rd argument needed if second not present
-.reformat_ranPars <- function(parlist, fitobject, corr_families=fitobject$ranef_info$sub_corr_info$corr_families) {
-  if (length(parlist$lambda)) parlist$lambda <- .reformat_lambda(parlist$lambda,nrand = length(corr_families),
-                                                                 namesTerms = NULL,full_lambda = FALSE)
+.reformat_ranPars <- function(parlist, fitobject, 
+                              corr_families=fitobject$ranef_info$sub_corr_info$corr_families) {
+  if (length(parlist$lambda)) parlist$lambda <- 
+      .reformat_lambda(parlist$lambda,nrand = length(corr_families),
+                       namesTerms = NULL, full_lambda = FALSE)
   parlist <- .reformat_corrPars(parlist, corr_families=corr_families)
 }
 
@@ -471,7 +479,7 @@
   ranPars
 }
 
-.TRACE_fn <- function(ranFix, processed) {
+.TRACE_fn <- function(ranFix, etaFix=NULL, processed) {
   ranPars <- .canonizeRanPars(ranFix,corr_info=NULL,checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)
   #
   if ( ! is.null(ranPars$hyper)) ranPars <- .back2hyperpars(ranPars, ranges=processed$hyper_info$ranges) 
@@ -499,7 +507,11 @@
     urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
     if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,digits),collapse=" ")," ")
   }
-  if ( ! is.null(beta <- attr(processed$off,"beta"))) cat("beta=",paste(signif(beta,digits),collapse=" ")," ") # outer beta
+  if ( ! is.null(beta <- attr(processed$off,"beta"))) 
+    cat("beta=",paste(signif(beta,digits),collapse=" ")," ") 
+  # => old comment: "outer beta" but at least not always the right code for this case. Rather:
+  if ( ! is.null(beta <- etaFix$beta)) 
+    cat("beta=",paste(signif(beta,digits),collapse=" ")," ") # outer beta
 }
 
 .calc_corrMatrix_precisionFactor__assign_Lunique <- function(processed, rd) {
@@ -516,7 +528,7 @@
   }
   Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
   if (perm_Q) {
-    .ZA_update(rd, Q_CHMfactor, processed, 
+    .A_ZA_update(rd, Q_CHMfactor, processed, 
                Amat=processed$corr_info$AMatrices[[as.character(rd)]])
     # One-time ZA updating, but also here specifically for corrMatrix, one-time construction of sparse_Qmat
     permuted_Q <- attr(processed$corr_info$AMatrices[[as.character(rd)]],"permuted_Q") 
@@ -878,8 +890,8 @@
     ZA_corrected_guess <- guess_from_glm_lambda/sqrt(mean(denom)) 
     #if (corr_types[it]=="AR1") ZA_corrected_guess <- log(1.00001+ZA_corrected_guess) ## ad hoc fix but a transformation for ARphi could be better FIXME
     fam_corrected_guess <- .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, trunc_=trunc_, For=For, processed=processed, nrand=nrand)
-    init_lambda[rd] <- .preprocess_valuesforNAs(rd, lcrandfamfam=lcrandfamfam, 
-                                                rand.families=rand.families, init.lambda=fam_corrected_guess)
+    init_lambda[rd] <- .preprocess_valuesforNAs(lcrandfamfam_rd=lcrandfamfam[rd], 
+                                                link_rd=rand.families[[rd]]$link, init.lambda=fam_corrected_guess)
   }
   if (For != "optim") {   ## If called by HLfit: the present pmax() matters.
     init_lambda[stillNAs] <- pmax(init_lambda[stillNAs],1e-4) 
@@ -898,21 +910,29 @@
     optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
     ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
     optim_resid_lambda_with_NAs <- .reformat_init_lambda_with_NAs(proc1$envir$ranPars$lambda, nrand=nrand, default=NA)
-    which_NA_simplelambda <- which(is.na(lFix) & 
-                                     is.na(optim_resid_lambda_with_NAs) & 
-                                     (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
-                                     ! ranCoefs_blob$isRandomSlope) ## exclude random slope whether set or not
-    if (length(which_NA_simplelambda)) { # user's explicit lambda=NaN have been removed from the count, but explicit NA count
+    is_NA_simplelambda <- is.na(lFix) & 
+      is.na(optim_resid_lambda_with_NAs) & 
+      (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
+      ! ranCoefs_blob$isRandomSlope
+    which_NA_simplelambda <- which(is_NA_simplelambda) ## exclude random slope whether set or not
+    # :so that which_NA_simplelambda indexes the NA's but not the NaN's (user's explicit lambda=NaN)
+    if (length(which_NA_simplelambda)) { 
       init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim") #calls .get_inits_by_xLM 
                     # and .calc_fam_corrected_guess (with arguments handling mv families)
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
-      init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now rmoved if still there (cf is.na(c(1,NA,NaN))) BUT
+      fixand <- is_NA_simplelambda & attr(proc1$rand.families,"is_gammaId")
+      optim_lambda_with_NAs[fixand] <- pmin(init_lambda[fixand], 0.9)
+      # here... lambda init...
+      
+      init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now removed if still there (cf is.na(c(1,NA,NaN))) BUT
       # ... it's dubious that we have augZXy_cond || other_reasons_for_outer_lambda if we requested inner estimation of lambda by a NaN                                                  
+      
+      
     }
     init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
   } else { ## else use inner optimization  for simple lambdas if inner_phi is necessary
     if (identical(attr(proc1$family,"multi"),TRUE)) { # _F I X M E__ more elegant test?
-      warning("No initial lambda provided: the model fitted may change over spaMM versions. See help('multi') for how to avoid that.")
+      warning(cli::format_warning("No initial lambda provided: the model fitted may change over spaMM versions. See {.topic [multi](spaMM::multi)} for how to avoid that."))
     }
     init.optim$lambda <- user_init_optim$lambda # we reach here when there was no NA in user's init lambda
     # but there was possibly explicit numerical values (e.g. test-nloptr comparisons)
@@ -969,7 +989,9 @@
     has_corr_pars <- length(corr_types[ ! is.na(corr_types)])
   } else var_ranCoefs <- has_corr_pars <- FALSE
   calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) 
+  is_gammaId <- attr(processed$rand.families,"is_gammaId") 
   sufficient_reasons_for_outer_lambda <- (
+    any(is_gammaId) || # Then we can, and generally need, to control the range of lambda values, so use outer optim. 
     anyNA(init.optim$lambda) || # first one meaning that the user explicitly set a NA init lambda
       any(var_ranCoefs) || # includes mv()
       (has_corr_pars && calc_dvdlogdisp_needed_for_inner_ML) || # should be TRUE for Loaloa fit used gentle intro'scomparisons, 
@@ -1250,9 +1272,22 @@
   
   .check_conflict_init_fixed(fixed,init.optim, "given as element of both 'fixed' and 'init'. Check call.")
   .check_conflict_init_fixed(init.HLfit,init.optim, "given as element of both 'init.HLfit' and 'init'. Check call.") ## has quite poor effect on fits
+  
   if ( ! is.null(rC.Fix <- fixed$ranCoefs)) {
-    for (char_rd in names(rC.Fix)) if (attr(rC.Fix[[char_rd]],"isDiagFamily")) init.optim$ranCoefs[[char_rd]] <- 
-        init.optim$ranCoefs[[char_rd]][is.na(rC.Fix[[char_rd]])] # keeps only variable ones in lambda-positions
+    for (char_rd in names(rC.Fix)) {
+      rC.Fix_rd <- rC.Fix[[char_rd]]
+      rC.ini_rd <-init.optim$ranCoefs[[char_rd]]
+      if (attr(rC.Fix_rd,"isDiagFamily") &&
+          length(rC.Fix_rd)==length(rC.ini_rd) # context: If user provided init values for 
+          # 3 variables coefs while rC.Fix_rd is of length 6 (3 NA, 3 fix),
+          # the 2nd condition is FALSE, avoiding mis-writing.
+          # This new condition allows inits to be given as 3 or (3+3NA) values in this case, 
+          # which looks nice but not carefully thought  ____F I X M E____ rethink. 
+          ) {
+        init.optim$ranCoefs[[char_rd]] <- 
+          rC.ini_rd[is.na(rC.Fix_rd)] # keeps only variable ones in lambda-positions
+      }  
+    }
   }
   
   if (For=="fitmv") { # in that case the ranefs differ across submodels and we want submodel-specific proc1 to be used eg in 
@@ -1293,8 +1328,10 @@
       famdisp_lowup <- .wrap_calc_famdisp_lowup(proc_it) 
     } else famdisp_lowup <- NULL
     
-    if (FALSE && ! is.null(inits$`init`$beta)) { # outer beta... FALSE && ...because the effect is not convincing (__F I X M E___). 
-      # The COMP example currently works only without this and with a vector of O's as initial values.
+    if (! is.null(processed$X_off_fn)) { # outer beta... the effect is not convincing (__F I X M E___). 
+      # In fitmv() I assume that the user provides bounds, but not here.
+      # The COMP try currently runs but the results are pathetic with this 'fixef_lowup',
+      # and abysmal with a NULL 'fixef_lowup'.
       fixef_lowup <- .calc_fixef_lowup(processed)
     } else fixef_lowup <- NULL
     
@@ -1306,7 +1343,8 @@
                       optim.scale=optim.scale, 
                       moreargs=moreargs,
                       famdisp_lowup=famdisp_lowup,
-                      fixef_lowup=fixef_lowup) ## list needed as part of attr(,"optimInfo")
+                      fixef_lowup=fixef_lowup,
+                      is_gammaId=attr(proc_it$rand.families,'is_gammaId')) ## list needed as part of attr(,"optimInfo")
     LowUp <- do.call(".makeLowerUpper",LUarglist) 
     return(list(inits=inits, fixed=fixed, corr_types=corr_types, LUarglist=LUarglist,LowUp=LowUp))
    ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction

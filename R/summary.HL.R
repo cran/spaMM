@@ -37,9 +37,14 @@
 .make_beta_table <- function(object, p_value="") {
   namesOri <- attr(model.matrix(object),"namesOri")
   nc <- length(namesOri)
-  betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
   beta_cov <- .get_beta_cov_any_version(object) 
-  betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
+  if (ncol(beta_cov)>nc) { # should not happen. Occurred once in a devel context. there is a pb with some spprec fits
+    warning("ncol(beta_cov)>nc, unexpectedly. Please contact the maintainer.", immediate. = TRUE)
+    betaOri_cov <- beta_cov # quick fix that worked in one case
+  } else {
+    betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
+    betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
+  }
   beta_se <- sqrt(diag(betaOri_cov))
   fixef_z <- object$fixef/beta_se
   beta_table <- cbind(Estimate=object$fixef,"Cond. SE"=beta_se,"t-value"=fixef_z)
@@ -190,8 +195,8 @@ summary.HLfitlist <- function(object, ...) {
   famfam <- family$family
   if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
     withArgs <- eval(withArgs,envir=environment(family$aic))
-    legend <- paste0(withArgs, "( ",linkstring, family$link," )")
-  } else legend <- paste0(famfam, "( ",linkstring, family$link," )")
+    legend <- paste0(withArgs, "(\u00A0",linkstring, family$link,"\u00A0)")
+  } else legend <- paste0(famfam, "(\u00A0",linkstring, family$link,"\u00A0)")
   if (identical(family$zero_truncated, TRUE)) legend <- paste("0-truncated", legend)
   return(legend)
 }
@@ -491,7 +496,7 @@ summary.HLfitlist <- function(object, ...) {
                                 pw=object$prior.weights, summ, phimodel, mv_it=NULL) { # 'mv_it' needed for non-trivial  .get_glm_phi(object, it=it)
   if (family$family %in% c("gaussian","Gamma")) {
     if (! is.null(mv_it)) {
-      cat(cli::style_underline("* response", mv_it))
+      cat(cli::style_underline("* response ", mv_it))
       if (family$family=="Gamma") {
         cat(" (Gamma) residual var = phi * mu^2:\n")
       } else cat(" (gaussian) residual variance:  \n")    
@@ -711,13 +716,16 @@ summary.HLfitlist <- function(object, ...) {
     famst <- character(nfam)
     inverse_pred_mess <- vector("list", nfam)
     for (mv_it in seq_along(object$families)) {
-      famst[mv_it] <- paste0(mv_it,": ", .prettify_family(object$families[[mv_it]], linkstring = "") , sep="") 
+      famst[mv_it] <- paste0(mv_it,":\u00A0", .prettify_family(object$families[[mv_it]], linkstring = "") , sep="") 
       inverse_pred_mess[[mv_it]] <- .check_inverse_pred(object=object, family=object$families[[mv_it]]) 
       # : not elegant: assumes that .muetafn() passes the attrs checked by .check_inverse_pred (OK so far...),
       # and that they correspond to a single family-link combination (OK so far...).
     }
-    inverse_pred_mess <- .unlist(inverse_pred_mess) # NULL of "character" vector
-    cat(paste0(famst, collapse="; ")) 
+    inverse_pred_mess <- .unlist(inverse_pred_mess) # NULL or "character" vector
+    famst <- paste0(famst, collapse="; ")
+    famst <- gsub('(.{45,65})(\\s)', '\\1\n  ', famst) 
+    # : syntax to break long lines into spaces-delimited strings of mini 45 and maxi (spaces allowing) 65
+    cat(famst) 
     cat("\n")
   } else {
     inverse_pred_mess <- .check_inverse_pred(object)

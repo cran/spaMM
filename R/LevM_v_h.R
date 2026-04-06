@@ -1,24 +1,35 @@
-.solve_v_h_IRLS <- # only for LevM && is_HL_1_1
-  function(X.pv, 
-           ZAL, y, ## could be taken fom processed ? 
+# corr algo has Xscal that can be p4m_ized without affecting $AUGI0_ZX  
+# The original design matrices are provided by $AUGI0_ZX$X.pv  and ZAL argument
+# .
+# .
+# .
+.solve_v_h_IRLS <- # only for LevM && is_HL_1_1 # Despite the name, this expects augmented system with X block.
+  function(ZAL, # the Z that gives eta and then the muetablob # and some more...
+           # X.pv removed as argument bc apparently never different from processed$AUGI0_ZX$X.pv
+           # This fn has p4m code, see .makeMatp4m() calls and 'is_p4m_H' 
+           y, ## could be taken from processed ? 
            n_u_h, 
            lambda_est, off, maxit.mean, etaFix,
            wranefblob, processed,
+           #
+           # X.pv=processed$AUGI0_ZX$X.pv, # the X that gives eta and the weights: not perturbed in p4m
            ## supplement for ! LMM
            phi_est, 
            ## supplement for for LevenbergM 
            w.resid=NULL, 
            ## supplement for LevenbergM
            beta_eta,
-           ## supplement for ! GLMM (??)
+           ## "supplement for ! GLMM" (??): this is always used in this fn
            u_h, v_h,  
            #
            trace=FALSE,
            stylefn=.spaMM.data$options$stylefns$vloop,
            looseness,
            LevMarblob=NULL,
-           dampings_env
+           dampings_env,
+           damped_WLS_v_in_b_fn
   ) {
+    X.pv <- processed$AUGI0_ZX$X.pv
     pforpv <- ncol(X.pv)
     nobs <- length(y)
     seq_n_u_h <- seq_len(n_u_h)
@@ -35,7 +46,7 @@
 
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
 
-    eta  <- off + drop(ZAL %*% v_h + processed$AUGI0_ZX$X.pv %*% beta_eta)
+    eta <- off + drop(ZAL %*% v_h + X.pv %*% beta_eta) # the p4m eta is still the one with the uncorrected matrices
     muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
     w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
@@ -47,7 +58,19 @@
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
     Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
     weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  
-    sXaug <- do.call(processed$corr_method, # H_w.resid provided as attr(weight_X,"H_w.resid")!
+    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
+      muetablob$dz1_p4m <- replaces_etamo -(eta-off)
+      constant_zAug_args$ZAL <- dcdv_p4m # "doSeeMe" # dcdv_p4m seems logical    
+      #             given this 'ZAL' is used for the y2_sscaled term, in factor with sscaled (\varsigma)
+      #             so not from the term "in red". 
+      Xscal_H_p4m <- .make_Xscal(dcdv_p4m, ZAL_scaling = ZAL_scaling, processed=processed, 
+                                 as_matrix=.eval_as_mat_arg(processed), X=dcdb_p4m)
+      sXaug <- do.call(processed$sXaug_method, # H_w.resid provided as attr(weight_X,"H_w.resid")!
+                       list(Xaug=Xscal_H_p4m, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
+    } else sXaug <- do.call(processed$sXaug_method, # H_w.resid provided as attr(weight_X,"H_w.resid")!
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
     if (trace) {
       tracechar <- ifelse(.BLOB(sXaug)$nonSPD,"!",".")
@@ -83,16 +106,20 @@
                                w.resid=w.resid,
                                z2=z2) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) 
-      wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) 
       ## the gradient for -p_v (or -h), independent of the scaling
-      m_grad_obj <- .calc_m_grad_obj(zInfo,GLMMbool=GLMMbool, v_h=v_h, 
-                                     wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL=ZAL, X.pv=X.pv, etamo=muetablob$sane_eta - off)
-      ## amounts to 
-      # m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-      #   m_grad_v <- drop(.crossprod(ZAL, WLS_mat_weights * zInfo$z1_eta) + dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv 
-      #   drop(.crossprod(X.pv, WLS_mat_weights * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-      # )
-      ## where the zInfo terms must depend on WLS_mat_weights too! 
+      if (zInfo$z1_is4p4m) { 
+        dcdmu <- zInfo$z1-replaces_etamo 
+      } else {
+        etamo <- muetablob$sane_eta-off
+        dcdmu <- zInfo$z1-etamo
+      }
+      if (is_p4m_H) {
+        m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=dcdmu, GLMMbool=GLMMbool, v_h=v_h, 
+                                       wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, 
+                                       dLinkPred_dv=dcdv_p4m, dLinkPred_db=dcdb_p4m)
+      } else m_grad_obj <- .calc_m_grad_obj(zInfo, dcdmu=dcdmu, GLMMbool=GLMMbool, v_h=v_h, 
+                                            wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, 
+                                            dLinkPred_dv=ZAL, dLinkPred_db=X.pv)
       if (trace>1L) {
         if (pforpv) { 
           maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
@@ -109,32 +136,39 @@
       m_grad_v <- m_grad_obj[seq_n_u_h]
       pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=m_grad_v)
       low_pot <- (pot4improv < pot_tol)
-      damped_WLS_blob <- .do_damped_WLS_v_in_b(sXaug=sXaug, zInfo=zInfo, 
-                                        old_Vscaled_beta=Vscaled_beta,
-                                        oldAPHLs=oldAPHLs,
-                                        APHLs_args = constant_APHLs_args,
-                                        damping=.get_new_damping(dampings_env$v[["v_in_b"]],"v_in_b"),
-                                        Trace=trace,
-                                        ypos=ypos,off=off,
-                                        GLMMbool=GLMMbool,etaFix=etaFix,
-                                        lambda_est=lambda_est,
-                                        wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,ZAL_scaling=ZAL_scaling,
-                                        processed=processed, Xscal=Xscal,
-                                        phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, ZAL=ZAL,
-                                        which_i_llblock=which_i_llblock,
-                                        which_LevMar_step = "v",
-                                        low_pot = structure(low_pot,pot_tol=pot_tol),
-                                        stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
-                                        outer=FALSE
-      ) 
+      damped_WLS_blob <- 
+        damped_WLS_v_in_b_fn(
+          sXaug=sXaug, zInfo=zInfo, ZAL=ZAL,
+          old_Vscaled_beta=Vscaled_beta,
+          oldAPHLs=oldAPHLs,
+          APHLs_args = constant_APHLs_args,
+          damping=.get_new_damping(dampings_env$v[["v_in_b"]],"v_in_b"),
+          Trace=trace,
+          ypos=ypos,off=off,
+          GLMMbool=GLMMbool,etaFix=etaFix,
+          lambda_est=lambda_est,
+          wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,ZAL_scaling=ZAL_scaling,
+          processed=processed, Xscal=Xscal,
+          phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, 
+          which_i_llblock=which_i_llblock,
+          which_LevMar_step = "v",
+          low_pot = structure(low_pot,pot_tol=pot_tol),
+          stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
+          outer=FALSE) 
       list2env(damped_WLS_blob[c("w.resid", ## !important! cf test-adjacency-corrMatrix.R
-                                 "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "weight_X", "sXaug")], envir = environment()) 
+                                 "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "weight_X", "sXaug",
+                                 "dcdv_p4m")], 
+               envir = environment()) 
       # for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
       #              "w.resid", ## !important! cf test-adjacency-corrMatrix.R
       #              "weight_X", 
       #              "sXaug")) assign(st,damped_WLS_blob[[st]]) 
-      if ( ! GLMMbool ) {
-        Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the corr_method
+      if (is_p4m_H) { 
+        constant_zAug_args$ZAL <- dcdv_p4m # "doSeeMe" # dcdv_p4m seems logical    
+        #   #             given this 'ZAL' is used for the y2_sscaled term, in factor with sscaled (\varsigma)
+        #   #             so not from the term "in red". 
+      } else if ( ! GLMMbool ) {
+        Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the sXaug_method
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling
       }
       
@@ -169,7 +203,7 @@
       breakcond <- "maxit"
     }
     break_info$IRLS_breakcond <- breakcond
-    if (pforpv) { # outer beta: several change in v3.11.5 without parallel changes in .solve_IRLS_as_spprec
+    if (pforpv) { 
       break_info$maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
     } else break_info$maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])), 0)
     names(beta_eta) <- colnames(X.pv)
@@ -177,9 +211,9 @@
       fitted <- damped_WLS_blob$fitted
       weight_X <- damped_WLS_blob$weight_X ## F I X M E it seems better to store  weight_X  as attr(sXaug,...) and no weight_X elsewhere in output 
     } 
-    RESU <- list(sXaug=sXaug, 
-                 fitted=fitted, 
-                 weight_X=weight_X, 
+    RESU <- list(# sXaug=sXaug, 
+                 # fitted=fitted, 
+                 # weight_X=weight_X, 
                  nobs=nobs, pforpv=pforpv, seq_n_u_h=seq_n_u_h, u_h=u_h, 
                  muetablob=muetablob, 
                  lambda_est=lambda_est,

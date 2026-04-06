@@ -2,8 +2,8 @@ cat(cli::col_yellow("\ntest computations of numerical Information matrix:"))
 
 data("wafers")
 lmmfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),data=wafers)
-(numinfo <- numInfo(lmmfit,FALSE))
-crit <- diff(range(numinfo- numInfo(lmmfit,TRUE)))
+(numinfo <- numInfo(lmmfit,transf=FALSE))
+(crit <- diff(range(numinfo- numInfo(lmmfit,transf=TRUE))))
 testthat::test_that("numInfo(.,FALSE)= numInfo(.,TRUE)",
                     testthat::expect_true(crit<1e-10))
 crit <- max(abs(sqrt(diag(solve(numinfo))[3:9]) - summary(lmmfit,verbose=FALSE)$beta_table[,"Cond. SE"]))

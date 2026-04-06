@@ -1,3 +1,4 @@
+# currently returns a list with single element 'norm'
 .qresiduals <- function(object, families=object$families,
                         #
                         fam=family(object),
@@ -10,23 +11,27 @@
                         } else fitted(object),
                         BinomialDen=object$BinomialDen
 ) {
-  # Suggestion to correct by leverages... _____F I X M E____
-  # std_dev_res <- .std_dev_resids(object, phi_est=residVar(object, which="phi"), 
-  #                                lev_phi=hatvalues(object, type="std"))$std_dev_res
   if ( ! is.null(families)) { # mv case, list of families
+    qres <- vector("list", length(families))
     for (mv_it in seq_along(families)) {
-      qres <- vector("list", length(families))
       cum_nobs <- attr(families,"cum_nobs")
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       eta <- predict(object,type="link")
-      qres[[mv_it]] <- .qresiduals(fam=families[[mv_it]],
-                                   y=y[resp_range], pw=pw[resp_range],
+      fam <- families[[mv_it]]
+      qres[[mv_it]] <- .qresiduals(fam=fam, families=NULL,
+                                   y=y[resp_range], pw=pw[[mv_it]],
                                    pw_resvar=pw_resvar[resp_range],
                                    dev_res=dev_res[resp_range],
                                    mu_U=fam$linkinv(eta[resp_range]),
                                    BinomialDen=BinomialDen[resp_range])
     }
-    .unlist(qres)
+    # prospective generic code allowing additional future elements 
+    qres <- do.call(rbind, qres)
+    QRES <- list()
+    for(st in colnames(qres)) {
+      QRES[[st]] <- .unlist(qres[,st])
+    }
+    QRES
   } else {
     famfam <- fam$family
     qres <- switch(
@@ -127,18 +132,27 @@
           )
           u <- (u-p0)/(1-p0) 
         }
+        # A typical problem is y>> mu_U, a=b=1 and qnorm(u)=Inf for u ~ > 1-5e-17
         qres <- list(norm=qnorm(u))
       }
     )
+    qres  
   }
-  qres  
 }
 
-gof <- function(object, method="RQR", ...) {
-  if (method=="RQR") {
-    RQR <- .qresiduals(object, ...)
-    goftest <- stats::shapiro.test(RQR$norm)
+gof <- function(object, method="RQR", plot.=FALSE, testfn=stats::shapiro.test, ...) {
+  if (method %in% c("RQR","std_RQR")) {
+    RQR <- residuals(object, type=method)
+    if (any(is.infinite(RQR))) {
+      message("Infinite quantile residuals found, indicating large outliers.")
+      RQR <- pmax(pmin(RQR,.Machine$double.xmax),-.Machine$double.xmax) # otherwise shapiro.test() returns confusing NaN / NA.
+    }
+    if (length(RQR)>5000L && missing(testfn)) {
+      message("Too many values for shapiro.test(): using ks.test() instead.")
+      goftest <- stats::ks.test(RQR, y="pnorm", ...)
+    } else goftest <- testfn(RQR, ...)
     goftest$RQR <- RQR
+    if (plot.) plot(object, form=RQR, res_type=method, which="mean")
   }
   goftest
 }

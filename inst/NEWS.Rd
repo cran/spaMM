@@ -3,6 +3,64 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.6.65}{   
+\subsection{NEW FEATURES}{
+\itemize{
+\item gof() function gets a plot feature, an argument 'testfn' to control the way normality is assessed, and a distinct default test for inputs no handled by stats::shapiro.test().
+\item The pois4mlogit() function for multinomial logit models uses a sounder algorithm than its previous version. It also allows inclusion of additional submodels not belonging to the multinomial model.
+\item The lower and upper ranges of random-coefficients parameters can now be controlled through the 'lower' and 'upper' arguments of the higher-level fitting functions (notably fitme() and fitmv()).
+\item New function genX2X() to facilitate use of the X2X argument of fitmv().
+\item The 'scale' and 'k' arguments of the extractAIC.HLfit() method are now formally implemented to give results equivalent to the stats::extractAIC() methods when relevant.
+\item Change in arguments and default effect of plot.HLfit(): notably, the type of residuals plotted is no longer "std_dev_res" by default.
+\item numInfo() gets an extra argument 'attrs' (currently mostly for programming purposes), and the default value of its 'which' argument has been modified for fits using the h-likelihood approximation, such as PQL/L fits, for reasons detailed in the revised documentation.
+\item The '\dots' arguments of mapMM() are now also passed to predict.HLfit(), which means in particular that the mapMM() plot and return value can be altered by a 're.form' argument.
+\item In e.g. fitme(), the elements 'nloptr' and 'bobyqa' of the 'control' argument did not control nloptr() and bobyqa() when these functions were called through the default '.safe_opt' optimizer (spaMM.options() instead had to be used for this purpose). This control is now implemented. 
+\item Automatic handling of missing values in the data, which was already implemented for most formula terms allowed by spaMM, has been implemented for poly() terms. 
+\item Better check of the models compared by LRT() in the multivariate-response case, through better comparison of the data adjusted by the two models.
+\item predict(., verbose=c(na=FALSE)) can be used to suppress messages about missing values in the predictor variables. 
+\item "mv" attribute more consistently present in result of predict(<fitmv() result>,...), and documented. 
+\item New function optimBounds() to extract optimization box constraints from a fit object.
+\item The return value of get_inits_from_fit() now satisfy any partially-fixed elements of random-coefficient parameters.
+\item New global control 'dec2spp' may be useful to speed-up some large computations: see Details of help("algebra").
+\item numInfo(., return.="grad") to obtain the gradient instead of the Hessian (information matrix).
+\item For the cryptic Gamma(identity) random-effect family, "outer-optimizing" functions (such as fitme(), as opposed to HLfit()) now control appropriately the lambda parameter range and initial value, so that users do not need to specify such controls.
+}
+}
+\subsection{BACKWARD-INCOMPATIBLE CHANGE}{
+\itemize{
+\item LRT() no longer include by default the fit objects compared. Instead, the default (controlled by new argument 'include') is to include their calls.
+}
+}
+\subsection{FIXED BUGS IN PROCEDURES FOR MULTIVARIATE-RESPONSE MODELS}{
+\itemize{
+\item Simulation of multivariate-response models with zero-truncated families could fail.
+\item dev_resids() and hatvalues() extractors sometimes returned incomplete or wrongly formatted results.
+\item fitmv() could fail when some submodel had no fixed effect (meaning: not even an intercept).
+\item fitmv() ignored any user-provided 'AMatrices' information.
+\item update()ing a fitmv() result ignored any 'control.dist' argument in the original fit.
+\item Some pattern of missing information in the data was not correctly handled by the experimental pois4mlogit() function.
+\item gof() did not handle multivariate-response fits.
+}
+}
+\subsection{OTHER FIXED BUGS}{
+\itemize{
+\item Documentation for residuals(.,"std_dev_res") was misleading. 
+\item predict(.,newdata=...) computations from models involving corrMatrix terms and fitted by sparse-prediction methods could fail. This appears to be a remote consequence of one of the backward-incompatible changes made in package Matrix, version 1.6.0, overlooked in the preemptive fixes in spaMM 4.3.20 for such changes. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Gentle one-time warning added when extracting residuals of implicit default 'type' (deviance residuals) from a GLMM.
+\item Various messages now contain hyperlinks to the documentation, thanks to the 'cli' package.
+}
+}
+\subsection{MAIN DOCUMENTATION CHANGES}{
+\itemize{
+\item Revised examples in help("corrMatrix").
+\item Revised examples in help("random-effects"), showing how to use 'AMatrices'.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.6.1}{   
 \subsection{NEW FEATURES}{
 \itemize{
@@ -1222,7 +1280,7 @@ Widespread improvement in speed for large data sets, thanks to some of the  foll
 \item spaMM.options(<new values>) did not return old values.
 \item For GLMs, confint.HLfit() (computed no interval but) did return an empty interval.
 \item COMPoisson$linkfun sometimes returned theta=0, causing failure of fit.
-\item Several problems corrected in degrees of freedom computation for information criteria retruned by get_any_IC(). 
+\item Several problems corrected in degrees of freedom computation for information criteria returned by get_any_IC(). 
 \item Several problems corrected in prediction variance calculation with non-null 're.form'. 
 }
 }
@@ -1400,7 +1458,7 @@ Widespread improvement in speed for large data sets, thanks to some of the  foll
 \itemize{
 \item This new version includes several improvements of predict(), the most notable being a correction of prediction variances for new values of predictor variables, which were incorrect in CRAN version 1.6.2 (but not in CRAN version 1.5.1). Many other more trivial bugs or features of predict() have been corrected.   
 \item summary.fixedLRT() failed to display correctly the bootstrap results. This is corrected.
-\item A bug in C++ code, introduced in version  1.7.1, has been corrected in version 1.7.2; and code applying some Eigen functions on a matrix with a dimension equal to zero (generating an UBSAN runtime error but a correct retrun value in other conditions) has been fixed.
+\item A bug in C++ code, introduced in version  1.7.1, has been corrected in version 1.7.2; and code applying some Eigen functions on a matrix with a dimension equal to zero (generating an UBSAN runtime error but a correct return value in other conditions) has been fixed.
 }
 }
 }

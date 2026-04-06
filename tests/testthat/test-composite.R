@@ -8,8 +8,7 @@ cat(cli::col_yellow("\ntest-composite.R: "))
 
 if (FALSE) { # _F I X M E__ Interesting alternative numerical setings: only small effects on numerical precision, and some effects on speed (visibly on spherical fit)
   spaMM.options(
-    nloptr=list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1e-5, print_level=0), # distinct xtol_rel
-    xtol_abs_factors=c(rcLam=5e-6,rcCor=5e-5,others=5e-11,abs=1e-7), # distinct rcLam and rcCor
+    nloptr=list(xtol_rel=1e-5, xtol_abs_factors=c(rcLam=5e-6,rcCor=5e-5,others=5e-11,abs=1e-7)), 
     doSeeMe=warning
   )
 }

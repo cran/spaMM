@@ -26,7 +26,8 @@
 }
 
 
-.makeLowUp_stuff_mv <- function(optim_blob, user.lower, user.upper, optim.scale, processed, verbose, famdisp_lowupS=list()) {
+.makeLowUp_stuff_mv <- function(optim_blob, user.lower, user.upper, optim.scale, processed, verbose, famdisp_lowupS=list(),
+                                fixef_lowup=NULL) {
   init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
   for (char_mv_it in names(init.optim$rdisPars)) {
     famdisp_lowupS[[char_mv_it]] <- .wrap_calc_famdisp_lowup(family=processed$families[[char_mv_it]],
@@ -40,7 +41,8 @@
                     ranFix=optim_blob$fixed, # inits$ranFix, # Any change in $ranFix would be ignored 
                     optim.scale=optim.scale,
                     famdisp_lowup=famdisp_lowupS,
-                    fixef_lowup=NULL) 
+                    fixef_lowup=fixef_lowup,
+                    is_gammaId=attr(processed$rand.families,'is_gammaId')) 
   LUarglist$moreargs <- .calc_moreargs(processed=processed, 
                                        corr_types=processed$corr_info$corr_types, fixed=optim_blob$fixed, init.optim=init.optim, 
                                        control_dist=processed$control_dist, NUMAX=50, LDMAX=50, 

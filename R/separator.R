@@ -126,9 +126,9 @@ is_separated <- local({
         } else {
           if (is.null(has_e1071)) has_e1071 <<- suppressWarnings(do.call("require",list(package="e1071", quietly = TRUE))) # given it's not in DESCRIPTION
           if ( ! warned_is) {
-            locmess <- paste0("If the 'ROI.plugin.glpk' package were installed,\n",
+            locmess <- cli::format_message(paste0("If the 'ROI.plugin.glpk' package were installed,\n",
                    "spaMM could properly check (quasi-)separation in binary regression problem.\n",
-                   "See help('external-libraries') if you have troubles installing 'ROI.plugin.glpk'.\n")
+                   "See {.topic [external-libraries](spaMM::external-libraries)} if you have troubles installing 'ROI.plugin.glpk'.\n"))
             if (has_e1071) {
               locmess <- paste0(locmess,
                                 "Alternative procedure 'e1071::svm()' will be used for checking separation.")
@@ -146,8 +146,8 @@ is_separated <- local({
         }
       }
       if (pb_size> spaMM.getOption("separation_max")) {
-        message(paste("Increase spaMM.options(separation_max=<.>) to at least", ceiling(pb_size),
-                      "if you want to check separation (see 'help(separation)')."))
+        message(cli::format_message(paste("Increase spaMM.options(separation_max=<.>) to at least", ceiling(pb_size),
+                      "if you want to check separation (see {.topic [separation](spaMM::separation)}).")))
         return(FALSE)
       } else separation <- .test_and_find_sep(x, y, verbose=verbose, solver=solver)
     }

@@ -248,7 +248,11 @@
 # This is an EXPORTED function: 
 # but ____F I X M E____ no longer used by Infusion (v2.1.206 2024/09/20)
 # so ultimately we should be able to remove it.
-.setCluster <- function(nb_cores, cluster_args, iseed, fit_env=NULL) {
+.setCluster <- function(...) {
+  stop("spaMM::.setCluster() is deprecated. Please update the package that called it.")
+}
+
+.deprecated_setCluster <- function(nb_cores, cluster_args, iseed, fit_env=NULL) {
   
   cluster_args <- .set_cluster_type(cluster_args, nb_cores=cluster_args$spec) # If I extract this call from the .setCluster() 
   #   I must make sure that spaMM:::.set_cluster_type is accessible in other packages willing to use .setCluster()

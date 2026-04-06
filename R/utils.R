@@ -29,10 +29,44 @@
                       message = m.handler)
 }
 
-.minimalErrorHandler <- function(cond) invisible(structure("See 'condition' attribute", class = "try-error", condition = cond))
+.minimalErrorHandler <- function(cond) invisible(structure("See 'condition' attribute", 
+                                                           class = "try-error", condition = cond))
 
-## meeting the width.cutoff in deparse :-(
-# Details of ?deparse imply that parse/deparse operations are not completely reversible. 
+.sendFromTheDepths <- function(message="", ..., class,call=NULL, 
+                               verbose=.spaMM.data$options$debugFromTheDepths) {
+  dotlist <- list(...)
+  if (verbose) cat(".sendFromTheDepths: ", names(dotlist),"\n")
+  cond <- structure(
+    c(list(message=message, call=call), dotlist),
+    class = c(class,  # names(dotlist), 
+              "immediateCondition", "condition")
+  )
+  signalCondition(cond)
+}
+
+# Nested .get() and .send() not recently tried.
+# Previously .get_LUarglist_from_p4m_call() could call .get_surrogate_info(), and this failed,
+# but perhaps due to trivial misconception; cf also different returned classes now.
+.getFromTheDepths <- function(expr, what, verbose=.spaMM.data$options$debugFromTheDepths, class) {
+  if (verbose) cat("begin .getFromTheDepths: ", what,"\n")
+  resu <- NULL
+  handler <- function(e) {
+    if (verbose) {
+      cat("handler .getFromTheDepths: ", what,"\n")
+      str(e)
+    }
+    resu <<- e[[what]] # e being list with 'message', 'call', and elements of the ... passed to .sendFromTheDepths()
+  }
+  tryCatchcall <- substitute(tryCatch(expr)) 
+  tryCatchcall[[class]] <- handler
+  eval(tryCatchcall, parent.frame())
+  
+  resu
+}
+
+
+## meeting the width.cutoff in deparse, which splits longer strings in a vector of strings respecting the cutoff. 
+# parse()ing such a vector of string would not exactly reverse the deparse operation. We collapse the vector:
 .DEPARSE <- function(expr,collapse="") { paste(deparse(expr),collapse=collapse) }
 # parse(text=paste(deparse(binomial()), collapse="")) fails
 # parse(text=paste(deparse(binomial()), collapse="\n")) works
@@ -82,12 +116,13 @@ overcat <- function(msg, prevmsglength) {
   if (res=='b') browser("To debug, run options(error=recover); stop()" )
 }
 
-# must work on S4 objects but we avoid defining a new S4 class... hence we don't manipulate class
-# This is called on 'A'matrices and on X.pv. In the latter case for an mv fit colnames MUST be present.
+# .subcol_wAttr() is called on 
+# (1) X.pv, with j= unique colnames ()
+# (2) Amatrix, with j= integers describing a permutation (colnames not appropriate as they may be repeated in A).
 .subcol_wAttr <- function(X, j, drop) {
   Xattr <- attributes(X)
   X <- X[,j=j,drop=drop]
-  names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
+  names_lostattrs <- setdiff(setdiff(names(Xattr), names(attributes(X))),"scaled:scale")
   if ( ! is.null(col_ranges <- Xattr$col_ranges)) { # mv model; tested but numInfo(zut0) in test-mv-extra which is NOT part of long tests.
     n_subm <- length(col_ranges)
     ncol_vec <- integer(n_subm)
@@ -99,6 +134,7 @@ overcat <- function(msg, prevmsglength) {
     Xattr$col_ranges <- col_ranges
   }
   attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
+  attr(X,"scaled:scale") <- Xattr$"scaled:scale"[colnames(X)] ## not mostattributes hich messes S4 objects ?!
   return(X)
 }
 
@@ -386,7 +422,8 @@ projpath <- local({
   }
 }
 
-.safe_true <- function(cond) {( identical(cond,TRUE) ||       (( ! is.na(cond)) && is.numeric(cond) && cond>0) )   } # must exclude NA_real_ and allow 1 or 1L...
+.safe_true <- function(cond) {( identical(cond,TRUE) ||       
+                                  (( ! is.na(cond)) && is.numeric(cond) && cond>0) )   } # must exclude NA_real_ and allow 1 or 1L...
 
 # .pMatrix_perm <- function(pMat) {
 #   if (.hasSlot(pMat, "margin") && pMat@margin==2) {
@@ -427,3 +464,14 @@ projpath <- local({
   }
   stats
 }
+
+.stndrdth <- function(i) {
+  switch(EXPR=paste(i %% 10L),
+         "1" = "st",
+         "2" = "nd",
+         "3" = "rd",
+         "th"
+  )
+}
+
+

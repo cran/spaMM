@@ -44,8 +44,8 @@ HLfit_body_old <- function(processed,
   #   hence any local copy of ZAlist should come after that call. (but local copy removed)
   ## 
   ranFix$lambda <- 
-    .reformat_lambda(ranFix$lambda, nrand, 
-                     namesTerms=attr(processed$ZAlist,"namesTerms"), full_lambda=TRUE) # necessary to standardize names before next line
+    .reformat_lambda(ranFix$lambda, processed=processed, nrand=nrand, 
+                     full_lambda=TRUE) # necessary to standardize names before next line
   if (any(ranFix$lambda==0,na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
   lam_fix_or_outer_or_NA <- processed$reserve$repNAnrand
   lam_fix_or_outer_or_NA[names(ranFix$lambda)] <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
@@ -77,7 +77,9 @@ HLfit_body_old <- function(processed,
     whichadj <- which(attr(processed$ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2017
     fixed_adjacency_info <- .get_fixed_adjacency_info(whichadj, LMatrices, cum_n_u_h, corr_est, ranFix, init.HLfit)
     # only APHLs:
-    return(.nothing_to_fit(phi.Fix, off, models, etaFix, processed$rand.families, cum_n_u_h, 
+    return(.nothing_to_inner_fit(phi.Fix, 
+                           #off, 
+                           models, etaFix, processed$rand.families, cum_n_u_h, 
                            lam_fix_or_outer_or_NA, vec_n_u_h, n_u_h, fixed_adjacency_info, ZAL, BinomialDen, processed)) 
     # => Possible error with .do_TRACE bc the exit tracing code does not find the 'res' variable, not locally defined in the case. I could add res <- ... here.
   }   ### RETURN !! ## not of class HLfit, and p_bv is not returned.
@@ -362,7 +364,7 @@ HLfit_body_old <- function(processed,
         ##    Also I would see greater inaccuracies in the "independent fits" mv tests.
         APHLs_ZX <- .calc_APHLs_from_ZX(auglinmodblob,which=whichAPHLs,processed) # with old lambda est
         if (max(abs(APHLs[[processed$objective]]-APHLs_ZX[[processed$objective]]))<
-            .spaMM.data$options$spaMM_tol$logL_tol) break
+            processed$spaMM_tol$logL_tol) break
         # else there is too much variation in processed$objective: the loop continues.
       }
     } 

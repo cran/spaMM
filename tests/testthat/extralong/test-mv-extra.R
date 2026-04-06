@@ -2,9 +2,9 @@ cat(cli::col_yellow("\ntest-mv-extra:")) # not part of the testthat.R tests (nei
 
 library(spaMM)
 options(error=recover)
-spaMM_tol <- local_tol <- spaMM.getOption("spaMM_tol")
-local_tol$logL_tol <- 5e-07
-spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independent-fit tests
+local_spaMM_tol <- utils::modifyList(spaMM.getOption("spaMM_tol"), 
+                                     list(logL_tol=5e-07))
+spaMM_tol_ori <- spaMM.options(spaMM_tol=local_spaMM_tol) # to control strictness of checks in independent-fit tests
 { # test missing data
   set.seed(1)
   
@@ -78,8 +78,8 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   testthat::test_that("numInfo() consistent with cond.SEs", testthat::expect_true(crit<3e-10))
   
   { # check of extra argument to mv()
-    (zut0lhs <- fitmv(submodels=list(mod1=list(formula=ly~X1+(0+mv(1,2, lhs="1")|batch)),
-                                  mod2=list(formula=y3~X1+(0+mv(1,2, lhs="1")|batch), family=gaussian())), 
+    (zut0lhs <- fitmv(submodels=list(mod1=list(formula=ly~X1+(0+mv(1,2, xpr="1")|batch)),
+                                  mod2=list(formula=y3~X1+(0+mv(1,2, xpr="1")|batch), family=gaussian())), 
                    data=wafmv)) 
   }
   
@@ -707,7 +707,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
   (zut4 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ Matern(1|longitude+latitude)),
                          mod1=list(migStatus ~ 1+ Matern(1|longitude+latitude),fixed=list(phi=0.1,rho=0.0544659,nu=0.6285603))), 
                  data=cap_mv))
-  testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(zut3), logLik(zut4)))<1e-9)
+  testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(zut3), logLik(zut4)))<3e-9) # marginally larger diff() in "spprec"
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   get_predVar(zut4, variances=list(cov=TRUE)) 
   if (FALSE) { # may be used to check the mapping, but to have asym off-diag blocks, use migStatus ~ 1+ Matern(1|longitude+latitude)+(1|grp), the latter with fixed large variance
@@ -856,6 +856,9 @@ if (requireNamespace("INLA",quietly = TRUE)) {
     p2 <- predict(mvIMRF, newdata=mvIMRF$data)
     (crit <- max(abs(p1-p2)))
     testthat::expect_true(crit<1e-9)
+    p3 <- predict(mvIMRF, newdata=mvIMRF$data[c(2,1),])
+    (crit <- max(abs(p2[c(1,2,15,16)]-p3[c(2,1,4,3)]))) # cf comments in ..calc_normalized_ZA() 
+    testthat::expect_true(crit<1e-9)
     p1 <- get_predVar(mvIMRF, variances=list(cov=TRUE))
     p2 <- get_predVar(mvIMRF, newdata=mvIMRF$data, variances=list(cov=TRUE))
     (crit <- max(abs(p1-p2)))
@@ -888,7 +891,7 @@ if (requireNamespace("INLA",quietly = TRUE)) {
     try(testthat::test_that(paste0("Another inaccurate fit with divergent lambda: criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()  ... and minKappa...
                         testthat::expect_true(crit<1e-08)))
   }
-  if (spaMM.getOption("example_maxtime")>87) {
+  if (spaMM.getOption("example_maxtime")>68) {
     cat(cli::col_yellow("multIMRF indep-fit tests; "))
     (mrf1fixx <- fitme(migStatus ~ 1 + (1|pos) + 
                     multIMRF(1|longitude+latitude,margin=5,levels=2), 
@@ -963,7 +966,7 @@ if (requireNamespace("INLA",quietly = TRUE)) {
       # I can no longer replicate the problem.
     }
     
-  } else cat(cli::bg_green(cli::col_black("\n multIMRF indep-fit tests are slow (~87s). Run them once in a while; ")))
+  } else cat(cli::bg_green(cli::col_black("\n multIMRF indep-fit tests are slow (~68s). Run them once in a while; ")))
   
   { cat(cli::col_yellow("multIMRF permutation tests; ")) # ~ 13s
     # reason for init phi as above: to avoid a local maximum
@@ -979,7 +982,7 @@ if (requireNamespace("INLA",quietly = TRUE)) {
       # The following code fits a single (repeated) kappa value, and only one lambda hyperparam. 
       # So the single IMRF from multIMRF(. ,levels=1) is possibly
       # recognized as first level of multIMRF(. ,levels=2). Which may be nice, or may not be the intent. (__FIXME__).
-      # (What does .calc_normalized_ZAlist() do ?)
+      # (What does .calc_normalized_newZAlist() do ?)
       # Adding a fictitious argument bla=666 has no effect as it is not retained in the expanded formula.
       (zut2 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ multIMRF(1|longitude+latitude,margin=5,levels=1)),
                                     mod1=list(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=2))), 
@@ -1112,6 +1115,25 @@ if (requireNamespace("INLA",quietly = TRUE)) {
                  data=sleepmv))
   testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
   
+}
+
+{ # genX2X + predict
+  
+  data(clinics)
+  climv <- clinics
+  (fitClinics <- HLfit(cbind(npos,nneg)~treatment+(1|clinic),
+                       family=binomial(),data=clinics))
+  set.seed(123)
+  climv$np2 <- simulate(fitClinics, type="residual")
+  
+  (mvfit3g <- fitmv(
+    submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
+                   mod2=list(formula=np2~treatment+(1|clinic),
+                             family=poisson(), fixed=list(lambda=c("1"=1)))), 
+    X2X = genX2X(list("(Intercept)"=c("(Intercept)_1","(Intercept)_2"))),
+    data=climv))
+  
+  predict(mvfit3g)
 }
 
 if(FALSE) { cat(cli::col_yellow("simulation study; "))
@@ -1310,6 +1332,6 @@ if (FALSE) {
     #summary(glht(asMM,mcp("varld" = "Tukey"), coef.=fixef.HLfit)) # documented limitation # but ____F I X M E____ think about a fix?
   }
 }
-spaMM.options(spaMM_tol=spaMM_tol) 
+spaMM.options(spaMM_tol_ori) 
 summary(warnings())
   

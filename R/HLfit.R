@@ -118,9 +118,9 @@ HLfit <- function(formula,
   pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","ranFix") 
   for (st in pnames) mc[st] <- NULL ## info in processed
-  mc[[1L]] <- processed$HLfit_body_fn2
-  if (.safe_true(processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"'"] is TRUE or 1
-  hlfit <- eval(mc,parent.frame())
+  mc[[1L]] <- processed$HLfit_body_fn2 # One of the "HLfit_body... functions
+  if (.safe_true(processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"] is TRUE or 1
+  hlfit <- eval(mc,parent.frame()) # HLfit_body() call
   .check_conv_dispGammaGLM_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
@@ -196,11 +196,13 @@ HLfit <- function(formula,
                       .canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)))
       processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
     } 
+    ## Old comment:
     # since there is a $processed, we can call HLfit_body here (with HLnames <- names(formals(HLfit_body))), rather than HLfit
     # The main difference is a more definite selection of arguments in the HLfit_body() call through HLfit()
     # and the call to .check_conv_dispGammaGLM_reinit()
+    ## But the called fn, processed$HLfit, is HLfit() and there are distinct processed$HLfit_body_fn[2]
     HLfit.call$fixed <- fixed
-    HLfit.call[[1L]] <- processed$HLfit
+    HLfit.call[[1L]] <- processed$HLfit # "HLfit"
     hlfit <- eval(HLfit.call)
     resu <- hlfit$APHLs[[objective]]
     if (print_phiHGLM_info && processed$verbose["phifit"]>1L) {

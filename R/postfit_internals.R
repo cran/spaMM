@@ -583,13 +583,13 @@ DoF <- function(object) {
     }
   } ## wAugX is in XZ_OI order 
   if (inherits(wAugX,"Matrix")) {
-    corr_method <- .spaMM.data$options$Matrix_method 
-  } else corr_method <- .spaMM.data$options$matrix_method
-  .silent_M_E(untrace(corr_method, where=asNamespace("spaMM"))) # try() bc this fails when called by Infusion 
+    sXaug_method <- .spaMM.data$options$Matrix_method 
+  } else sXaug_method <- .spaMM.data$options$matrix_method
+  .silent_M_E(untrace(sXaug_method, where=asNamespace("spaMM"))) # try() bc this fails when called by Infusion 
   # test: Infusion tests -> ... -> .predict_body -> ;.. -> .calc_beta_cov_info_others -> untrace -> def_sXaug_EigenDense_QRP_Chol_scaled not found
   # Note that the function is in exportPattern, explicitly exporting/impporting it does not help; attaching spaMM seems required to avoid untrace's error..
-  # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by corr_method. 
-  wAugX <- do.call(corr_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
+  # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by sXaug_method. 
+  wAugX <- do.call(sXaug_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
                                        w.ranef=rep(1,ncol(AUGI0_ZX$I)), ## we need at least its length for get_from Matrix methods
                                        H_global_scale=1))
   attr(wAugX,"AUGI0_ZX") <- AUGI0_ZX #  cf use of trDiag in .sXaug_Matrix_QRP_CHM_scaled -> solve_R_scaled
@@ -630,7 +630,8 @@ DoF <- function(object) {
 .get_beta_cov_info <- function(res) { 
   # Provide list(beta_cov=., tcrossfac_beta_v_cov=.)
   if (.is_spprec_fit(res)) {
-    return(.calc_beta_cov_info_spprec(X.pv=res$X.pv, envir=res$envir)) 
+    if (is.null(dcdb_p4m <- res$envir$sXaug$AUGI0_ZX$dcdb_p4m)) dcdb_p4m <- res$X.pv # p4m spprec has $dcdb_p4m
+    return(.calc_beta_cov_info_spprec(X.pv=dcdb_p4m, envir=res$envir)) 
   } else if (! is.null(res$envir$sXaug)) { # excludes SEM *and* fixed-effect models 
     if (prod(dim(res$envir$sXaug))>1e7) message("[one-time computation of covariance matrix, which may be slow]")
     if (res$spaMM.version<"2.7.34") attr(res$envir$sXaug,"scaled:scale") <- attr(res$X.pv,"scaled:scale")

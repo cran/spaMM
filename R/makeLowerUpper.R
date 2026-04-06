@@ -43,7 +43,8 @@
 
 
 .calc_fixef_lowup <- function(processed) {
-  eta_range <- .sanitize_eta(eta=c(-Inf,Inf),family = processed$family)
+  eta_range <- .sanitize_eta(eta=c(-Inf,Inf),family = processed$family, 
+                             processed=processed) # 'processed' arg for fitmv
   lo <- eta_range[1]
   hi <- eta_range[2]
   X <- environment(processed$X_off_fn)$X_off # should be the scaled version. rcdd is not robust to extreme values
@@ -68,12 +69,13 @@
 
 
 .makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
-                            init.optim, ## ~in transformed scale : is has all pars to be optimized
+                            init.optim, ## ~in transformed scale : it has all pars to be optimized
                             user.lower=list(),user.upper=list(),
                             corr_types=NULL, ranFix=list(),
                             optim.scale, moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf,
                             famdisp_lowup=NULL,
-                            fixef_lowup=NULL) {
+                            fixef_lowup=NULL,
+                            is_gammaId) {
   lower <- upper <- init.optim   
   for (it in seq_along(corr_types)) {
     corr_type <- corr_types[[it]]
@@ -271,13 +273,16 @@
     upper$trPhi <- .dispFn(phi)
   }
   if (! is.null(canon.init$lambda)) {
+    char_names <- names(canon.init$lambda)
     lambda <- user.lower$lambda
     if (is.null(lambda)) lambda <- pmax(1e-6,canon.init$lambda/1e5)
-    names(lambda) <- names(canon.init$lambda) # late addition for mv code
+    names(lambda) <- char_names # late addition for mv code
     lower$trLambda <- .dispFn(lambda)
     lambda <- user.upper$lambda
     if (is.null(lambda)) lambda <- pmin(1e8,canon.init$lambda*1e7)
-    names(lambda) <- names(canon.init$lambda) # late addition for mv code
+    fixand <- which(is_gammaId[as.integer(char_names)])
+    lambda[fixand] <- pmin(lambda[fixand], 0.999999) # max lambda range for Gamma(identity) ranef is <1 (w.ranef <0 beyond) 
+    names(lambda) <- char_names # late addition for mv code
     upper$trLambda <- .dispFn(lambda)
   }
   if (! is.null(canon.init$COMP_nu)) {
@@ -353,12 +358,18 @@
         trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),
                                                  tol_ranCoefs=.spaMM.data$options$tol_ranCoefs_outer,
                                                  rC_transf=rC_transf)
-        lower$trRanCoefs[[char_rd]] <- trRancoef_LowUp$lower
-        upper$trRanCoefs[[char_rd]] <- trRancoef_LowUp$upper
+        ## cf .apply_transformed_box_constr() that allows applying user bounds on *$"ranCoefs"* at the right moment 
+        if ( ! is.null(trRancoef <- user.lower$trRanCoefs[[char_rd]])) {
+          lower$trRanCoefs[[char_rd]] <- trRancoef
+        } else lower$trRanCoefs[[char_rd]] <- trRancoef_LowUp$lower
+        
+        if ( ! is.null(trRancoef <- user.upper$trRanCoefs[[char_rd]])) {
+          upper$trRanCoefs[[char_rd]] <- trRancoef
+        } else upper$trRanCoefs[[char_rd]] <- trRancoef_LowUp$upper
       }
     }
   }
-  if ( ! is.null( beta <- canon.init[["beta"]])) { # outer beta
+  if ( length( beta <- canon.init[["beta"]])) { # outer beta
     if (.spaMM.data$options$tr_beta) {
       lower$trBeta[names(beta)] <- -Inf
       upper$trBeta[names(beta)] <- Inf

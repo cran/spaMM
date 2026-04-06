@@ -3,15 +3,16 @@ setClassUnion("missingOrNULL", c("missing", "NULL"))
 # ZAXlist is a representation of ZAL as a list 'LIST' of blocks for each ranef, 
 # where each block is a M/matrix, or a ZA_QCHM object which is a list made of ZA and of a chol factor (L=solve(Q_CHM,system="Lt"))
 # The aim of this class is to use solve(sparse chol_Q, ...) rather that to use the dense product ([pre-stored] solve(chol_Q)) %*% ... 
-setClass("ZAXlist", slots = list( LIST = "list"))
+setClass("ZAXlist", slots = list( LIST = "list", as_matrix="logical", envir="environment"))
+# in, sya, a dsCMatrix, @factors are cached by the .set.factor() function, effectively in C.
 
 ## This is ambiguous, bc result is not necessarily consistent with the generically expected result:
-# as.matrix.ZAXlist <- function(x, as_matrix=FALSE, ...) .ad_hoc_cbind(x@LIST, as_matrix=as_matrix )
+# as.matrix.ZAXlist <- function(x, as_matrix=FALSE, ...) .ad_hoc_cbind(x@LIST, as_matrix=x@as_matrix )
 
 t.ZAXlist <- function(x) { # for the few uses of t(ZAL) that may occur on a ZAXlist (<-> spprec)
   # such as .hatvals2std_lev() -> .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta))
   # A test code is wfit <- HLfit(..., resid.model = ~ X3+I(X3^2) , data=wafers) with forced spprec (through test-confint-spprec.R)
-  t(.ad_hoc_cbind(x@LIST,as_matrix=FALSE)) # wastes the benefits of ZALlist in spprec _F I X M E__
+  t(.get_bind_ZAXlist(x)) 
 } 
 
 .ZAX_num_prod <- function(x, y) {
@@ -116,7 +117,7 @@ if (FALSE) {
             # Occurs in get_predVar(fit1) -> ... -> .calcD2hDv2 ->  crossprodZAL <- .crossprod(ZAL)
             # There are cross-block products, so... 
             definition = function(x, y) {
-              ZAL <- .ad_hoc_cbind(x@LIST, as_matrix=FALSE )
+              ZAL <- .ad_hoc_cbind(x@LIST, as_matrix=x@as_matrix )
               .crossprod(ZAL)
             })
 }
@@ -297,10 +298,25 @@ if (FALSE) {
   Kf %*%  c(7,11,13,17)
 }
 
-# Quite late additional, single use: __F I X M E___ rethink ?
+# Quite late addition, single use: __F I X M E___ rethink ?
 # ncol is not a generic (it is dim()[2] where dim is a primitive)
 .ncol <- function(x) {
   if (inherits(x,"ZA_QCHM")) {
     ncol(x$Q_CHMfactor)
   } else ncol(x)
 }
+
+.get_bind_ZAXlist <- function(zaxlist) {
+  if (is.null(mMat <- zaxlist@envir[["mMat"]]))
+    zaxlist@envir[["mMat"]] <- mMat <- .ad_hoc_cbind(zaxlist@LIST, as_matrix=zaxlist@as_matrix )
+  mMat
+}
+
+# That might be useful inline but no case yet:
+# .get_bind <- function(ZAL_info) {
+#   if (inherits(ZAL_info,"ZAXlist")) {
+#     .get_bind_ZAXlist(ZAL_info)
+#   } else {
+#     ZAL_info 
+#   }
+# }

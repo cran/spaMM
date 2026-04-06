@@ -216,9 +216,24 @@ fitted.HLfit <- function(object,...) {
   drop(res)
 }
 
-residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "working", "std_dev_res", "RQR"), 
+.warn_residuals_once <- local({
+  warned <- FALSE
+  function(object) {
+    if ( ! warned) {
+      warning(cli::format_warning("(One-time warning): default residuals are 'deviance', not 'response' residuals. See {.topic [residuals](spaMM::residuals)}."),
+              immediate. = TRUE)
+      warned <<- TRUE
+    }
+  }
+})
+
+residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "working",
+                                             "RQR", "std_RQR", 
+                                             "std_dev_res", "std_dev_rt"), 
                             force=FALSE, ...) {
   object <- .getHLfit(object)
+  if (missing(type) && 
+      identical(attr(object$models,"GLMMbool"), TRUE)) .warn_residuals_once(object)
   type <- match.arg(type)
   BinomialDen <- .get_BinomialDen(object) 
   if (is.null(BinomialDen)) BinomialDen <- 1L
@@ -229,14 +244,21 @@ residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", 
   } else if (type=="working") { # residuals in glm.fit
     family <- object$family
     return(drop(y - mu)/family$mu.eta(family$linkfun(mu))) 
-  } else if (type=="std_dev_res") {
-    if (force || is.null(res <- object$std_dev_res[,1])) {
+  } else if (type=="std_dev_res") { 
+    # sometimes have a saved copy in object, so backward-incomp changes in API are not easy. 
+    if (force || ! length(as.vector(res <- object$std_dev_res))) {
       std_dev_res <- .std_dev_resids(object, phi_est=residVar(object, which="phi"), 
                                      lev_phi=hatvalues(object, type="std"))$std_dev_res
       res <- (sign(y-mu) * std_dev_res)[,1]
     }
+  } else if (type=="std_dev_rt") {
+    std_dev_res <- residuals(object,  type="std_dev_res") # signed square ! 
+    res <- sign(std_dev_res) * sqrt(abs(std_dev_res)) # signed root !
   } else if (type=="RQR") {
     return(.qresiduals(object)$norm)
+  } else if (type=="std_RQR") {
+    lev_phi <- hatvalues(object, type="std")
+    return(.qresiduals(object)$norm/sqrt(1-lev_phi))
   } else { # deviance and pearson residuals.
     pw <- object$prior.weights
     family <- object$family
@@ -266,6 +288,7 @@ ranef.HLfit <- function(object,type="correlated",...) {
   repGroupNames <- unlist(lapply(seq_len(length(print_namesTerms)), function(it) {
     names(print_namesTerms[[it]]) <- rep(names(print_namesTerms)[it],length(print_namesTerms[[it]]))
   })) ## makes group identifiers unique (names of coeffs are unchanged)
+  if (type=="bare.init") return(as.vector(object$v_h)) # ~ .unlist(ranef(., type="uncorrelated")); no names.
   if (type=="correlated") {
     uv_h <- object$v_h 
   } else uv_h <- .get_u_h(object) #random effects \eqn{u}
@@ -667,15 +690,11 @@ vcov.HLfit <- function(object, ...) {
     known_homosc <- (exp_ranef_type %in% .spaMM.data$keywords$built_in_ranefs &&
                        ! exp_ranef_type %in% c("IMRF", "MaternIMRFa"))
     if ( (! known_homosc) && any(abs(diag(resu)-1)>1e-6)) {
-      # if (inherits(resu,"Matrix") #&& 
-      #     # .calc_denseness(resu, relative = TRUE) < .spaMM.data$options$sparsity_threshold
-      #     ) { 
-      #   resu <- Matrix::cov2cor(resu) # cov2cor is not documented as a generic... but see Matrix::cov2cor
-      # } else resu <- cov2cor(as.matrix(resu)) # Matrix::cov2cor(<dsC>) is slow and we're not specifically interested in returning a dsC
-      #
-      # Potential pb is that although AL may or may not be effectively sparse, 
+      # although AL may or may not be effectively sparse, 
       #  it is a sparseMatrix and the crossprod is in sparse dsC format
-      # I decided to keep this sparse Matrix storage  (memory rather than speed optim)
+      # This keep this sparse Matrix storage although it may not always be optimal
+      # (memory rather than speed optim)
+      # + Commented code removed from [ v4.6.51
       resu <- cov2cor(resu) 
     }
   }
@@ -830,7 +849,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, format="
 } 
 
 # This is called by dev_resids(), deviance(), and .std_dev_resids() with different default 'pw'
-.dev_resids <- function(object, fv=object$fv, y=object$y, BinomialDen=object$BinomialDen, family=object$family, 
+.dev_resids <- function(object, fv=object$fv, y=drop(object$y), BinomialDen=object$BinomialDen, family=object$family, 
                         families=object$families, phi_est=NULL, lev_phi, scaling_pw=FALSE, 
                         pw, unlist.=TRUE, ...) { 
   if ( ! is.null(families)) { # mv case, list of families
@@ -1391,11 +1410,24 @@ AIC.HLfit <- function(object, ..., nsim=0L, k, verbose=interactive(), also_cAIC=
   } else get_any_IC(object, nsim=nsim, ..., verbose=verbose, also_cAIC=also_cAIC, short.names=short.names) # no dots => no unnames second argument
 }
 
-extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::extractAIC generic
+extractAIC.HLfit <- function(fit, scale=0, k=2L, ..., verbose=FALSE) { ## stats::extractAIC generic
   df <- fit$dfs[["pforpv"]] # cf Value and Examples of extractAIC.HLfit showing in which sense this is the correct value.
-  aic <- AIC(object=fit, ..., verbose = verbose, also_cAIC=FALSE, short.names=TRUE)[["mAIC"]] # does not use k
-  if (k !=2L) aic <- aic + (k - 2)*df
-  c(edf=df, AIC=aic) 
+  if (scale > 0) {
+    ## might test
+    # if ( ! (length(object$rand.families)==0L && # not mixed
+    #         ( 
+    #           (inherits(object,"fitmv") && all(sapply(object$families, `[[`, x="family")=="gaussian")) ||
+    #           object$family$family == "gaussian"
+    #         )
+    # ))
+    RSS <- deviance.HLfit(fit)
+    dev <- RSS/scale -  nobs(fit)
+    c(edf=df, Cp=dev+k*df) 
+  } else {
+    aic <- AIC(object=fit, ..., verbose = verbose, also_cAIC=FALSE, short.names=TRUE)[["mAIC"]] # does not use k
+    if (k !=2L) aic <- aic + (k - 2L)*df
+    c(edf=df, AIC=aic) 
+  }
 }
 
 .get_XZ_0I <- function(object) { ## there is a .calc_XZ_0I from the processed AUGI0_ZX
@@ -1867,3 +1899,68 @@ model.offset.HLfit <- function(fitobject, data=fitobject$data) { # NOT a method 
     .unlist(moff)
   } else model.offset(model.frame(terms(fitobject), data))
 }
+
+.optimBounds <- function(x, transf, 
+                        LUarglist=attr(x,"optimInfo")$LUarglist,
+                        sub_corr_info=x$ranef_info$sub_corr_info) { 
+  if (! length(LUarglist)) return(list())
+  lowup <- do.call(".makeLowerUpper",LUarglist) 
+  if ( ! transf) {
+    if (length(.unlist(lowup$lower$trRanCoefs)) ||
+        length(.unlist(lowup$upper$trRanCoefs)))
+    message(cli::format_message("Returning $trRanCoefs, not untransformed as $ranCoefs (see Details of {.help [{.fun optimBounds}](spaMM::optimBounds)})"))
+    lowup <- list(
+      lower=.canonizeRanPars(lowup$lower, corr_info=sub_corr_info, 
+                             checkComplete=FALSE, 
+                             rC_transf=NULL),
+      upper=.canonizeRanPars(lowup$upper, corr_info=sub_corr_info, 
+                             checkComplete=FALSE, 
+                             rC_transf=NULL)
+    )
+  }
+  lowup
+}
+
+optimBounds <- function(x, # a fit object
+                        transf, ... ) {
+  .optimBounds(x=x, transf=transf, ... )
+}
+
+.get_LUarglist_from_mv_call <- function(mc, # fitmv or .p4m_by_iters() call (the latter having be preprocessed, cf next fn)
+                                        fullinit) {
+  # a get_LUarglist control avoiding any fitting step was tried but the return would be from deep in the call stack
+  fullinit <- .modify_list(fullinit[["init"]], fullinit[["init.HLfit"]])
+  names(fullinit)[names(fullinit)=="fixef"] <- "beta" # moche
+  mc[["init"]] <- fullinit
+  mc["verbose"] <- NULL  
+  mc[["control"]] <- .modify_list(mc[["control"]], list(getFromTheDepths="LUarglist"))
+  LUarglist <- .getFromTheDepths(eval(mc,parent.frame()), what="LUarglist", class="spaMM.FTD.LU") 
+  mc[["control"]][["getFromTheDepths"]] <- NULL
+  LUarglist
+}
+
+.get_LUarglist_from_p4m_call <- function(mc, fullinit) {
+  if (is.null(mc[["multinom_info"]])) {
+    warnmess <-paste0(
+      'is.null(mc[["multinom_info"]]) in .get_LUarglist_from_p4m_call():\n',
+      'at best inefficient\n')  # worse if code in fitmv_body() implies nested 
+    #  .getFromTheDepths() calls (see comments there)
+    warning(warnmess, immediate. = TRUE)
+  }
+  mc[["progress"]] <- 0L
+  mc[["n_iter"]] <- 1L # fit not needed
+  .get_LUarglist_from_mv_call(mc, fullinit) # running a .p4m_by_iters() call         
+}
+
+# Of limited use, maybe not generally valid:
+.get_objective <- function(fitobject) {
+  objective <- attr(fitobject,"optimInfo")$objective
+  if (is.null(objective)) { 
+    is_REML <- .REMLmess(fitobject,return_message=FALSE)
+    if (is_REML) {
+      objective <- "p_bv"
+    } else objective <- "p_v"
+  } 
+  objective
+}
+

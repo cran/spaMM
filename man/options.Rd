@@ -26,7 +26,7 @@ spaMM.getOption(x)
 \item{\code{example_maxtime=0.7}:}{Used in the documentation and tests to control whether the longer examples should be run. 
 The approximate running time of given examples on one author's laptop is compared to this value.} 
 \item{\code{optimizer1D="optimize"}:}{Optimizer for one-dimensional optimization. If you want to control the initial value, you should select another optimizer.}
-\item{\code{optimizer=".safe_opt"}:}{Optimizer for optimization in several dimensions. Use \code{optimizer="nloptr"} to call \code{\link[nloptr]{nloptr}} with method \code{"NLOPT_LN_BOBYQA"}; use \code{optimizer="bobyqa"} to call \code{\link[minqa]{bobyqa}}; and use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The default \code{".safe_opt"} uses \code{nloptr} except in some cases where it expects or detects problems with it (the source code should be consulted for details). The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer}.
+\item{\code{optimizer=".safe_opt"}:}{Optimizer for optimization in several dimensions. The default \code{".safe_opt"} uses \code{nloptr} (with default method \code{"NLOPT_LN_BOBYQA"}) except in some cases where it expects or detects problems with it, and it uses \code{\link[minqa]{bobyqa}} instead (the source code should be consulted for details). Use \code{optimizer="nloptr"} or  \code{optimizer="bobyqa"} to force the use of either optimizer. Use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer} in a \code{corrHLfit} call.
 }
 \item{\code{nloptr}:}{Default control values of \code{nloptr} calls.} 
 \item{\code{bobyqa}:}{Default control values of \code{bobyqa} calls.} 
@@ -58,6 +58,9 @@ and many other undocumented values for programming or development purposes. Addi
   
   By default spaMM use Iteratively Reweighted Least Squares (IRLS) methods to estimate fixed-effect parameters (jointly with predictions of random effects). However, a Levenberg-Marquardt algorithm, as described by Nocedal & Wright (1999, p. 266), is also implemented. The Levenberg-Marquardt algorithm is designed to optimize a single objective function with respect to all its parameters. It is thus well suited to compute a PQL fit, which is based on maximization of a single function, the h-likelihood. By contrast, in a fit of a mixed model by (RE)ML, one computes jointly fixed-effect estimates that maximizes marginal likelihood, and random-effect values that maximize h-likelihood given the fixed-effect estimates. The gradient of marginal likelihood with respect to fixed-effect coefficients does not generally vanishes at the solution (although it remains close to zero except in \dQuote{difficult} cases with typically little information in the data). The Levenberg-Marquardt algorithm is not directly applicable in this case, as it may produce random-effect values that increases marginal likelihood rather than h-likelihood. The (RE)ML variant of the algorithm implemented in spaMM may therefore use additional nested h-likelihood-maximizing steps for correcting random-effect values. In version 3.1.0 this variant was revised for improved performance in difficult cases. 
 
+}
+\seealso{
+Details of \code{\link{algebra}} for global controls of matrix methods. 
 }
 \references{
 Jorge Nocedal and Stephen J. Wright (1999) Numerical Optimization. Springer-Verlag, New York.

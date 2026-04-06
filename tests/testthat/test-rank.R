@@ -11,6 +11,14 @@ donn$y <- runif(6)
 fv1 <- fitted(singlm <- lm(y~int+ b1+b2+c1+c2+c3,data=donn)) # (glmmTMB returns a full vector with numeric values instead of NA's)... vcov will be full of NaN's
 spaMM.options(rankMethod="qr")
 fv2 <- (singfit <- fitme(y~int+ b1+b2+c1+c2+c3,data=donn))$fv
+if (FALSE) {
+  # for a rank-deficient model matrix, model.matrix returns the reduced matrix with a matching "assign" attr,
+  # and has an additional "rankinfo" attr.
+  str(model.matrix(singfit))
+  str(fixef(singfit, na.rm=FALSE)) # has additional NA's, but order is apparently never modified
+  str(fixef(singfit, na.rm=TRUE)) 
+}
+
 spaMM.options(rankMethod=".rankinfo")
 fv3 <- fitme(y~int+ b1+b2+c1+c2+c3,data=donn)$fv ## fixef is not unique, but fitted values must be equivalent
 spaMM.options(rankMethod="qr")
@@ -32,7 +40,7 @@ crit <- diff(range(anova(singglm, test=FALSE) -anova(singfit), na.rm=TRUE))
 testthat::test_that("whether anova.glm and spaMM:::.anova.glm give equivalent results for singular X",
                     testthat::expect_true(crit<1e10))
 
-donn$dummy<- c(0,0,0,1,1,1) # completely équivalent to b1 or b2!
+donn$dummy<- c(0,0,0,1,1,1) # completely equivalent to b1 or b2!
 chk <- try(nlme::lme(y~int+ b1+b2+c1+c2+c3, data = donn, random = ~ 1 | dummy), silent=TRUE)
 testthat::test_that("whether nlme::lme does not handle singular X, as stated in the Description of spaMM::rankinfo",
                     testthat::expect_true(inherits(chk,"try-error"))

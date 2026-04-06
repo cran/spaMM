@@ -1,4 +1,14 @@
 # y-augmented method withOUT precomputation of R_aug_ZXy
+
+# Has no etaFix arg: For preprocessed etaFix, columns 
+# have been removed from X processed$AUGI0_ZX$X.pv, and .HLfit_body_augZXy() does not need an etaFix argument
+# But if I implement 'dynamic offsets for LMMs' (non-linear mixed models?, 
+# I should either prevent .HLfit_body_augZXy() calls, or add code here.
+
+# This raises Q for other procedures that use etaFix and $X_off_fn, such as numInfo(). 
+# But numInfo() appears to imply processed$models[["phi"]]=="" (whether 'which' is defaut or ="beta")
+# and then augZXy_cond is FALSE.
+
 .HLfit_body_augZXy <- function(processed, fixed=list()) { 
   trace <- processed$verbose["TRACE"]
   ranFix <- .canonizeRanPars(ranPars=fixed,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
@@ -89,7 +99,7 @@
         attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # originally for .sXaug_Matrix_CHM_H_scaled. But ... this block is not currently used
       } 
       if (trace) cat(".")
-      sXaug <- do.call(processed$corr_method,
+      sXaug <- do.call(processed$sXaug_method,
                        list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
     }
   }

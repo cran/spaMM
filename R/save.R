@@ -51,7 +51,7 @@ stripHLfit <- function(object,...) { # keywords: shrink, reduce, memory.size...
 
 ## The above reduces the size _on disk_, which can be checked by .saveSize():
 
-.saveSize <- function (object,...) {
+.saveSize <- function (object,...) { # keyword: memory.size
   tf <- tempfile(fileext = ".RData")
   on.exit(unlink(tf))
   save(object, file = tf,...)

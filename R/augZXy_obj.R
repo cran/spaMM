@@ -95,7 +95,7 @@
         } else {
           Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, processed=processed) # does not weights the I
           if (trace) cat(".")
-          sXaug <- do.call(processed$corr_method,
+          sXaug <- do.call(processed$sXaug_method,
                            list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
         }
       }

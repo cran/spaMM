@@ -1,13 +1,26 @@
-`plot.HLfit` <- function(x, which=c("mean","ranef"),
-                         titles = list(
-                           meanmodel=list(outer="Mean model",devres="Deviance residuals", absdevres="|Deviance residuals|",
-                                          resq="Residual quantiles", devreshist="Deviance residuals"),
-                           ranef=list(outer="Random effects and leverages",qq="Random effects Q-Q plot",
-                                      levphi=expression(paste("Leverages for ",phi)), levlambda=expression(paste("Leverages for ",lambda)))
-                           ),
-                         control = list() , ask=TRUE, ...) {
-  residuals <- residuals(x, which="std_dev_res") 
-  fitted.values <- x$fv
+plot.HLfit <- function(
+    x, 
+    which=c("mean","ranef"),
+    res_type="std_dev_rt",
+    form = residuals(., type=res_type) ~ fitted(.),
+    titles = list(
+      meanmodel=list(outer="Mean model",devres="residuals", absdevres="|residuals|",
+                     resq="Residual quantiles", devreshist="residuals"),
+      ranef=list(outer="Random effects and leverages",qq="Random effects Q-Q plot",
+                 levphi=expression(paste("Leverages for ",phi)), levlambda=expression(paste("Leverages for ",lambda)))
+    ),
+    control = list() , ask=TRUE, ...) {
+  if (inherits(form,"formula")) {
+    locenclos <- list2env(list(.=x))
+    locdata <- x$data
+    residuals <- eval(form[[2]], envir=locdata, enclos=locenclos)
+    # trying to emulate plot.merMod() goes to far. Even checking the formula 
+    # would have to deal with 'res_type' from residuals(., type=res_type) 
+    fitted.values <- eval(form[[3]], envir=locdata, enclos=locenclos)
+  } else {
+    residuals <- form
+    fitted.values <- fitted(x)
+  }
   ## possible modif of 'which':
   # if (is.null(residuals)) {## possible if disp pars in ranFix
   #   if ("mean" %in% which) {

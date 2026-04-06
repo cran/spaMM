@@ -22,15 +22,14 @@ The \code{get_}... functions are convenient extractors for such components;\cr
 }
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
-                        variances=list(), binding = FALSE, intervals = NULL,
-                        level = 0.95, blockSize = 2000L, type = "response", 
-                        verbose=c(showpbar=eval(spaMM.getOption("barstyle"))), 
-                        control=list(), na.action=na.omit, cluster_args=list(), ...)
-get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, re.form = NULL,
-                    variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), 
-                    control=list(),  ...)    
+        variances=list(), binding = FALSE, intervals = NULL,
+        level = 0.95, blockSize = 2000L, type = "response", verbose=NULL,  
+        control=list(), na.action=na.omit, cluster_args=list(), ...)
+get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, 
+        re.form = NULL, variances=list(disp=TRUE, residVar=FALSE, cov=FALSE), 
+        control=list(),  ...)    
 preprocess_fix_corr(object, fixdata, re.form = NULL,
-                   variances=list(residVar=FALSE, cov=FALSE), control=list())
+        variances=list(residVar=FALSE, cov=FALSE), control=list())
 get_fixefVar(...)
 get_predVar(..., variances=list(), which="predVar")
 get_residVar(...)
@@ -83,11 +82,12 @@ A list; a warning will direct you to relevant usage when needed.
 \item{cluster_args}{
 Passed to \code{\link[parallel]{makeCluster}}. Parallel computations are possible if the slicing mechanism (as controlled by argument \code{blockSize}) is effective.
 }
-\item{verbose}{
-A vector of booleans; it single currently used element is \code{"showpbar"}, which controls whether to show a progress bar in certain prediction variance computations.
+\item{verbose}{ a list or a vector; The \code{NULL} default is interpreted as\cr
+\code{c(showpbar=eval(spaMM.getOption("barstyle")), na=TRUE, na_once=FALSE)}.\cr
+\code{showpbar} controls whether to show a progress bar (and its style) in certain prediction variance computations; \code{na} controls whether to output a message when values required for some predictions are missing from the data; and setting \code{na_once=TRUE} is useful to prevent repetitive messages when \code{predict} is called repeatedly by an higher-level function (e.g., \code{\link{pdep_effects}} sets \code{na_once=TRUE} internally).
 }
 \item{na.action}{
-One of the functions dealing with \code{NA}s in data frames (see \code{\link{na.omit}}). if this is set to \code{na.exclude}, \code{NA}s will be included in the returned point predictions, for rows of the \code{newdata} which do not provide information for all required predictor variables. The effect of the default \code{na.omit} is to not include such \code{NA}s (this differs from the default of, e.g., \code{predict.lm}). Implementation is limited; in particular, \code{na.exclude} currently does not have the effect of including \code{NA}s in the optional attributes providing (co-)variance information, except the \code{"mv"} attribute for predictions of multivariate-response fits.
+Possible values of this argument are some of the functions dealing with \code{NA}s in data frames (see \code{\link{na.omit}}). if it is set to \code{na.exclude}, \code{NA}s will be included in the returned point predictions, for rows of the \code{newdata} which do not provide information for all required predictor variables. The effect of the default \code{na.omit} is to not include such \code{NA}s (this differs from the default of, e.g., \code{predict.lm}). Implementation is limited; in particular, \code{na.exclude} currently does not have the effect of including \code{NA}s in the optional attributes providing (co-)variance information, except the \code{"mv"} attribute for predictions of multivariate-response fits.
 }
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
@@ -96,7 +96,8 @@ One of the functions dealing with \code{NA}s in data frames (see \code{\link{na.
 \value{
   See Details in \code{\link{Tpoisson}} for questions specific to truncated distributions.
   
-  For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any. The \code{frame} attribute includes information about any \code{na.action} effect on the new data. 
+  For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{mv}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any. The \code{frame} attribute includes information about any \code{na.action} effect on the new data. 
+  For multivariate response fits, the \code{mv} attribute gives the predictions as a list with elements for each submodel. 
   
   The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor. By default, \code{get_intervals} will return prediction intervals using \code{predVar}.
   \code{get_predVar} with non-default \code{which} argument has the same effect as the \code{get_}... function whose name is implied by \code{which}.

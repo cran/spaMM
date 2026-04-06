@@ -31,6 +31,7 @@
 .checkRandLink <- function(rand.family) {
   lcrandfamfam <- tolower(rand.family$family) ## tolower once and for all
   oklink <- FALSE
+  is_gammaId <- FALSE
   ## cases where g(u)=th(u)
   if (lcrandfamfam=="gaussian" && rand.family$link=="identity") oklink <- TRUE          
   if (lcrandfamfam=="gamma" && rand.family$link=="log") oklink <- TRUE          
@@ -38,7 +39,10 @@
   if (lcrandfamfam=="beta" && rand.family$link=="logit") oklink <- TRUE
   ## cases where g(u)!=th(u)
   if (lcrandfamfam=="inverse.gamma" && rand.family$link=="log") oklink <- TRUE 
-  if (lcrandfamfam=="gamma" && rand.family$link=="identity") oklink <- TRUE ## gamma(identity)
+  if (lcrandfamfam=="gamma" && rand.family$link=="identity") {
+    oklink <- TRUE
+    is_gammaId <- TRUE
+  }
   if ( ! oklink) {
     allowed <- switch(lcrandfamfam,
                       gaussian= "is 'identity'",
@@ -51,7 +55,7 @@
                    rand.family$family,"' ",allowed)
     stop(mess)
   }
-  lcrandfamfam
+  list(lcrandfamfam=lcrandfamfam, is_gammaId=is_gammaId) 
 }
 
 
@@ -67,7 +71,10 @@
                   stop("rand.family argument not valid"))
     }
   }
-  lcrandfamfam <- unlist(lapply(rand.families, .checkRandLink)) ## a _vector_ of lcrandfamfam := tolower(rand.family$family)
+  info_randfam <- lapply(rand.families, .checkRandLink)
+  info_randfam <- do.call(rbind, info_randfam)
+  lcrandfamfam <- .unlist(info_randfam[,"lcrandfamfam"]) ## a _vector_ of lcrandfamfam := tolower(rand.family$family)
+  is_gammaId <- .unlist(info_randfam[,"is_gammaId"]) ## a vector of booleans
   unique.psi_M <- sapply(lcrandfamfam, switch,
                          gaussian = 0,
                          gamma = 1, 
@@ -75,7 +82,8 @@
                          "inverse.gamma" = 1
   )
   names(unique.psi_M) <- NULL
-  return(structure(rand.families,lcrandfamfam=lcrandfamfam,unique.psi_M=unique.psi_M))
+  return(structure(rand.families, lcrandfamfam=lcrandfamfam,
+                   is_gammaId=is_gammaId, unique.psi_M=unique.psi_M))
 }
 
 .checkRespFam <- function(family, spaMM.=TRUE) {
@@ -116,12 +124,11 @@
   n_u_h <- cum_n_u_h[length(cum_n_u_h)]
   lower.v_h <- rep(-Inf,n_u_h)
   boxConstraintsBool <- FALSE
-  for (it in seq_along(rand.families)) {
-    if (rand.families[[it]]$family=="Gamma" && rand.families[[it]]$link=="identity") { ## gamma(identity)
-      u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-      lower.v_h[u.range] <- 1e-6 ## 1e-12 is disastrous
-      boxConstraintsBool <- TRUE
-    }
+  is_gammaId <- attr(rand.families,"is_gammaId")
+  for (it in which(is_gammaId)) { ## gamma(identity)
+    u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+    lower.v_h[u.range] <- 1e-6 ## 1e-12 is disastrous
+    boxConstraintsBool <- TRUE
   }
   if ( ! boxConstraintsBool ) lower.v_h <- NULL 
   boxConstraintsBool <- FALSE
@@ -149,8 +156,15 @@
   cum_n_u_h <- processed$cum_n_u_h
   u_list <- vector("list", length(rand.families)) # to avoid reepated initializations within .u_h_v_h_from_v_h()
   .u_h_v_h_from_v_h <- function(v_h, lower.v_h=lowup$lower.v_h, upper.v_h=lowup$upper.v_h) {
-    if(!is.null(lower.v_h)) {v_h[v_h<lower.v_h] <- lower.v_h}
-    if(!is.null(upper.v_h)) {v_h[v_h>upper.v_h] <- upper.v_h}
+    #there is a full vector of bounds as soon as one ranef needs a bound
+    if(!is.null(lower.v_h)) {
+      lo <- v_h<lower.v_h
+      v_h[lo] <- lower.v_h[lo]
+    }
+    if(!is.null(upper.v_h)) {
+      hi <- v_h>upper.v_h
+      v_h[hi] <- upper.v_h[hi]
+    }
     nrand <- length(rand.families)
     for (it in seq_len(nrand)) {
       u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
@@ -226,26 +240,14 @@
     Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
   } else if ( ! is.null(is_incid)) {
     is01col <- attr(is_incid,"is01col")
-    if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
-    # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
-    if (is_incid) attr(is_incid,"is01col") <- FALSE # conservative default: ZA no longer 1col anyway...
+    if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides it. 
+    # Otherwise (user-provided A, notably), this attrmay be NULL, in which case
+    # a later correct message may occur ("'is_incid' attribute missing, 
+    # which suggests inefficient code in .calc_new_X_ZAC().)
+    if ( ! is.null(is_incid)) attr(is_incid,"is01col") <- FALSE # conservative default: ZA no longer 1col anyway...
   } 
   ZAnames <- colnames(Z)
-  ### replaced by call to .check_fix_user_AMatrices() in preprocessing:
-  # if ( ! all(ZAnames == rownames(Amatrix))) {
-  #   if ( ! setequal(rownames(Amatrix),ZAnames)) {
-  #     mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
-  #                    paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
-  #     stop(mess)
-  #   } else warning("(!) Possible problem with Amatrix permutation.", immediate.=TRUE)
-  #   if ( ! is.null(Xi_ncol <- attr(Amatrix,"Xi_ncol"))) { # composite ranef...
-  #     #### ZAnames <- ZAnames[1:(ncol(Amatrix) %/% Xi_ncol)] 
-  #     Z <- Z %*% Amatrix # [ZAnames,], for repeated ZAnames, appears to lead to a bug  
-  #     # but now in case of problem we have a warning but no stop
-  #   } else Z <- Z %*% Amatrix[ZAnames,] # OK here, but .calc_normalized_ZAlist() no longer
-  #   # uses permutations (see its commented code), so predictions may still be wrong. 
-  # } else 
-    Z <- Z %*% Amatrix
+  Z <- Z %*% Amatrix
   rownames(Z) <- NULL
   attr(Z,"is_incid") <- is_incid
   for (st in names(mostAttrs)) attr(Z,st) <- mostAttrs[[st]] 
@@ -353,17 +355,17 @@
   return(fam_corrected_guess)
 }
 
-.preprocess_valuesforNAs <-  function(it, lcrandfamfam, rand.families, init.lambda, rd) {
-  if(lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity" && init.lambda==1) {
+.preprocess_valuesforNAs <-  function(lcrandfamfam_rd, link_rd, init.lambda) {
+  if(lcrandfamfam_rd=="gamma" && link_rd=="identity" && init.lambda==1) {
     adhoc <- 0.9999
-  } else if(lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="log") {
+  } else if(lcrandfamfam_rd=="gamma" && link_rd=="log") {
     objfn <- function(lambda) {psigamma(1/lambda,1)-init.lambda}
     adhoc <- uniroot(objfn,interval=c(1e-8,1e8))$root
-  } else if(lcrandfamfam[it]=="beta" && rand.families[[it]]$link=="logit") {
+  } else if(lcrandfamfam_rd=="beta" && link_rd=="logit") {
     #ad hoc approximation which should be quite sufficient; otherwise hypergeometric fns.
     objfn <- function(lambda) {8* lambda^2+3.2898*lambda/(1+lambda)-init.lambda}
     adhoc <- uniroot(objfn,interval=c(2.5e-6,1e8))$root
-  } else if(lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="log") {
+  } else if(lcrandfamfam_rd=="inverse.gamma" && link_rd=="log") {
     ## this tries to controle var(v)<-init.lambda of v=log(u) by defining the right lambda for var(u)=lambda/(1-lambda)
     ## log (X~inverse.G) = - log (~Gamma), ie
     ##  log (X~inverse.G(shape=1+1/init.lambda,scale=1/init.lambda))~ - log (rgamma(shape=1+1/init.lambda,scale=1/init.lambda)
@@ -379,7 +381,7 @@
       adhoc <- uniroot(objfn,interval=c(1e-8,1e8))$root
     }
     ## but the mean of v  is function of lambda and I should rather try to control the second moment of v
-  } else if(lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="-1/mu") {
+  } else if(lcrandfamfam_rd=="inverse.gamma" && link_rd=="-1/mu") {
     adhoc <- (sqrt(1+4*init.lambda)-1)/2 # simple exact solution
   } else adhoc <- init.lambda
   adhoc
@@ -529,8 +531,8 @@
     }
   } else  {
     if ((nc^2)*(max(nc,nobs)-nc/3)>1e10) {
-      message("The design matrix for fixed effects is quite large. Checking its rank will take time. 
-              See help('rankinfo') for possible ways to circumvent this.")
+      message(cli::format_message("The design matrix for fixed effects is quite large. Checking its rank will take time. 
+              See {.topic [rankinfo](spaMM::rankinfo)} for possible ways to circumvent this."))
     }
     ## .rankinfo request much memory, but is clearly faster for matrices of size ~ 5000*2900
     ## HOWEVER it does not always yield *p_bv* results consistent with qr !!!!!
@@ -738,6 +740,7 @@
       matchnames <- intersect (names(control.dist), c("dist.method","rho.mapping"))
       if (length(matchnames)) {
         control_dist <- vector("list",length(corr_types))
+        names(control_dist) <- seq_along(corr_types)
         for (rd in seq_along(corr_types)) {
           if (corr_types[[rd]] %in% c("Matern","Cauchy","AR1", "IMRF")) { ## not (yet) clearly useful for AR1 ?
             control_dist[[as.character(rd)]] <- control.dist[matchnames]
@@ -745,7 +748,7 @@
         }
         return(control_dist) # return nested list with elements for the different ranefs built from the 'matchnames'
       } else return(control.dist) ## No 'matchnames': control.dist should then be a nested list with elements for the different ranefs 
-    } else return(vector("list", length(corr_types))) # Return "empty nested list" built from empty list() (could return NULL ?)
+    } else return(NULL) 
   } else return(NULL)
 }
 
@@ -1012,7 +1015,7 @@
       if (as_mat) ZAfix <- as.matrix(ZAfix)  
     }
     AUGI0_ZX$ZAfix <- ZAfix # Used in code for ZAL in HLfit_body(); and extensively to fit  by spprec. 
-                            # Special care is required when A is later modified (as by .calc_normalized_ZAlist())
+                            # Special care is required when A is later modified (as by .calc_normalized_newZAlist())
   }
   return(AUGI0_ZX)
 }
@@ -1131,7 +1134,7 @@
 }
 
 
-.def_off_fn <- function(X_off, ori_off) { # outer beta
+.def_off_fn <- function(X_off, ori_off) { # outer beta; also numInfo()
   force(X_off)
   force(ori_off)
   if (is.null(ori_off)) ori_off <- 0
@@ -1489,7 +1492,7 @@
   if (processed$is_spprec) {
     processed$solve_IRLS_fn <- .solve_IRLS_as_spprec
   } else  processed$solve_IRLS_fn <- .solve_IRLS_as_ZX
-  ###   
+  ###
   # assigns $X.Re, $off, $objective but there is NO $X.pv
   X.pv <- .preprocess_X_XRe_off(main_terms_info, predictor, processed, X.pv, etaFix, data, objective, nobs) 
   #
@@ -1504,7 +1507,15 @@
       ( is.null(processed$REMLformula) || ncol(processed$X.Re)==0L)
   ) X.pv <- .scale(X.pv) # scales and adds "scaled:scale" attribute
 
-  if ( ! is.null(init_beta <- init[["beta"]])) { # outer beta
+  use_outer_beta <- (! For_fitmv && length(init_beta <- init[["beta"]]))
+  # The distinction is between, say, 
+  # * fitmv(., etaFix=list(beta=.)):    [ case if length(betaFix <- etaFix$beta) above ]
+  #    an offset could be set at preprocessing time, there is no need for an X_off_fn and no final inner 'refit' of beta is considered.  
+  # * fitmv(., init=list(beta=.)): outer optimization of beta
+  #    an X_off_fn is used to compute  X_off %*% beta for each new beta, 
+  #    and a final inner 'refit' of beta is possible => distinct 'vecdisneeded_ori' to be used then. (vecdisneeded code is further below) 
+  ## In both cases, cols of merged_X are removed, so the two are not compatible (at least for the same coefficients).
+  if (use_outer_beta) { # outer beta
     betanames <- names(init_beta)
     if (length(intersect(colnames(X.pv),betanames))!=length(init_beta)) stop("init[['beta']] must have names matching those of the design matrix")
     # {
@@ -1546,13 +1557,13 @@
     } else {
       processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
                                              is_spprec=processed$is_spprec, processed=processed, control.HLfit=control.HLfit)
-      algebra <- .set_augX_methods(processed) # sets processed$corr_method In spprec case, both this and processed$spprec_method may be needed so must be distinct.
+      algebra <- .set_augX_methods(processed) # sets processed$sXaug_method In spprec case, both this and processed$spprec_method may be needed so must be distinct.
       .check_time_G_diagnosis(.provide_G_diagnosis, processed, algebra)  
       nrd <- processed$cum_n_u_h[nrand+1L]
       if (nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
           processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
                                            as_mat=.eval_as_mat_arg(processed))
-      if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNbThreads")')
+      if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message(cli::format_message('Using parallelisation might be useful. See {.topic [setNbThreads](spaMM::setNbThreads)}'))
       # The larger subsamples (nrd=1000 for the 3rd) in useR2021_spatial_timings.R may be used to test the effect IF method uses obsInfo (otherwise there is in particular no .tcrossprodCpp)
     }
     processed$ranCoefs_blob <- .process_ranCoefs(processed, #  uses ZAlist, cum_n_u_h...
@@ -1563,7 +1574,7 @@
     #
     ranFix$lambda <- # this copy is a way of checking and standardizing names if nothing else
       processed$lambda.Fix <- 
-      .reformat_lambda(.getPar(ranFix,"lambda"), nrand, namesTerms=attr(ZAlist,"namesTerms"), full_lambda = TRUE) # should always have nrand elements
+      .reformat_lambda(.getPar(ranFix,"lambda"), nrand=nrand, processed=processed, full_lambda = TRUE) # should always have nrand elements
     models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
     processed$X_lamres <- .calc_X_lamres(processed, models=models, ZAlist=ZAlist, nrand=nrand) ## for glm for lambda, and SEMbetalambda
   } else {
@@ -1591,7 +1602,11 @@
   } else processed$etaxLM_fn <- .calc_etaGLMblob
   
   if (attr(processed[["models"]],"LMMbool") && ! For_fitmv) .check_identifiability_LMM(processed, nobs=nobs) # depending on mdoel booleans.
-  processed$vecdisneeded <- .vecdisneeded(pforpv=ncol(X.pv), family, processed) # after setting $models
+  vecdisneeded <- .vecdisneeded(pforpv=ncol(X.pv), family, processed) # after setting $models
+  if (use_outer_beta) {
+    processed[["vecdisneeded_ori"]] <-  processed[["vecdisneeded"]]
+    processed[["vecdisneeded"]] <- processed[["vecdisneeded"]] & ncol(X.pv)
+  } else processed$vecdisneeded <- vecdisneeded
   #
   ##         ##
   #### Ultimate controls of algorithms
@@ -1607,7 +1622,7 @@
     if (processed$augZXy_cond) {
       processed$HLfit_body_fn <- ".HLfit_body_augZXy"
       processed$HLfit_body_fn2 <- .spaMM.data$options$HLfit_body
-      .do_TRACE(processed)
+      .do_TRACE(processed) # and replace the names by the now-traced functions:
       processed$HLfit_body_fn <- get(processed$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
       processed$HLfit_body_fn2 <- get(processed$HLfit_body_fn2, asNamespace("spaMM"), inherits=FALSE) 
     } else {

@@ -1,6 +1,6 @@
 cat(cli::col_yellow("\ntest AR1:\n"))
 
-if (spaMM.getOption("example_maxtime")>4) { # 
+if (spaMM.getOption("example_maxtime")>1.8) { # 
   set.seed(123)
   nobs <- 500
   distm <- as.matrix(dist(1:nobs)) 
@@ -66,7 +66,7 @@ if (TRUE) {
 }
 
 
-if (spaMM.getOption("example_maxtime")>6) {
+if (spaMM.getOption("example_maxtime")>4) {
   set.seed(123)
   age    <-    (rep(c(1:((Nage <- 30))),times=(Nind <- 30)))
   ind    <- 	 rep(c(1:Nind),	 each=(Nage))

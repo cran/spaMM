@@ -2,14 +2,55 @@
 # It uses optimize(HLcallfn.obj .. maximum=TRUE) or OTHERWISE the .objfn_locoptim() wrapper to maximize likelihood:
 #  this is messy to control hence the ad_hoc_fn wrapper in confint.HLfit
 # The first arg of the objective functions must be ranefParsVec
-.objfn_locoptim <- function(x, anyHLCor_obj_args, HLcallfn.obj) { ## the (more or less) default value of .new_locoptim <- function( .. objfn_locoptim .. ) 
+
+.pminmax_user_Lowup <- function(fix_ranCoefs, user.lower, user.upper) {
+  if (length(shared_rcs <- intersect(names(fix_ranCoefs), names(lo <- user.lower$ranCoefs)))) {
+    for (st in shared_rcs) {
+      fix_ranCoefs[[st]] <- pmax(fix_ranCoefs[[st]], lo[[st]], na.rm=TRUE)
+      attr(fix_ranCoefs[[st]],"transf") <- NULL # Ugly, but pmax keeps attributes.
+    }
+  } 
+  if (length(shared_rcs <- intersect(names(fix_ranCoefs), names(hi <- user.upper$ranCoefs)))) {
+    for (st in shared_rcs) {
+      fix_ranCoefs[[st]] <- pmin(fix_ranCoefs[[st]], hi[[st]], na.rm=TRUE)
+      attr(fix_ranCoefs[[st]],"transf") <- NULL
+    }
+  } 
+  fix_ranCoefs
+}
+
+.apply_transformed_box_constr <- function(fix, # vector or structured list, depending on matching 'skeleton' arg.
+                                          skeleton, # NULL or a proper template 
+                                          user.lower, user.upper,
+                                          transf # whether skeleton (and then fix) are in transf space
+                                          ) {
+  if ( ! is.null(skeleton)) fix <- relist(fix,skeleton)
+  if (transf) ranCoefs <- .canonizeRanPars(fix["trRanCoefs"],rC_transf = .spaMM.data$options$rC_transf, 
+                               corr_info = NULL)$ranCoefs
+  ranCoefs <- .pminmax_user_Lowup(fix_ranCoefs=ranCoefs, user.lower, user.upper)
+  if (transf) for (st in names(fix$trRanCoefs)) {
+    fix$trRanCoefs[[st]] <- .ranCoefsFn(ranCoefs[[st]], rC_transf = .spaMM.data$options$rC_transf) 
+  } else fix$ranCoefs <- ranCoefs
+  # result of same class as input: 
+  if ( ! is.null(skeleton)) fix <- unlist(fix) 
+  fix
+}
+
+# Wrapper with rather definite usage, 'HLcallfn.obj' being HLCor.obj() or HLfit.obj()
+# See .numInfo_objfn() for alternative that can use 
+# a more general form of call (with $processed or not) as input.
+.objfn_locoptim <- function(x, anyHLCor_obj_args, HLcallfn.obj, objfn.extras) { ## the (more or less) default value of .new_locoptim <- function( .. objfn_locoptim .. ) 
+  if (length(.unlist(anyHLCor_obj_args$skeleton$trRanCoefs)) &&
+      (length(objfn.extras[["user.lower"]]$ranCoefs) || length(objfn.extras[["user.upper"]]$ranCoefs))
+      ) x  <- .apply_transformed_box_constr(fix=x, skeleton=anyHLCor_obj_args$skeleton, 
+                                            user.lower=objfn.extras[["user.lower"]], 
+                                            user.upper=objfn.extras[["user.upper"]], transf=TRUE)
   anyHLCor_obj_args$ranefParsVec <- x 
   return( - do.call(HLcallfn.obj, anyHLCor_obj_args))
 }
 
 .optim_by_nloptr <- function(lowerb, upperb, initvec, objfn_locoptim, local_control, grad_locoptim=NULL, LowUp, ...) {
-  nloptr_controls <- .get_nloptr_controls(init=initvec, LowUp=LowUp)
-  nloptr_controls[names(local_control)] <- local_control ## Overwrite defaults with any element of $nloptr
+  nloptr_controls <- .get_nloptr_controls(init=initvec, LowUp=LowUp, control=local_control)
   ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
   optr <- nloptr::nloptr(x0=initvec, eval_f=objfn_locoptim,
                          eval_grad_f=grad_locoptim, # ignored with NLOPT_LN_BOBYQA
@@ -30,21 +71,20 @@
 
 #
 .optim_by_bobyqa <- function(lowerb, upperb, initvec, objfn_locoptim, local_control, adjust_init=list(), ...) {
-  bobyqa_controls <- .get_bobyqa_controls(init=initvec, upper=upperb, lower=lowerb)
-  bobyqa_controls[names(local_control)] <- local_control ## Overwrite defaults with any element of $bobyqa
-  bobyqa_margin <- .spaMM.data$options$bobyqa_margin
+  fn_controls <- .get_bobyqa_controls(init=initvec, upper=upperb, lower=lowerb, control=local_control)
+  bobyqa_margin <- .spaMM.data$options$bobyqa_meta$margin 
   margin <- (upperb-lowerb)*bobyqa_margin 
   margin <- pmin(bobyqa_margin,margin) # handles infinite ranges (but not only)
   init <- pmax(lowerb+margin,pmin(upperb-margin,initvec))
   # And this is a more substantial adjustment at the margin
   if ( ! is.null(adjust_init$lower)) init <- pmax(adjust_init$lower, init)
   if ( ! is.null(adjust_init$upper)) init <- pmin(adjust_init$upper, init)
-  optr <- bobyqa(par=init,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=bobyqa_controls, ...)
+  optr <- bobyqa(par=init,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=fn_controls, ...)
   while(optr$ierr==1L) { #maximum number of function evaluations exceeded
     message("maxeval reached in bobyqa(); bobyqa() called again until apparent convergence of objective.") 
     prevmlik <- optr$fval
     reinit <- pmax(lowerb,pmin(upperb,optr$par))
-    optr <- bobyqa(par=reinit,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=bobyqa_controls, ...)
+    optr <- bobyqa(par=reinit,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=fn_controls, ...)
     if (optr$fval > prevmlik-1e-8) break ## not enough progress in <= maxeval iterations
   }
   optr$value <- - optr$fval
@@ -54,7 +94,7 @@
 .xtol_abs_fn <- function(LowUp, # must be a structured list; 
                          # a list of two vectors will be handled but the result may be far from optimal
                          # For an empty list, numeric(0) is returned, which may segfault nloptr...
-                         factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
+                         factors, rC_transf=.spaMM.data$options$rC_transf) {
   parnames <- names(LowUp$lower)
   rng <- unlist(LowUp$upper, use.names = FALSE)-unlist(LowUp$lower, use.names = FALSE)
   rng_finite <- is.finite(rng)
@@ -130,7 +170,7 @@
 
 # returns optPars which is a list given by relist(.,init.optim), with attributes the optimMethod and (+:- raw) optr 
 .new_locoptim <- function(init.optim, LowUp, control, objfn_locoptim, 
-                          anyHLCor_obj_args, HLcallfn.obj="HLCor.obj", 
+                          anyHLCor_obj_args, HLcallfn.obj="HLCor.obj", objfn.extras,
                           user_init_optim, ## only purpose is to make sure that if the user provides an explicit init in 1D, optimize() is not used.
                           grad_locoptim=NULL,
                           verbose,
@@ -173,7 +213,8 @@
     Optimizer <- "user-defined" # used to build returned structure, whose API assumes it compares to a character string.
     optr <- user_def_optimizer(lowerb=lowerb, upperb=upperb, initvec=initvec, objfn_locoptim=objfn_locoptim, 
                                       local_control=control[["nloptr"]], grad_locoptim = grad_locoptim, LowUp=LowUp,
-                                      anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj) 
+                                      anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
+                               objfn.extras=objfn.extras) 
     optPars <- relist(optr$solution,init.optim)
     attr(optPars,"optr") <- optr  
   } else if (Optimizer=="optimize") {
@@ -181,7 +222,8 @@
     if (verbose) message(paste("1D optimization by optimize(): spaMM's *default* initial value is ignored.\n",
                   "Provide explicit initial value, or change spaMM option 'optimizer1D' for initial value to be taken into account."))
     if (is.character(HLcallfn.obj)) HLcallfn.obj <- eval(as.name(HLcallfn.obj)) # ## do.call("optimize", c(<list>, list(fn = objfn))) does not work with a char string
-    locarglist <- c(anyHLCor_obj_args,list(f=HLcallfn.obj, interval=c(lowerb,upperb), maximum=TRUE))
+    locarglist <- c(anyHLCor_obj_args,list(f=HLcallfn.obj, interval=c(lowerb,upperb), maximum=TRUE, 
+                                           objfn.extras=objfn.extras))
     tol <- control[["optimize"]]$tol
     if (is.null(tol)) tol <- spaMM.getOption("optimize_tol")
     locarglist$tol <- tol
@@ -190,7 +232,8 @@
   } else if (Optimizer=="nloptr") { 
     optr <- .optim_by_nloptr(lowerb=lowerb, upperb=upperb, initvec=initvec, objfn_locoptim=objfn_locoptim, 
                              local_control=control[["nloptr"]], grad_locoptim = grad_locoptim, LowUp=LowUp,
-                             anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj) 
+                             anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
+                             objfn.extras=objfn.extras) 
     optPars <- relist(optr$solution,init.optim)
     if (anyNA(refit_info)) refit_info <- (optr$options$xtol_rel > (5e-6 + 1e-8)) ## FIXME not documented (& anyNA to handle NULL)
     ## full optr is big. We take out the two items that contribute much to saveSize:
@@ -199,16 +242,18 @@
   } else if (Optimizer==".safe_opt") { ## May more narrowly approach lowerb and upperb, ~> longer computation times
     optr <- .safe_opt(init=initvec, lower=lowerb, upper=upperb, 
                       objfn=objfn_locoptim, # minimization of -logL
-                      verbose=max(0L,verbose-1L), 
-                      anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj , LowUp=LowUp
-                      ) ## does not use gradients
+                      verbose=max(0L,verbose-1L), anyHLCor_obj_args=anyHLCor_obj_args, 
+                      HLcallfn.obj=HLcallfn.obj , LowUp=LowUp, control=control, 
+                      objfn.extras=objfn.extras
+    ) ## does not use gradients
     optPars <- relist(optr$solution,init.optim)
     attr(Optimizer,"use_bobyqa") <- optr$use_bobyqa
     optr$use_bobyqa <- NULL
   } else if (Optimizer=="bobyqa") { ## May more narrowly approach lowerb and upperb, ~> longer computation times
     optr <- .optim_by_bobyqa(lowerb, upperb, initvec, objfn_locoptim,
                              local_control=control[["bobyqa"]], anyHLCor_obj_args=anyHLCor_obj_args, 
-                             HLcallfn.obj=HLcallfn.obj) ## does not use gradients
+                             HLcallfn.obj=HLcallfn.obj, 
+                             objfn.extras=objfn.extras) ## does not use gradients
     optPars <- relist(optr$par,init.optim)
     optr$objective <- optr$fval # for easy tests on the results, e.g. test-ranCoefs.R
   } else if (Optimizer=="nlminb") { 
@@ -223,9 +268,11 @@
       gr <- function(x, ...) ADFun$gr(x) # gradient of -logL
       optr <- stats::nlminb(initvec, objfn, lower=lowerb,upper=upperb, gradient=gr,
                             anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
-                            control=nlminb_controls)
+                            control=nlminb_controls, 
+                            objfn.extras=objfn.extras)
     } else optr <- stats::nlminb(initvec, objfn_locoptim, lower=lowerb,upper=upperb, 
                    anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
+                   objfn.extras=objfn.extras, 
                    control=nlminb_controls)
     if ( ! optr$iterations < nlminb_controls$iter.max) warning(paste0("nlminb() reached control$iter.max=", 
                                                                       nlminb_controls$iter.max))
@@ -240,7 +287,8 @@
     control_optim[names(control[["optim"]]$control)] <- control[["optim"]]$control ## ...which may be overwritten 
     optr <- optim(par=initvec,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=control_optim,method="L-BFGS-B",
                   gr=grad_locoptim, 
-                  anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj) ## optimize HLCor.obj()'s 'objective'
+                  anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
+                  objfn.extras=objfn.extras) ## optimize HLCor.obj()'s 'objective'
     optPars <- relist(optr$par,init.optim)
     ## full optr is big. We take out the two items that contribute much to saveSize:
     optr$eval_f <- NULL
@@ -248,6 +296,20 @@
     attr(optPars,"optr") <- optr  
     attr(optPars,"method") <- "optim"  
   } else stop("Unhandled optimizer")
+
+  # nned to retransform the result of the optimization as they were transformed in the objective function
+  # (____F I X M E___ precompute the test?)
+  if (length(.unlist(anyHLCor_obj_args$skeleton$trRanCoefs)) &&
+      (length(objfn.extras[["user.lower"]]$ranCoefs) || length(objfn.extras[["user.upper"]]$ranCoefs))) {
+    ranCoefs <- .canonizeRanPars(optPars["trRanCoefs"],rC_transf = .spaMM.data$options$rC_transf, 
+                                 corr_info = NULL)$ranCoefs
+    ranCoefs <- .pminmax_user_Lowup(fix_ranCoefs=ranCoefs, 
+                                    user.lower=objfn.extras[["user.lower"]], 
+                                    user.upper=objfn.extras[["user.upper"]])
+    for (st in names(optPars$trRanCoefs)) {
+      optPars$trRanCoefs[[st]] <- .ranCoefsFn(ranCoefs[[st]], rC_transf = .spaMM.data$options$rC_transf) 
+    } 
+  }
   optPars <- structure(optPars,method=Optimizer,optr=optr,
                        refit_info=refit_info) ## refit_info is control[["refit"]] if code follows the doc (but there is an undocumented 'FIXME')
   return(optPars)

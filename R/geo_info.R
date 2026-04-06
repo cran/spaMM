@@ -136,27 +136,37 @@
   return(sparse_Qmat)
 }
 
-.ZA_update <- function(rd, Q_CHMfactor, processed, Amat) {
+.A_update <- function(Amat, tPmat, input_ZA, RRsP) {
+  if (is.null(Amat)) {
+    Amat <- as(tPmat,"indMatrix") # much safer for subsetting. 
+    rownames(Amat) <- colnames(input_ZA) # before processed$ZAlist[[rd]] is replaced.
+    # : when there is an A matrix, .calc_normalized_newZAlist() checks its names 
+  } else { # assuming Amat is not a pMatrix, with @margin=2 at least
+    Amat <- .subcol_wAttr(Amat,j=RRsP, drop=FALSE) # Amat %*% tPmat
+    attr(Amat,"perm") <- RRsP # used by .get_new_AMatrices()
+  }
+  structure(Amat, permuted_Q=TRUE)
+}
+
+.A_ZA_update <- function(rd, Q_CHMfactor, processed, Amat) {
   tPmat <- t(as(Q_CHMfactor,"pMatrix"))
   if (any(tPmat@perm!=seq_along(tPmat@perm))) {
-    levelnames <- colnames(processed$ZAlist[[rd]])
+    # distinct A and ZA updates needed
+    input_ZA <- processed$ZAlist[[rd]]
+    levelnames <- colnames(input_ZA)
     if (.hasSlot(tPmat,"margin") && tPmat@margin==2L) { # change introduced in Matrix 1.6.0 (argh)
       RRsP <- tPmat@perm
-    } else RRsP <- sort.list(tPmat@perm) # older Matrix versions without indMatrix class
-    colnames(tPmat) <- levelnames[RRsP]
-    if (is.null(Amat)) {
-      rownames(tPmat) <- colnames(processed$ZAlist[[rd]])
-      # : when there is an A matrix, .calc_normalized_ZAlist() checks its names 
-      processed$corr_info$AMatrices[[as.character(rd)]] <- structure(tPmat, permuted_Q=TRUE)
-    } else {
-      Amat <- .subcol_wAttr(Amat,j=RRsP, drop=FALSE) # Amat %*% tPmat
-      attr(Amat,"perm") <- RRsP # used by .get_new_AMatrices()
-      processed$corr_info$AMatrices[[as.character(rd)]] <- structure(Amat, permuted_Q=TRUE)
-    }
-    ZA <- processed$ZAlist[[rd]] %*% tPmat
-    attr(ZA,"is_incid") <- attr(processed$ZAlist[[rd]],"is_incid")
-    attr(ZA,"RHS_info") <- attr(processed$ZAlist[[rd]],"RHS_info") # cannot be modified by tPmat in composite case at least
+    } else RRsP <- sort.list(tPmat@perm) # older Matrix versions without @margin slot.
+    colnames(tPmat) <- levelnames[RRsP] # provides (important, cf .compute_ZAXlist()) colnames of ZA update.
+    # A update:
+    processed$corr_info$AMatrices[[as.character(rd)]] <- 
+      .A_update(Amat=Amat, tPmat=tPmat, input_ZA=input_ZA, RRsP=RRsP)
+    # ZA update:
+    ZA <- input_ZA %*% tPmat
+    attr(ZA,"is_incid") <- attr(input_ZA,"is_incid")
+    attr(ZA,"RHS_info") <- attr(input_ZA,"RHS_info") # cannot be modified by tPmat in composite case at least
     processed$ZAlist[[rd]] <- ZA
+    # ZAfix update: (note that this may be called again for different 'rd' values)
     .assign_ZAfix(processed)
   } # else ignore identity tPmat
 }
@@ -242,7 +252,7 @@
     ## perm_Q is FALSE in remaining cases: Matern,Cauchy where any permuted precision matrix is presumably full without any useful pattern of zeros 
     ## _F I X M E__ could also depend on expected sparsity ? on ZA being identity?
     #
-    ## for AR1 the 'AR1_block_u_h_ranges' info was lost in .ZA_update() [which permutes ZA cols according to Q_perm]
+    ## for AR1 the 'AR1_block_u_h_ranges' info was lost in .A_ZA_update() [which permutes ZA cols according to Q_perm]
     ## But it seems that AR1_block_u_h_ranges can be used [it's used to create the unpermuted Q 
     ## from which CHM updates are computed]. The fit is OK but the predict() fails
     ## if perm_Q is forced to TRUE. Cf tests composite-extra
@@ -265,7 +275,7 @@
   } 
   Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
   AUGI0_ZX_envir$precisionFactorList[[rd]]$template <- Q_CHMfactor
-  if (perm_Q) .ZA_update(rd, Q_CHMfactor, processed, Amat) # else ZA is not permuted, there is no permuted_Q attribute, so the G matrix will be constructed from unpermuted ZA and unpermuted sparse_Qmat
+  if (perm_Q) .A_ZA_update(rd, Q_CHMfactor, processed, Amat) # else ZA is not permuted, there is no permuted_Q attribute, so the G matrix will be constructed from unpermuted ZA and unpermuted sparse_Qmat
   Q_CHMfactor
 }
 
@@ -277,7 +287,7 @@
     } else Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=FALSE) 
     # perm=TRUE without saving the result in a template should be a problem: 
     #  as(Q_CHMfactor, "sparseMatrix") might have different permutations over calls, while 
-    # .ZA_update() is valid for permuting ZA only once but not repeatedly (original unpermuted ZA not kept)
+    # .A_ZA_update() is valid for permuting ZA only once but not repeatedly (original unpermuted ZA not kept)
   } else { # template for updating already exists
     Q_CHMfactor <- Matrix::.updateCHMfactor(template, parent=sparse_Qmat, mult=0) 
   }
@@ -405,6 +415,9 @@
           if ( ! processed$is_spprec && is.null(symSVD)) cov_info_mat <- .precision2cov(sparse_Qmat=sparse_Qmat)
           AUGI0_ZX_envir$updateable[rd]=(rho!=0)
         } else { # inner estimation of adjacency rho => only symSVD
+          if (identical(.spaMM.data$options$sparse_precision, TRUE)) {
+            stop("spaMM's global options 'sparse precision' is TRUE, which is not compatible with requested inner estimation of rho.")
+          }
           if (is.null(symSVD)) {
             ## Direct call of HLCor (SEM or not), 
             ## I also wrote that this could occur in fitme/corrHLfit if(list(processed)) "bc symSVD added to proc1 (i.e. not to all proc's)"
@@ -502,10 +515,10 @@
         #   levelrange <- range(as.integer(.unlist(dimnams)))
         #   Qmat <- <redefined Cf>(parvec=parvec, newlevels=seq(levelrange[1L],levelrange[2L]))
         #   corr_mat <- chol2inv(chol(Qmat)) # .precision2cov(Qmat) 
-        #   if (inherits(distmat,"dist")) {
-        #     corr_mat[dimnams,dimnams] 
-        #   } else {
+        #   if (inherits(dimnams,"list")) {
         #     corr_mat[dimnams[[1]],dimnams[[2]]]
+        #   } else {
+        #     corr_mat[dimnams,dimnams] 
         #   }
         # }
         if ( processed$is_spprec ||
@@ -587,7 +600,7 @@
           } else if (corr_type== "IMRF") {
             # Remember that we need dtCMatrix'es 'chol_Q' so that bdiag() gives a dtCMatrix
             # Hence use next general code to produce precisionFactorList[[rd]]
-          } else stop("Some error occurred (inner estimation of adjacency rho with requested sparse precision ?)") 
+          } # else stop("Some error occurred (inner estimation of adjacency rho with requested sparse precision ?)") 
           #
           #### (2) (usually) build FROM sparse_Qmat, providing precisionFactorList[[rd]] as expected by .reformat_Qmat_info(),
           #        and the LMatrix.     
@@ -707,8 +720,8 @@
 }
 
 # Recomputes ZA with A modified as function of L such that AL is tcrossfac of correlation matrix 
-.normalize_IMRF_ZA <- function(Z, A, L, colnams=NULL) {
-  if (is.null(Z)) return(NULL) #this occurs in mv fits .calc_ZAlist_newdata_mv() -> .calc_normalized_ZAlist(Zlist ...) -> here
+.normalize_IMRF_ZA <- function(Z, A, L, colids=NULL) {
+  if (is.null(Z)) return(NULL) #this occurs in mv fits .calc_ZAlist_newdata_mv() -> .calc_normalized_newZAlist(Zlist ...) -> here
                                # where Zlist may have some NULL elements.
   # : it's no longer clear when this L is the tcross factor (with the Q_CHMfactor as attribute...) or is the Q_CHMfactor
   # Maybe it is the Q_CHMfactor post-fit.
@@ -716,16 +729,18 @@
   AL <- A %*% L
   invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
   normAL <- .Dvec_times_Matrix(invnorm, A)
-  if (is.null(colnams)) {
+  if (is.null(colids)) {
     ZA <- Z %id*% normAL
-  } else ZA <- Z %id*% normAL[colnams,,drop=FALSE]
+  } else ZA <- Z %id*% normAL[colids,,drop=FALSE] # assumes that mormAL is NOT a pMAtrix:
+  # subsetting a pMatrix should be avoided (its result would depend on the value of @margin 
+  # as well as the class of colids, and may never by the intended result).
   attr(ZA,"is_incid") <- FALSE
   ZA
 }
 
 #call by HLCor_body
 .normalize_IMRF <- function(processed, # with $ZAList already ZA in non-IMRF input (or even IMRF input not to be normalized), 
-                                    #   in contrast to .calc_normalized_ZAlist()
+                                    #   in contrast to .calc_normalized_newZAlist()
                             vec_normIMRF, 
                             Zlist=attr(ZAlist,"Zlist"),
                             strucList) {
@@ -734,14 +749,16 @@
   for (rd in  seq_len(length(ZAlist))) { 
     if (vec_normIMRF[rd]) { 
       char_rd <- as.character(rd)
-      colnams <- colnames(Zlist[[char_rd]]) 
+      colids <- colnames(Zlist[[char_rd]]) 
       Amatrix <- AMatrices[[char_rd]]
-      if ( ! setequal(rownames(Amatrix), colnams)) {
-        # col Z must be = rows of A
-        stop(paste0("Any 'A' matrix must have row names that match all the levels of the random effects\n",
+      if ( ! setequal(rownames(Amatrix), colids)) { # testing equality except for order
+      # Hypothetical alternative:
+      # if (anyNA(colids <- pmatch(rownames(Amatrix), colids))) { # testing inclusion (all colids in rownames(Amatrix))
+        # this also change the class of colids, which *might* be important for a later subsetting operation.
+        stop(paste0("Any 'A' matrix must have row names that include all the levels of the random effect\n",
                     "(i.e. the colnames of the 'Z' design matrix)"))
       } # ELSE:       
-      ZAlist[[char_rd]] <- .normalize_IMRF_ZA(Z=Zlist[[char_rd]], A=Amatrix, L=strucList[[rd]], colnams=colnams)
+      ZAlist[[char_rd]] <- .normalize_IMRF_ZA(Z=Zlist[[char_rd]], A=Amatrix, L=strucList[[rd]], colids=colids)
     }
   }
   return(ZAlist) ## with unchanged attributes
@@ -749,81 +766,35 @@
 
 ..calc_normalized_ZA <- function(Z_, normIMRF, Amatrix, L) {
   if (normIMRF) {
-    Z_ <- .normalize_IMRF_ZA(Z=Z_, A=Amatrix, L=L, colnams=NULL)
+    Z_ <- .normalize_IMRF_ZA(Z=Z_, A=Amatrix, L=L)
   } else {
     mostAttrs <- attributes(Z_)
     is_incid <- mostAttrs[["is_incid"]]
     if (inherits(Amatrix,"pMatrix")) {
-      # ... colnams-using code removed.
+      # Subsetting of rows when a permutation matrix has @margin=2 appears to fail (subsetting the @perm slot?)
+      # both when we use the rownames or when we use integer indices obtained as
+      # newinold <- pmatch(rownames(Amatrix),colnames(Z_)). Instead we convert: 
+      Amatrix <- as(Amatrix,"indMatrix")
     } else if ( ! is.null(is_incid)) {
       if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
       # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
-    }           
-    Z_ <- Z_ %*% Amatrix 
+    } 
+    # .calc_new_X_ZAC() -> .calc_normalized_newZAlist() -> here
+    # Columns in input Z_ must be in the same order as rows in input A (effect of .get_new_AMatrices()) 
+    # (both orders being affected by the newdata order).
+    # For ranCoefs, they must be repeated in both matrices.
+    # cf max(abs(p2[c(1,2,15,16)]-p3[c(2,1,4,3)])) important test in extralong/test-mv-extra.R 
+    # for a test (repeated names, different newdata orders).
+    # Also cf pdep_effects(sppfit1...) test (prediction with new Z_ which has not all the levels of A 
+    #   in corrMatrix model, which uses Amatrix hack); 
+    # mvIMRF test ('ranCoefs' structure combined with A matrix).
+    Z_ <- Z_ %*% Amatrix
     attr(Z_,"is_incid") <- is_incid
     mostAttrs <- mostAttrs[setdiff(names(mostAttrs), c("class","is_incid", slotNames(Z_)))]
     for (st in names(mostAttrs)) attr(Z_,st) <- mostAttrs[[st]] # "is_incid", etc. 
   }
   Z_
 }
-
-# this version uses 'colnams' which is a potential bag of bugs
-# and de facto does not work for composite mv at least (failed test adjacency mv)
-..calc_normalized_ZA_with_subsetting <- function(Z_, normIMRF, Amatrix, L, colnams) {
-  if (normIMRF) {
-    Z_ <- .normalize_IMRF_ZA(Z=Z_, A=Amatrix, L=L, colnams=colnams)
-  } else {
-    mostAttrs <- attributes(Z_)
-    is_incid <- mostAttrs[["is_incid"]]
-    if (inherits(Amatrix,"pMatrix")) {
-      # subsetting by rownames does not generally work on per, mutation matrices
-      Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
-    } else if ( ! is.null(is_incid)) {
-      if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
-      # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
-    }          
-    Z_ <- Z_ %*% Amatrix[colnams,,drop=FALSE]
-    attr(Z_,"is_incid") <- is_incid
-    mostAttrs <- mostAttrs[setdiff(names(mostAttrs), c("class","is_incid", slotNames(Z_)))]
-    for (st in names(mostAttrs)) attr(Z_,st) <- mostAttrs[[st]] # "is_incid", etc. 
-  }
-  Z_
-}
-
-
-# Called post fit: 
-.calc_normalized_ZAlist <- function(Zlist, # creates ZA from Z and A, even for non-IMRF
-                                    AMatrices,
-                                    vec_normIMRF, 
-                                    strucList) {
-  if (length(Zlist) && length(AMatrices)) {
-    for (char_rd in  names(Zlist)) { # 
-      if ( ! is.null(Amatrix <- AMatrices[[char_rd]])) {
-        Z_ <- Zlist[[char_rd]]
-        # colnams <- colnames(Z_) # may be coordinates in the form "-5.3469:36.1291", or gridcode for adjacency ranefs
-        rd <- as.integer(char_rd) # I cannot yet assume strucList[[char_rd]] (nor vec_normIMRF[char_rd])
-        # rownams <- rownames(Amatrix)
-        # `==` recycle its arguments... which may actually be useful. But no longer used  here.
-        # if ( ! all(colnams == rownams)) { # Ultimately it would be nice to remove this check 
-        #   # But for user-provided A at least, the rows may not be ordered as the Z cols, so names woudl be needed. 
-        #   warning("(!) Possible problem with Amatrix permutation.", immediate.=TRUE)
-        #   Zlist[[char_rd]] <- ..calc_normalized_ZA_with_subsetting(
-        #     Z_=Z_, normIMRF=vec_normIMRF[rd], Amatrix=Amatrix, L=strucList[[rd]], colnams=colnams)
-        # } else {
-          ## Now the check on names is in preprocessing -> .ZxA_with_attrs();
-          ## There, the ZA's were built for each submodel. Post-fit we need to 'makelong' the A matrix:
-          # nblocks <- length(colnams) %/% length(rownams)
-          nblocks <- ncol(Z_) %/% nrow(Amatrix)
-          if (nblocks>1L) Amatrix <- .bdiag_Amatrix(Amatrix,2L)
-          Zlist[[char_rd]] <- ..calc_normalized_ZA(
-            Z_=Z_, normIMRF=vec_normIMRF[rd], Amatrix=Amatrix, L=strucList[[rd]])
-        # }
-      }
-    }
-  } 
-  return(Zlist) ## with other attributes unchanged
-}
-
 
 .init_promises_spprec_compos_corrMatrix <- function(cov_info_mat) {
   blob <- attr(cov_info_mat,"blob")
@@ -874,12 +845,12 @@
                     "\n   cannot be checked. Provide names.")
       stop(mess)
     } else {
-      mess <- paste("(!) corrMatrix without labels or row names: the grouping levels, in order",
+      mess <- cli::format_warning(paste("(!) corrMatrix without labels or row names: the grouping levels, in order",
                     paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...,"} else{","},
                     "\n are matched in this order to rows and columns of corrMatrix, without further check.",
                     "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
                     "\n or even",cli::style_bold(cli::style_underline("silent errors")),
-                    ". See help(\"corrMatrix\") for a safer syntax.")
+                    ". See {.topic [corrMatrix](spaMM::corrMatrix)} for a safer syntax."))
       warning(mess, immediate. = TRUE)
     }
   } else if (length(extraZAnames <- setdiff(ZAnames,corrnames))) { # There are ZAnames without matching corrnames. 
@@ -892,8 +863,17 @@
                     "\n: check the definition of <corrFamily>$Cf() and possibly $Af().")
       stop(mess)
     } else if (inherits(corrMatrix,"precision")) {
-      ## Uses a strict approach bc it's already complicated enough, and later code will again compare the names.
-      stop("Some levels of the grouping variable are missing from the row names of the precision matrix\n: check corrMatrix dimensions and/or names.")
+      mess <- cli::format_warning(paste("(!) corrMatrix' labels or row names do not matchs all grouping levels:. These levels, in order",
+                    paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...,"} else{","},
+                    "\n are matched in this order to rows and columns of corrMatrix, without further check.",
+                    "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
+                    "\n or even",cli::style_bold(cli::style_underline("silent errors")),
+                    ". See {.topic [corrMatrix](spaMM::corrMatrix)} for a safer syntax."))
+      warning(mess, immediate. = TRUE)
+      precmat <- corrMatrix$matrix 
+      rownames(precmat) <- colnames(precmat) <- ZAnames[seq_len(ncol(precmat))] # assinging rownames not always necess...
+      corrMatrix$matrix  <- precmat
+      return(corrMatrix)
     } else {
       ## For true covariance matrix spaMM tries to accomodate: it tries to match matrices by row order,
       # but need identical dimensions for such a match.
@@ -901,12 +881,13 @@
       if ( length(corrnames)!=length(uZAnames)){ 
         stop("The corrMatrix does not match the levels of the grouping variable: different levels (names) and different dimensions.")
       } else { ## same dimensions, but names do not match
-        message(paste0("spaMM is not able to match levels of the random effect to the names of corrMatrix,\n",
+        message(cli::format_message(paste0("spaMM is not able to match levels of the random effect to the names of corrMatrix,\n",
                        " and matches levels to rows of the matrix by their respective orders.\n",
-                       " See help(\"corrMatrix\") for a safer syntax."))
+                       " See {.topic [corrMatrix](spaMM::corrMatrix)} for a safer syntax.")))
       }
     }
   }
+  NULL
 }
 
 .uniqueGeo_from_ulevels <- function(unique_levels, uGeo_colnames) { # unique_levels expected to have a "colnames" attribute
@@ -988,37 +969,45 @@
           corr_type <- corr_types[[it]]
           if ( ! is.na(corr_type)) {
             if (corr_type== "corrMatrix") { 
-              ## For CORREL algos .subset_corrMatrix has the effect that the correl matrix used in later computations 
-              # is a subset & permutation of the user-level one according to the order of columns of ZAlist[[it]]
-              #
-              ## In the SPPREC case corr_info$corrMatrices[[it]] already contains a precision matrix
-              # it cannot be subsetted. Nothing is done at this point(in particular, it would be pointless to modify the ZA argument locally)
-              # Instead, the Z matrix will be extended by .addrightcols_Z(), then the cov_info_mat will be reordered 
-              # according to the columns of this augmented Z matrix.
-              # This implies that the order cov_info_mat will then differ from that of the $corrMatrices[[]]
-              # and that the latter should not be used (=> _F I X M E__ remove this corrMatrices[[]] object?)
-              corrMatrix <- corr_info$corrMatrices[[it]]
-              corrnames <- .get_rownames_corrMatrix(corrMatrix)
               NESTED_ZAnames <- .get_nestednames_ZA(ZAlist[[it]]) # rather than simply colnames(ZAlist[[it]])
-              .check_rownames_corrMatrix(corrMatrix=corrMatrix, ZAnames=NESTED_ZAnames, For="", corrnames=corrnames)
-              cov_info_mat <- .subset_corrMatrix(corrMatrix=corrMatrix, ZAnames=NESTED_ZAnames, corrnames=corrnames) ## correlation or precision...
-              if ( inherits(cov_info_mat,"precision")) {
+              corrMatrix <- corr_info$corrMatrices[[it]]
+              # message side-effect, and optionally non NULL 'chk' in "precision case: 
+              chk <- .check_rownames_corrMatrix(corrMatrix=corrMatrix, ZAnames=NESTED_ZAnames, For="") 
+              if ( inherits(corrMatrix,"precision")) {
                 # fast test by verif3 in test pedigree (no new cols) and longer test by test-Matern-spprec.R#9 (new cols)
                 # Also Gryphon... caught bug  mv  RHS in .addrightcols_Z() 
+                #
+                ## In the SPPREC case 'corrMatrix' already contains a precision matrix which should not 
+                # be subsetted, and it would be pointless to modify the ZA argument locally. Instead, 
+                # (A) the Z matrix will be extended by .addrightcols_Z(), 
+                # (B) then the cov_info_mat will be reordered according to the columns of this augmented Z matrix.
+                # This implies that the order of cov_info_mat may then differ from that of the $corrMatrices[[]]
+                # and that the latter should no longer be used (what about post-fit code?)
+                if ( ! is.null(chk)) {
+                  # This may occur when inherits(corrMatrix,"precision") and the matrix input by the user had 'dirty' names.
+                  cov_info_mat <- corr_info$corrMatrices[[it]]  <- chk 
+                } else cov_info_mat <- corrMatrix
                 precmat <- cov_info_mat[["matrix"]]
                 precnames <- colnames(precmat) # NESTED levels
                 mostAttrs <- attributes(ZAlist[[it]])
                 mostAttrs <- mostAttrs[setdiff(names(mostAttrs), c("class",slotNames(ZAlist[[it]])))]
-                ZAlist[[it]] <- .addrightcols_Z(Z=ZAlist[[it]], precnames) # Handles LHS and nested RHS; 
+                ZAlist[[it]] <- .addrightcols_Z(Z=ZAlist[[it]], precnames) # "(A)" Handles LHS and nested RHS; 
                 # now we are sure that they have the same names, only the orders are uncertain, so we can test order by any( != )
                 uZAnames <- unique(colnames(ZAlist[[it]]))
-                if (any(precnames!=uZAnames)) cov_info_mat <- cov_info_mat[uZAnames,uZAnames] # only a permutation, using `[.precision`
+                if (any(precnames!=uZAnames)) cov_info_mat <- cov_info_mat[uZAnames,uZAnames] # "(B)" only a permutation, using `[.precision`
                 for (st in names(mostAttrs)) attr(ZAlist[[it]],st) <- mostAttrs[[st]] # "is_incid", etc. 
                 # AFTER the subsetting !
                 attr(cov_info_mat,"blob") <- new.env(parent=emptyenv()) 
                 .init_promises_spprec_compos_corrMatrix(cov_info_mat) # "blob" environment gets promises for Q_CHMfactor, kron_Y_chol_Q, Lunique
                 # : this envir was conceived for composite ranefs, but could be used beyond?
-              } else attr(cov_info_mat,"blob") <- new.env(parent=emptyenv()) # "blob" without promises 
+              } else {
+                ## For CORREL algos .subset_corrMatrix has the effect that the correl matrix used in later computations 
+                # is a subset & permutation of the user-level one according to the order of columns of ZAlist[[it]]
+                #
+                corrnames <- .get_rownames_corrMatrix(corrMatrix)
+                cov_info_mat <- .subset_corrMatrix(corrMatrix=corrMatrix, ZAnames=NESTED_ZAnames, corrnames=corrnames) ## correlation or precision...
+                attr(cov_info_mat,"blob") <- new.env(parent=emptyenv()) # "blob" without promises 
+              }
               cov_info_mats[[it]] <- cov_info_mat
             } else { ## all cases where geo_info (even empty) is needed 
               geo_info[[it]] <- new.env(parent=emptyenv())
@@ -1114,6 +1103,7 @@
                     for (st in names(mostAttrs)) attr(ZAlist[[it]],st) <- mostAttrs[[st]] # "is_incid", etc. 
                   } else { 
                     # sp|de corr => possible reduction/permutation of *corrFamily template*
+                    # no .addrightcols_Z()...
                     .subset_corrFamily(corrfamily, ZAnames, corrnames) # calls .corrfamily_permute(), which ma redefine $"Cf" 
                   }
                 }

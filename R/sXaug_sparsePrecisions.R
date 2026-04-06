@@ -15,7 +15,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     # w.resid= if (is.list(w.resid)) {w.resid$w_resid} else w.resid,
     corrPars=corrPars
     )
-  class(resu) <- c("AUGI0_ZX_spprec","list") # (## )do not define recursively if object is an envir...)
+  class(resu) <- c("AUGI0_ZX_spprec","list") # (do not define recursively if object is an envir...)
   .init_spprec(resu)
   return( resu ) 
 }
@@ -607,9 +607,11 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     if (.is_evaluated("r22", BLOB)) {
       # Then we use it for beta_cov but must be careful not to mix it with the other objects bc it is the r22 for a scaled X while the new promises for post fit
       # refer to an unscaled version of X.pv. ./.
-      unsc_r22 <-  .m_Matrix_times_Dvec(BLOB$r22, attr(AUGI0_ZX$X.pv,"scaled:scale")) 
+      if ( ! is.null(scale. <-  attr(AUGI0_ZX$X.pv,"scaled:scale"))) {
+        unsc_r22 <- .m_Matrix_times_Dvec(BLOB$r22, scale.)      
+      } else unsc_r22 <- BLOB$r22 # .scale() is not always called in preprocessing
       beta_cov <- try(solve(crossprod(unsc_r22)), silent=TRUE)
-      if (inherits(beta_cov,"try_error")) {
+      if (inherits(beta_cov,"try-error")) {
         # this occurred for test-difficult_AR1_from_adRes 
         # with the change in .update_port_fit_values() introduced in v4.5.52
         # and removed in v4.5.56.

@@ -219,11 +219,12 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   ## to the 'new' levels of random effects  
   newnrand <- length(newZAlist_slice) ## or of any other of the lists of matrices
   templateList <- vector("list", length = newnrand)
-  ## subset new levels in all relevant matrices. The oldv levels must be untouched !
-  locnewZA <- templateList
   locCov_newLv_oldv_list <- templateList
   if ( ! is.null(cov_newLv_newLv_list)) {locCov_newLv_newLv_list <- templateList} else locCov_newLv_newLv_list <- NULL
   if ( ! is.null(diag_cov_newLv_newLv_list)) {locDiag_cov_newLv_newLv_list <- templateList} else locDiag_cov_newLv_newLv_list <- NULL
+  locnewZA <- templateList
+  attributes(locnewZA) <- attributes(newZAlist_slice)
+  ## subset new levels in all relevant matrices. The oldv levels must be untouched !
   for (new_rd in seq_len(newnrand)) {
     req_levels <- which(colSums(newZAlist_slice[[new_rd]])>0L) 
     locnewZA[[new_rd]] <- newZAlist_slice[[new_rd]][ , req_levels, drop=FALSE] 
@@ -306,6 +307,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     nslices <- length(slices)-1L
     predVar <- vector("list",nslices)
     newZAlist_slice <- vector("list",length(newZAlist))
+    attributes(newZAlist_slice) <- attributes(newZAlist)
     progrbar_setup <- .set_progrbar(style = showpbar, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
@@ -661,8 +663,11 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (is.null(newoldC <- object$ranef_info$sub_corr_info$corrMatrices[[old_rd]])) {
       # The just-looked-at newoldC is NULL if all the corrMat positions are in the data:
       # In that case there is no need to keep a distinct matrix in sub_corr_info.
+      # But it is also NULL if spprec was used, in which the full-corrMatrix info is contained in the
+      # dCHMsimpl object...
       newoldC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
       colnames(newoldC) <- rownames(newoldC) <- .get_oldlevels(object, old_rd, fix_info)  # those in the data
+      # (if newoldC is sparse, 'rownames' are ignored. Cf comments in .tcrossprod())
       .assign_newLv_for_newlevels_corrMatrix(newoldC, 
                                              newlevels=colnames(newZAlist[[new_rd]]), 
                                              newLv_env, new_rd, corr.model, which_mats, ranefs,
@@ -1051,9 +1056,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         p0[mv_it] <- list(attr(fv[[mv_it]], "p0"))
         mu_U[mv_it] <- list(attr(fv[[mv_it]], "mu_U"))
       }
-      return(structure(unlist(fv, recursive = FALSE, use.names = TRUE), 
-                       mv=fv, # mv_list, expected by .r_resid_var_over_cols() -> must be included.
-                       p0=p0, mu_U=mu_U))
+      fv_struc <- unlist(fv, recursive = FALSE, use.names = TRUE)
+      attr(fv_struc, "mv") <- fv  # mv_list, expected by .r_resid_var_over_cols() -> must be included.
+      if ( ! is.null(.unlist(p0))) {
+        attr(fv_struc, "p0") <- p0 
+        attr(fv_struc, "mu_U") <- mu_U 
+      }
+      return(fv_struc)
     } else {
       fv <- vector("list", length(cum_nobs)-1L)
       for (mv_it in seq_along(fv)) {
@@ -1117,15 +1126,20 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (type=="link") { # in those cases, we return eta but no useful $fv 
       fv <- NULL 
     } else {
-      cum_nobs <- new_X_ZACblob$cum_nobs # must be available when eta_fix is
+      cum_nobs <- new_X_ZACblob$cum_nobs # must be available ("when eta_fix is")
       fv <- .fv_linkinv(eta_fix, object$family, object$families, cum_nobs=cum_nobs) ## ! freqs for binomial, counts for poisson
       fv <- .mvize(fv=fv, cum_nobs=cum_nobs)
     }
     return(list(fv=fv,eta=eta_fix))
   } else if ( is.null(newdata) && ! inherits(re.form,"formula")) {
+    cum_nobs <- attr(object$families,"cum_nobs")
     if (type=="link") {
-      return(list(eta=object$eta)) 
-    } else return(list(fv=object$fv)) ## eta will be reconstructed from fv on request
+      eta <- .mvize(fv=object$eta, cum_nobs=cum_nobs)
+      return(list(eta=eta)) 
+    } else {
+      fv <- .mvize(fv=object$fv, cum_nobs=cum_nobs)
+      return(list(fv=fv)) 
+    }
   } else { ## 
     newnrand <- length(new_X_ZACblob$subZAlist)
     if ( newnrand==0L ) {
@@ -1325,10 +1339,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   rc_dispinfo_warned <- FALSE
   function() {
     if ( ! environment(.rc_dispinfo_warn)$rc_dispinfo_warned) {
-      warning(paste("Prediction variance computations for random-coefficient terms use\n",
+      warning(cli::format_warning(paste("Prediction variance computations for random-coefficient terms use\n",
                     "a poorly characterized approximation that will give different results\n",
                     "for different internal representations of correlation matrices\n",
-                    "(see Details in help('predVar'))"), # TAG rc_dispcov
+                    "(see Details in {.topic [predVar](spaMM::predVar)})")), # TAG rc_dispcov
               call.=FALSE)
       rc_dispinfo_warned <<- TRUE
     }
@@ -1336,26 +1350,26 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 })
 
 .get_new_X_ZAC_blob <- function(object, newdata, re.form, variances, invCov_oldLv_oldLv_list, control,
-                                na.action=na.omit) {
+                                na.action=na.omit, verbose=TRUE) {
   if ( is.null(object$vec_nobs)) {
     .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form, variances=variances, 
                     invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control,
-                    na.action=na.action)
+                    na.action=na.action, verbose=verbose)
   } else .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form, variances=variances, 
                             invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control,
-                            na.action=na.action)
+                            na.action=na.action, verbose=verbose)
 }
 
 
 .predict_body <- function(object, newdata, re.form, type,
-                          variances, binding, intervals, level, blockSize, control, showpbar, 
-                          new_X_ZACblob=NULL, na.action=na.omit) {
+                          variances, binding, intervals, level, blockSize, control, 
+                          new_X_ZACblob=NULL, na.action=na.omit, verbose) {
   # This promise applies to newdata= newdata_slice if relevant, so cannot be defined on the unsliced data (hence new_X_ZACblob cannot as well).
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   if (is.null(new_X_ZACblob)) { # may have been precomputed and provided in mv case. Otherwise:
     new_X_ZACblob <- .get_new_X_ZAC_blob(object, newdata=newdata, re.form=re.form, variances=variances, 
                                          invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control,
-                                         na.action=na.action)
+                                         na.action=na.action, verbose=verbose[["na"]])
   }
   locdata <- new_X_ZACblob$locdata # they are added as "frame" attribute even when only object$fv is returned so... new_X_ZACblob is always needed
   #
@@ -1407,7 +1421,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   #
   if(variances$linPred) {
     predVar <- .wrap_calcPredVar(newnrand, newdata, re.form, new_X_ZACblob, variances, newX.pv, 
-                                 object, blockSize, invCov_oldLv_oldLv_list, showpbar, locdata)
+                                 object, blockSize, invCov_oldLv_oldLv_list, 
+                                 showpbar=verbose[["showpbar"]], locdata)
   } else if (any(unlist(variances))) {
     if (inherits(locdata,"list")) { # mv
       respVnrow <- sum(.unlist(lapply(locdata,nrow)))
@@ -1476,7 +1491,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       pv <- 1-(1-level)/2
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
-          object$family$family=="gaussian" && ## on a mv-GLM, evaluates to FALSE => t-test not performed when there are several phi's (*OK*).
+          is.null(object$families) && # otherwise submodels with shared fixef may have different variances even if each is homosc.
+          object$family$family=="gaussian" && 
           .DEPARSE(.get_phiform(object))=="~1" # not heteroscedastic
       ) { 
         nobs <- length(object$y)
@@ -1629,115 +1645,24 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   .predict_body(newdata=newdata_slice, ...)
 }
 
-if (FALSE) {
-  # was used for develof .dopar()
-  .paral_predict_body <- function(iterator, cluster_args, 
-                                  slices,
-                                  object, newdata, re.form, variances, 
-                                  binding, type, intervals, level, blockSize, ## blockSize should not be useful *here*
-                                  control, showpbar, na.action) {
-    
-    cluster_args <- .set_cluster_type(cluster_args=cluster_args) # PSOCK vs FORK
-    cores_info <- .init_cores(cluster_args=cluster_args)
-    if (cluster_args$type=="FORK") {
-      nb_cores <- cores_info$nb_cores
-      # if (is.null(mc.silent <- control$mc.silent))   # conflict with 'control' arg of ..slice_n_predict_body()
-      mc.silent <- TRUE 
-      # if (is.null(mc.preschedule <- control$mc.preschedule)) 
-      mc.preschedule <- TRUE 
-      has_progressr <- ("package:progressr" %in% search())
-      if (has_progressr) {
-        # progressor is the only progress function that 'works' with mclapply
-        # although not with load-balancing (mc.preschedule=FALSE)
-        # Here we use the default (no balancing), and it is the steps with max value shown below that are reported.  
-        prog_fn <- get("progressor", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-        with_fn <- get("with_progress", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-        with_fn({
-          p <- prog_fn(steps=length(pars))
-          p..point_predict <- function(it, newdata, slices, ...) {
-            res <- ..slice_n_predict_body(it, newdata, slices, ...)
-            p() # p() call necessary for actual progress report 
-            res
-          }
-          profiles <- try(
-            parallel::mclapply(iterator, FUN = p..point_predict,
-                               ## arguments for FUN
-                               slices=slices,  
-                               object=object, newdata=newdata, re.form = re.form, variances=variances, 
-                               binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                               control=control, showpbar=showpbar, na.action=na.action)
-          )
-        })
-      } else {
-        .warn_once_progressr()
-        profiles <- try(
-          parallel::mclapply(iterator, FUN = ..slice_n_predict_body,
-                             ## arguments for FUN
-                             slices=slices,        
-                             object=object, newdata=newdata, re.form = re.form, variances=variances, 
-                             binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                             control=control, showpbar=showpbar, na.action=na.action)
-        )
-      }
-    } else { # PSOCK
-      cl <- cores_info$cl
-      packages <- "Infusion"
-      parallel::clusterExport(cl, "packages",envir=environment()) ## passes the list of packages to load
-      abyss <- parallel::clusterEvalQ(cl, {sapply(packages,library,character.only=TRUE)}) ## snif
-      if (cores_info$has_doSNOW) {
-        show_pb <- (# verbose$most && 
-          ! isTRUE(getOption('knitr.in.progress')))
-        if (show_pb) {
-          pb <- txtProgressBar(max = length(object), style = 3, char="P")
-          progress <- function(n) setTxtProgressBar(pb, n)
-          parallel::clusterExport(cl=cl, "progress",envir=environment()) ## slow?
-          .options.snow = list(progress = progress)
-        } else .options.snow = NULL
-        st <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'st'
-        foreach_args <- list(
-          st = pars, 
-          .packages= packages,
-          .options.snow = .options.snow,
-          .inorder = TRUE, .errorhandling = "remove"
-          #                                 "pass"## "pass" to see error messages
-        )
-        foreach_blob <- do.call(foreach::foreach,foreach_args)
-        profiles <- foreach::`%dopar%`(
-          foreach_blob,
-          ..slice_n_predict_body(it, 
-                         ##  arguments for FUN:
-                         slices=slices,                  
-                         object=object, newdata=newdata, re.form = re.form, variances=variances, 
-                         binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                         control=control, showpbar=showpbar, na.action=na.action) )
-        if (show_pb) close(pb)
-      } else { # PSOCK without doSNOW
-        pbopt <- pboptions(nout=min(100L,2L*length(iterator)),type="timer", char="p")
-        profiles <- pblapply(X=iterator, FUN = ..slice_n_predict_body, cl= cl, 
-                             ##  arguments for FUN:
-                             slices=slices,
-                             object=object, newdata=newdata, re.form = re.form, variances=variances, 
-                             binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                             control=control, showpbar=showpbar, na.action=na.action)
-        pboptions(pbopt)
-      }
-    }
-    .close_cores(cores_info)
-    profiles
-  } 
-  
-}
-
-
 ## (1) for surface prediction: (developed in InferentialSimulation/InferentialSimulation.R)
 ## (2) But also for generation of fixed effects in simulation of nested-effects models
 predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
                           variances=list(), binding = FALSE, intervals = NULL,
                           level = 0.95, blockSize = 2000L, type = "response", 
-                          verbose=c(showpbar=eval(spaMM.getOption("barstyle"))), 
+                          verbose=NULL, 
                           control=list(), # see help("fix_predVar") ?
                           na.action=na.omit, cluster_args=list(), ...) { ## but not new Y
-  if (inherits(newdata,"tibble"))     newdata <- as.data.frame(newdata) # such as tibble. 
+  verbose <- .modify_list(
+    list(showpbar=eval(spaMM.getOption("barstyle")),
+         na=TRUE, # whether to output a *message* when there are NA in newdata 
+         na_once=FALSE), # whether to reset NA_in_newdata_NOT_warned to TRUE 
+    # when run if this function concludes. na_once=TRUE is useful for repetitive internal calls  
+    # to predict() as in pdep_effects() (which must then reset NA_in_newdata_NOT_warned when concluding). Hence:
+    verbose # The latter 'verbose' will typically include na_once=TRUE when predict() called by pdep_effect.
+  )
+
+  if (inherits(newdata,"tibble"))     newdata <- as.data.frame(newdata)
 
   if (is.null(object$envir)) object$envir <- list2env(list(), ## back-compatibility fix for old objects
                                                      parent=environment(HLfit_body))
@@ -1763,7 +1688,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   # }
   nrX <-  NROW(newdata)
   if (!is.null(re.form) && inherits(re.form,"formula")) re.form <- .preprocess_formula(re.form)
-  showpbar <- verbose[["showpbar"]]
+  
   if ( (! variances$cov) && ! control$simulate && 
        is.null(validrownames <- attr(newdata,"validrownames")) &&
        nrX > blockSize) {
@@ -1773,13 +1698,6 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     nslices <- length(slices)-1L
     if (max(0L, cluster_args$spec)>1L) {
-      # res <- .paral_predict_body(
-      #   iterator=seq_len(nslices), cluster_args=cluster_args,
-      #   slices=slices,
-      #   object=object, newdata=newdata, 
-      #   re.form = re.form, variances=variances, 
-      #   binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-      #   control=control, showpbar=showpbar, na.action=na.action)
       res <- .dopar(
         iterator=seq_len(nslices), FUN=..slice_n_predict_body, cluster_args=cluster_args,
         # arguments for FUN:
@@ -1787,9 +1705,11 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
         object=object, newdata=newdata, 
         re.form = re.form, variances=variances, 
         binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-        control=control, showpbar=showpbar, na.action=na.action)
+        control=control, verbose=verbose, na.action=na.action)
     } else {
+      ## slicing (nrX > blockSize) without paralellization
       res <- vector("list",nslices)
+      showpbar <- verbose[["showpbar"]] 
       progrbar_setup <- .set_progrbar(style = showpbar, char="s") # FIXME could implement parallel computation
       for (it in seq_len(nslices)) {
         slice <- (slices[it]+1L):slices[it+1L]
@@ -1797,7 +1717,8 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
         res[[it]] <- .predict_body(object=object, newdata=newdata_slice, 
                                    re.form = re.form, variances=variances, 
                                    binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                                   control=control, showpbar=showpbar, na.action=na.action)
+                                   control=control, na.action=na.action,
+                                   verbose=verbose)
         if (showpbar) progrbar_setup$progress(slices[it+1L]/nrX)  ## update progress bar
       }
       if (showpbar) close(progrbar_setup$pb)
@@ -1813,10 +1734,15 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     }
   } else if (type=="marginal") {
     res <- .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)
-  } else res <- .predict_body(object=object, newdata=newdata, re.form = re.form,
+  } else {
+    # neither slicing nor type=="marginal"
+    res <- .predict_body(object=object, newdata=newdata, re.form = re.form,
                 variances=variances, binding=binding, type=type,
                 intervals=intervals, level=level, blockSize=blockSize, ## but blockSize could be useful *here* if newdata was NULL
-                control=control, showpbar=showpbar, na.action=na.action) # if control$simulate is TRUE, and new_X_ZACblob was evaluated, there is attr(resu,"new_X_ZACblob")
+                control=control, na.action=na.action,
+                verbose=verbose) # if control$simulate is TRUE, and new_X_ZACblob was evaluated, there is attr(resu,"new_X_ZACblob")
+  }  
+  
   if (inherits(object,"fitmv") && ! identical(na.action,na.omit)) {
     res <- .ugly_na.action_mv(res)
   } else {
@@ -1824,6 +1750,9 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     if (inherits(na.action,"exclude") ) {
       res <- .naresid.exclude(na.action, res )     # INSERT NA's... 
     }
+  }
+  if ( ! verbose[["na_once"]]) {
+    environment(.warn_NA_in_newdata)$NA_in_newdata_NOT_warned <- TRUE
   }
   return(res)
 }

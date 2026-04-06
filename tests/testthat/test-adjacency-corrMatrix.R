@@ -6,21 +6,14 @@ adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset
                 adjMatrix=Nmatrix,
                 rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                 fixed=list(rho=0.1), 
-                family=poisson(),data=scotlip)
-#expectedMethod <- "AUGI0_ZX_spprec" ## has been dense for a long time
-#actualMethods <- how(adjfit, verbose=FALSE)$MME_method
-if (interactive()) {
-  if ( ! .is_spprec_fit(adjfitsp)) {
-    message(paste0('Actual method for adjfitsp differs from expected spprec: was a non-default option selected?'))
-  }
-} else testthat::expect_true(expectedMethod %in% adjfit$MME_method) 
+                family=poisson(),data=scotlip, 
+                control.HLfit=list(algebra="spprec"))
 adjfit <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   adjMatrix=Nmatrix,
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                   fixed=list(rho=0.1), 
                   family=poisson(),data=scotlip, 
                   control.HLfit=list(algebra="decorr"))
-testthat::expect_true( ! .is_spprec_fit(adjfit))
 if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   crit <- diff(range(logLik(adjfit),logLik(adjfitsp)))
   if (spaMM.getOption("fpot_tol")>0) {
@@ -45,18 +38,16 @@ if (spaMM.getOption("example_maxtime")>6.90) {
   precfit <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                    covStruct=list(precision=precmat),
                    rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
-                   #fixed=list(lambda=c(0.1,0.05)), 
                    family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=FALSE))
   testthat::expect_true(.is_spprec_fit(precfit))
   precfitLM <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                      covStruct=list(precision=precmat),
                      rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
-                     #fixed=list(lambda=c(0.1,0.05)), 
                      family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE))
   covfit <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   covStruct=list(corrMatrix=covmat),
-                  rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
-                  #fixed=list(lambda=c(0.1,0.05)), 
+                  rand.family=list(gaussian(),Gamma(log)), 
+                  control.HLfit=list(sparse_precision=FALSE),
                   family=poisson(),data=scotlip)
   testthat::expect_true("matrix" %in% how(covfit, verbose=FALSE)$MME_method)
   testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tolerance=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)

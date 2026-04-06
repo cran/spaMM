@@ -1,10 +1,10 @@
 \name{HLCor}
 \alias{HLCor}
 \title{
-                    Fits a (spatially) correlated mixed model, for given correlation parameters 
+Fits a (spatially) correlated mixed model, for given correlation parameters 
 }
 \description{
-A fitting function acting as a convenient interface for \code{\link{HLfit}}, constructing the correlation matrix of random effects from the arguments, then estimating fixed effects and dispersion parameters using \code{HLfit}. Various arguments are available to constrain the correlation structure, \code{covStruct} and \code{distMatrix} being the more general ones (for any number of random effects), and \code{adjMatrix} and \code{corrMatrix} being alternatives to \code{covStruct} for a single correlated random effect. \code{uniqueGeo} is deprecated.
+A fitting function acting as a convenient interface for \code{\link{HLfit}}, constructing the correlation matrix of random effects from the arguments, then estimating fixed effects and dispersion parameters using \code{HLfit}. Various arguments are available to constrain the correlation structure, \code{covStruct} and \code{distMatrix} being the more general ones (for any number of random effects), and \code{adjMatrix} and \code{corrMatrix} being alternatives to \code{covStruct} for a single correlated random effect. The \code{uniqueGeo} argument is deprecated.
 }
 \usage{
 HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
@@ -19,7 +19,7 @@ HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
   }
   \item{fixed, ranPars}{
   A list of given values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
-  (optional, but passed to HLfit if present). \code{ranPars} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{ranPars}} for further information.
+  (optional, but passed to HLfit if present). \code{ranPars} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{fixed}} for further information about these two parameters.
 }
   \item{data}{
    The data frame to be analyzed.
@@ -27,8 +27,9 @@ HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
   \item{family}{A \code{family} object describing the distribution of the response variable. See \code{\link{HLfit}} for further information.
   }
   \item{distMatrix}{
-    \bold{Either} a distance matrix between geographic locations, forwarded to \code{MaternCorr} or \code{CauchyCorr}. It overrides the (by default, Euclidean) distance matrix that would otherwise be deduced from the variables in a \code{Matern(.))} or \code{Cauchy(.)} term; \cr
-    \bold{or} a list of such matrices. The list format is useful when there are several Matern/Cauchy terms, to avoid that all of them are affected by the same \code{distMatrix}. \code{NULL} list elements may be necessary, e.g.\cr 
+  This argument allows estimation of Matern or Cauchy correlation parameters to be combined with use of an ad hoc distance matrix. When there is a single spatial random effect, it may be a \bold{distance matrix} between geographic locations, internally used as argument to \code{MaternCorr} or \code{CauchyCorr}. It then overrides the (by default, Euclidean) distance matrix that would otherwise be deduced from the variables in a \code{Matern(.))} or \code{Cauchy(.)} term. 
+  
+    More generally, it may be a \bold{list of such matrices}. The list format may be necessary when there are several Matern/Cauchy terms, to avoid that all of them are affected by the same \code{distMatrix}. \code{NULL} list elements may be necessary, e.g.\cr 
 \code{distMatrix=list("1"=NULL,"2"=<.>)}) when a matrix is specified only for the second random effect.
 }
   \item{adjMatrix}{
@@ -38,7 +39,7 @@ HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
 }
   \item{corrMatrix}{
     A matrix \bold{C} used if a random effect term of the form \code{corrMatrix(1|<stuff>)} is present. This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. Each row corresponds to levels of a variable <stuff>. The covariance matrix of the random effects for each level is then \eqn{\lambda}\bold{C}, where as usual \eqn{\lambda} denotes a variance factor for the random effects (if \bold{C} is a correlation matrix, then  \eqn{\lambda} is the variance, but other cases are possible). See \code{\link{corrMatrix}} for further details.
-    If matrices are needed for several random effects, use \code{covStruct}.
+    If matrices are needed for several random effects, use the \code{covStruct} argument.
 }
   \item{covStruct}{
     An interface for specifying correlation structures for different types of random effect (\code{corrMatrix} or \code{adjacency}). See \code{\link{covStruct}} for details.
@@ -82,7 +83,11 @@ HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
 }
 
 \seealso{
-\code{\link{autoregressive}} for additional examples, \code{\link{MaternCorr}}, \code{\link{HLfit}}, and \code{\link{corrHLfit}}
+Additional example using an \code{adjacency} term in \code{\link{autoregressive}}; 
+
+Additional examples using \code{corrMatrix} or \code{distMatrix} argument in \code{\link{corrMatrix}};
+
+\code{\link{MaternCorr}}, which may be used to specify \code{corrMatrix} values. 
 }
 \examples{
 # Example with an adjacency matrix (autoregressive model):

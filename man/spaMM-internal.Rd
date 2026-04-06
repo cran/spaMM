@@ -36,7 +36,7 @@
 \alias{.rhoFn}
 \alias{.rhoInv}
 \alias{.safe_opt}
-\alias{.setCluster}
+%\alias{.setCluster}
 \alias{.stripOffset}
 \alias{.stripRanefs}
 \alias{.tcrossprod}

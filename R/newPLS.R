@@ -196,6 +196,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
 }
 
 .calc_neg_d2f_dv_dloglam <- function(dlogfthdth, cum_n_u_h, lcrandfamfam, rand.families, u_h) {
+  is_gammaId <- attr(rand.families,"is_gammaId")
   neg.d2f_dv_dloglam <- vector("list",length(lcrandfamfam))
   for (it in seq_len(length(lcrandfamfam)) ) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
@@ -203,7 +204,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
     ## same computation as canonical case, except that first we consider dlogfthdv=dlogfthdth * [dth/dv]
     if (lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="log") { 
       neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range] / u_h[u.range])  ## [dth/dv=1/u] for th(u)=-1/u, v=log(u)
-    } else if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { 
+    } else if (is_gammaId[it]) { 
       neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range] / u_h[u.range]) ## gamma(identity)  ## [dth/dv=1/u] for th(u)=log(u), v=u
     } else { ## v=g(u) = th(u) : random effect model is canonical conjugate
       neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range]) ## (neg => -) (-)(psi_M-u)/lambda^2    *    lambda.... 
@@ -296,13 +297,14 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
 
 .calc_z2 <- function(wranefblob, lcrandfamfam, cum_n_u_h, rand.families, u_h, lambda_est, psi_M, v_h, dvdu) {
   ## HGLM: nonzero z2, nonzero a(0) 
+  is_gammaId <- attr(rand.families,"is_gammaId")
   nrand <- length(rand.families)
   psi_corr <- vector("list",nrand)
   for (it in seq_len(nrand)) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     if (lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="log") { 
       psi_corr[[it]] <- (2*u_h[u.range]- (u_h[u.range]^2)*(1+lambda_est[u.range])) ## LeeL01 p.1003; to cast the analysis into the form of z2  
-    } else if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## gamma(identity)
+    } else if (is_gammaId[it]) { ## gamma(identity)
       psi_corr[[it]] <- (2*u_h[u.range] - (u_h[u.range]^2)/(1-lambda_est[u.range])) ## interesting singularity 
       ## moreover pb: u_h=1, lambda =1/2 -> psi=0 -> z2=0 -> negative u_h
     } else {   
@@ -324,25 +326,27 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   return(resu)
 }
 
-
-.calc_z1 <- function(muetablob, w.resid, y, off, cum_nobs) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
-  if (is.list(w.resid)) {
-    if (is.null(mvlist <- w.resid$mvlist)) {
-      z1 <- as.vector(muetablob$sane_eta+w.resid$WU_WT*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) ## MolasL10
-    } else {
+.calc_z1 <- function(muetablob, w.resid, y, off, cum_nobs, dz1_p4m=muetablob$dz1_p4m) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
+  if (is.list(w.resid)) { # Presumably, all cases involving ZT family
+    if (is.null(mvlist <- w.resid$mvlist)) { # Presumably, aunivariate ZT family
+      z1 <- as.vector(muetablob$sane_eta-off+w.resid$WU_WT*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta) ## MolasL10
+    } else { # Presumably, mv involving ZT family
       z1s <- vector("list",length(mvlist)) 
       for (mv_it in seq_along(mvlist)) {
         resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-        z1s[[mv_it]] <- .calc_z1(muetablob=muetablob$mv[[mv_it]], w.resid=w.resid$mvlist[[mv_it]], y=y[resp_range], off=off[resp_range])
+        z1s[[mv_it]] <- .calc_z1(muetablob=muetablob$mv[[mv_it]], w.resid=w.resid$mvlist[[mv_it]], 
+                                 y=y[resp_range], off=off[resp_range], dz1_p4m=NULL) # avoid recursive p4m correction
       }
       z1 <- .unlist(z1s)
     }
+    # ELSE Presumably, all univ and mv cases without ZT family:
   } else z1 <- as.vector(muetablob$sane_eta-off+(y-muetablob$mu)/muetablob$dmudeta) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+  if ( ! is.null(dz1_p4m)) z1 <- z1 + dz1_p4m
   return(z1)  
 }
 
 .calc_z1_obs <- function(muetablob, w.resid, H_w.resid,
-                         y, off, cum_nobs) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
+                         y, off, cum_nobs, dz1_p4m=muetablob$dz1_p4m) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
   if (is.list(w.resid)) { # truncated GLM model, or mv-response
     if (is.null(mvlist <- w.resid$mvlist)) { # truncated model, obsInfo by GLM algo: negbin(trunc), Tpoisson(not log)
       ## tested on one example Tnegbin versus negbin2 rather than formally proven: 
@@ -357,7 +361,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
         resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
         z1s[[mv_it]] <- .calc_z1_obs(muetablob=muetablob$mv[[mv_it]], w.resid=w.resid$mvlist[[mv_it]],
                                      H_w.resid=H_w.resid[resp_range],
-                                     y=y[resp_range], off=off[resp_range])
+                                     y=y[resp_range], off=off[resp_range], dz1_p4m=NULL)
       }
       z1 <- .unlist(z1s)
     }
@@ -365,6 +369,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
     z1 <- as.vector(muetablob$sane_eta-off + muetablob$dlogcLdeta/H_w.resid) # reason for H_w.resid here is explained in 
     # section 'Evaluation of the gradient: total expression' (=> because these are also the weights in sscaled)
   } else z1 <- as.vector(muetablob$sane_eta-off+(w.resid/H_w.resid)*(y-muetablob$mu)/muetablob$dmudeta) # negbin(NOT trunc) or poisson(sqrt)->Poisson
+  if ( ! is.null(dz1_p4m)) z1 <- z1 + dz1_p4m
   return(z1)  
 }
 
@@ -374,8 +379,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
                       ########################### ZAL_scaling,
                       z2, 
                       #
-                      processed) {
-  if (processed$how$obsInfo) {
+                      processed, for_wzAug=FALSE) {
+  if (processed$how$obsInfo) { # FALSE also when Hobs=Hexp 
     H_w.resid <- .BLOB(sXaug)$H_w.resid # rather that WLS_mat_weights  (signed and identical in CHM_H case but not in signed QRP case)
     z1 <- .calc_z1_obs(muetablob, 
                        w.resid, # gradient weights
@@ -385,6 +390,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
     ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
     z1 <- .calc_z1(muetablob, w.resid, y, off, cum_nobs=attr(processed$families,"cum_nobs"))
   }
+  zInfo <- list(z1=z1, z2=z2)
   ## and a(i) (for HL(i,1)) is a(0) or a(0)+ something
   ## and a(0) depends on z2, as follows :
   if (processed$HL[1L]) { 
@@ -398,7 +404,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
       if ( ( ! processed$how$obsInfo) && is.list(w.resid) ) {
         WU_WT <- w.resid$WU_WT 
       } else WU_WT <- NULL
-      sscaled <- .calc_sscaled_new(
+      zInfo$sscaled <- sscaled <- .calc_sscaled_new(
         vecdisneeded=vecdisneeded,
         dlogWran_dv_h=dlogWran_dv_h, ## dlogWran_dv_h was computed when w.ranef was computed
         coef12= .calc_dlW_deta(
@@ -413,19 +419,32 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
         ZAL=ZAL, # vecdi2
         WU_WT=WU_WT ## NULL except for truncated model
       )
-      if (processed$how$obsInfo) {  
-        y2_sscaled <- z2+ as.vector((sscaled * H_w.resid ) %*% ZAL )/w.ranef 
-      } else if (is.list(w.resid)) { # both the truncated and the mv cases (F_I_X_M_E obsInfo not handled here)
-        y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
-        # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is always taken into account bc we use y2_sscaled only 
-        #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) in .solve_v_h_IRLS()
-      } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
+      if (for_wzAug) {
+        zInfo$z1_sscaled <- z1-sscaled
+        if (processed$how$obsInfo) {  
+          y2_sscaled <- z2+ as.vector((sscaled * H_w.resid ) %*% ZAL )/w.ranef 
+        } else if (is.list(w.resid)) { # both the truncated and the mv cases
+          y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
+          # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is always taken into account bc we use y2_sscaled only 
+          #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) "in .solve_v_h_IRLS()" (that was not used there!)
+        } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
+        zInfo$y2_sscaled <- y2_sscaled
+      }
     } else { # notably after observing that general code with sscaled=0 and large ZAL is slow!
-      sscaled <- 0
-      y2_sscaled <- z2
+      zInfo$sscaled <- 0
+      if (for_wzAug) {
+        zInfo$z1_sscaled <- z1
+        zInfo$y2_sscaled <- z2
+      }
     }
-    zInfo <- list(sscaled=sscaled, z1=z1, z2=z2, z1_sscaled=z1-sscaled, y2_sscaled=y2_sscaled)
-  } else zInfo <- list(sscaled=0, z1=z1, z2=z2, z1_sscaled=z1, y2_sscaled=z2) 
+  } else {
+    zInfo$sscaled <- 0
+    if (for_wzAug) { 
+      zInfo$z1_sscaled <- z1
+      zInfo$y2_sscaled <- z2 
+    }
+  }
+  zInfo$z1_is4p4m  <- ! is.null(muetablob$dz1_p4m) 
   return(zInfo)
 }
 
@@ -496,21 +515,25 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   return(ZAL)
 }
 
-.make_Xscal <- function(ZAL, ZAL_scaling=NULL, processed, as_matrix) {
-  if (inherits(ZAL,"ZAXlist") && ! inherits(ZAL@LIST,"notBindable")) ZAL <- .ad_hoc_cbind(ZAL@LIST, as_matrix=as_matrix )
+.make_Xscal <- function(ZAL, ZAL_scaling=NULL, processed, as_matrix, X=NULL) {
+  if (inherits(ZAL,"ZAXlist") && ! inherits(ZAL@LIST,"notBindable")) ZAL <- .get_bind_ZAXlist(ZAL)
   # capture programming error for ZAL_scaling:
   if (length(ZAL_scaling)==1L && ncol(ZAL)!=1L) stop("ZAL_scaling should be a full-length vector, or NULL. Contact the maintainer.")
   # ncol(ZAL)=1L could occur in 'legal' (albeit dubious) use. The total number of levels of random effects has been checked in preprocessing.
   if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
   AUGI0_ZX <- processed$AUGI0_ZX
-  if (is.null(Zero_X <- AUGI0_ZX$Zero_X)) {
-    # Test case is fit4 <- fitme(distance ~ age+corrMatrix(age|Subject), data = Orthodont, corrMatrix=rcov27, 
-    #                            control.HLfit=list(sparse_precision=TRUE), control=list(refit=list(ranCoefs=TRUE)))
-    # in test-composite:
-    # sparse_precision fit so no Zero_X created during preprocessing
-    # refit ranCoefs by inner algo -> .makeCovEst1 -> here. 
-    # Obviously unusual and could perhaps be optimized, but... not worth the effort.
-    AUGI0_ZX$Zero_X <- Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv) 
+  if (NCOL(X))  { # for p4m, non-default X argument
+    Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, X) 
+  } else {
+    if (is.null(Zero_X <- AUGI0_ZX$Zero_X)) {
+      # Test case is fit4 <- fitme(distance ~ age+corrMatrix(age|Subject), data = Orthodont, corrMatrix=rcov27, 
+      #                            control.HLfit=list(sparse_precision=TRUE), control=list(refit=list(ranCoefs=TRUE)))
+      # in test-composite:
+      # sparse_precision fit so no Zero_X created during preprocessing
+      # refit ranCoefs by inner algo -> .makeCovEst1 -> here. 
+      # Obviously unusual and could perhaps be optimized, but... not worth the effort.
+      AUGI0_ZX$Zero_X <- Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv) 
+    }
   }
   # singw <- ncol(AUGI0_ZX$I)-ncol(ZAL)
   if (inherits(ZAL,"dgCMatrix")) {
@@ -526,6 +549,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
     Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_X) # substantially faster than the general alternative 
   } else Xscal <- cbind2(I_ZAL, Zero_X)
   attr(Xscal,"AUGI0_ZX") <- AUGI0_ZX # environment => cheap access to its 'envir$updateable' variable or anything else 
+  attr(Xscal,"p4m_ized") <- identical(attr(ZAL,"p4m_ized"), TRUE) 
   # e.g., for .sXaug_Matrix_CHM_H_scaled() (allows and controls .updateCHM...);
   return(Xscal)
 }
@@ -876,7 +900,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
       locXscal[Xrows,] <- .Dvec_times_matrix(1/weight_X,locXscal[Xrows,]) ## get back to unweighted scaled matrix
     }
     locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))   ## non-standard REML: => no X-scaling
-    locsXaug <- do.call(processed$corr_method,
+    locsXaug <- do.call(processed$sXaug_method,
                         list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
   }
   loc_unscaled_logdet_r22 <- get_from_MME(locsXaug,"logdet_r22") 

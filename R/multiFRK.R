@@ -153,12 +153,12 @@ IMRF <- function(...) {
 }
 
 # provides the 'points to mesh', p2m in INLA
+# Only dependency on 'geometry', which creates several others (including RcppProgress, magic, abind) 
 .locate_in_tv <- function(pointsXY, 
                           tv, 
                           meshloc
 ) {
   if (is.data.frame(pointsXY)) pointsXY <- as.matrix(pointsXY)
-  
   # (1) p2m.t : Identify a triangle to which each point belongs  
   p2m.t <- geometry::tsearch(meshloc[,1], meshloc[,2], tv, pointsXY[,1], pointsXY[,2]) 
   # incidentally, when the data are those used to build the mesh, p2m.t (for redundant lcoations in the data) is in <mesh>$idx$loc
@@ -347,36 +347,51 @@ IMRF <- function(...) {
 
 
 
-.get_new_AMatrices <- function(object, newdata) { 
-  if (object$spaMM.version > "3.10.22") {
-    amatrices <- object$ranef_info$sub_corr_info$AMatrices
+.get_new_AMatrices <- function(object, newdata, newZlist,
+                               corr_families=.get_from_ranef_info(object)$corr_families) { 
+  if (recent <- object$spaMM.version > "3.10.22") {
+    amatrices <- object$ranef_info$sub_corr_info$AMatrices # may be a list with NULL elements
   } else amatrices <- attr(object$ZAlist,"AMatrices")
+  
+  
   exp_spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
-  corr_types <- attr(exp_spatial_terms,"type")
-  isIMRF <- (corr_types == "IMRF")
-  for (rd in which(isIMRF)) {
-    char_rd <- as.character(rd)
-    perm <- attr(amatrices[[char_rd]], "perm") # the 'perm' slot of a CHMfactor
-    amatrices[[char_rd]] <- .calc_AMatrix_IMRF(term=exp_spatial_terms[[rd]], data=newdata, 
-                                         dist.method=.get_control_dist(object,char_rd)$dist.method, 
-                                         old_AMatrix_rd = amatrices[[char_rd]])
-    if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)
-  }
-  corr_types <- object$ranef_info$sub_corr_info$corr_types
-  is_corrF <- (corr_types=="corrFamily")
-  if (any(is_corrF, na.rm=TRUE)) {
-    corr_families <- .get_from_ranef_info(object)$corr_families
-    for (rd in which(is_corrF)) {
+  if (recent) {
+    corr_types <- object$ranef_info$sub_corr_info$corr_types # object$spaMM.version > "3.10.22" ?
+  } else corr_types <- attr(exp_spatial_terms,"type")
+  for (rd  in seq_along(corr_types)) {
+    corr_type <- corr_types[rd]
+    if ( ! is.na(corr_type)) {
       char_rd <- as.character(rd)
-      perm <- attr(amatrices[[char_rd]], "perm") # the 'perm' slot of a CHMfactor
-      Af <- corr_families[[rd]][["Af"]] # call for new A matrix
-      if ( ! is.null(Af)) { # The corrFamily depends on an A matrix
-        amatrices[[char_rd]] <- Af(newdata=newdata, 
-                                            term=exp_spatial_terms[[rd]])
-        if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)
-      } else if ( ! is.null(amatrices[[char_rd]])) # check presence of Amatrix in original fit object =>
-        warning('is.null(corr_families[[rd]][["Af"]]) is suspect here in .get_new_AMatrices()') # _F I X M E__ remove check? might be helpful to catch pb if I change the interface for AMatrix
-    }
+      if ( ! is.null(Amatrix <- amatrices[[char_rd]]) && 
+           ! is.null(Z_ <- newZlist[[char_rd]])) { # second test handles re.form; only strictly necessary in case where Z_ is used
+        if (corr_type == "IMRF") {
+          perm <- attr(Amatrix, "perm") # the 'perm' slot of a CHMfactor
+          Amatrix <- .calc_AMatrix_IMRF(term=exp_spatial_terms[[rd]], data=newdata, 
+                                                     dist.method=.get_control_dist(object,char_rd)$dist.method, 
+                                                     old_AMatrix_rd = Amatrix)
+          if ( ! is.null(perm)) Amatrix <- .subcol_wAttr(Amatrix, j=perm, drop=FALSE)
+          amatrices[[char_rd]] <- Amatrix
+        } else if (corr_type=="corrFamily") {
+          perm <- attr(Amatrix, "perm") # the 'perm' slot of a CHMfactor
+          Af <- corr_families[[rd]][["Af"]] # call for new A matrix
+          if ( ! is.null(Af)) { # The corrFamily depends on an A matrix
+            Amatrix <- Af(newdata=newdata, 
+                                       term=exp_spatial_terms[[rd]])
+            if ( ! is.null(perm)) Amatrix <- .subcol_wAttr(Amatrix, j=perm, drop=FALSE)
+            amatrices[[char_rd]] <- Amatrix
+          } else warning('is.null(corr_families[[rd]][["Af"]]) is suspect here in .get_new_AMatrices()') # _F I X M E__ remove check? might be helpful to catch pb if I change the interface for AMatrix
+        } else {  
+          # Here as in all other cases, I need to make sure that the order of cols in new Z and A matrices match. 
+          # sppfit1 test: corrMatrix case, where Amatrix is defined bc it was the internal solution 
+          # found for efficiently subsetting a corrMatrix (cf .A_update()).
+          # The code must allow for repeated names as in
+          # pmatch(c("b","a","b","a"),c("a","b","c","a","b","c")) gives 2 1 5 4 
+          # which seems to nicely do the job of subsetting with repeated names when both args are repeated, same-order blocks.
+          rep_perm <- pmatch(colnames(Z_), rownames(amatrices[[char_rd]]))
+          amatrices[[char_rd]] <- Amatrix[rep_perm,, drop=FALSE] 
+        }      
+      }
+    } # else currently assumes no Amatrix for (.|.)  
   }
   return(amatrices)
 }

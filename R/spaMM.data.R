@@ -1,6 +1,7 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
   F_I_X_M_E=FALSE,
+  dec2spp=FALSE, ## to choose "spprec" instead of "decorr" in .determine_spprec() (____F I X M E____rethink?)
   obsInfo=TRUE, # setting it to >1L will enforce use of obs algo in cases not needed, such as fixed-effect models.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE) as controlled by next two options:
@@ -8,7 +9,9 @@
   perm_Q=NULL,  
   use_ZA_L=TRUE, # NULL may act as TRUE when augZxy_cond=TRUE
   bind_ZAL=TRUE, # set it to FALSE to use ZAXlist beyond spprec 
-  sparsity_threshold=0.05,
+  algfacs=c(spprec=40, spcorr=7.5),
+  fast_G_diagnosis=FALSE,
+  sp_alg_thresholds=c(spprec=50, spcorr=0.05),# for OLD, 'fast' disagnosis. Large spcorr has effect opposite to large  algfacs$spcorr 
   spprec_threshold=50, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates). 
                        # 2023/08: such high threshold still relevant (see Nmatrix example in test-spaMM)
   separation_max=10,
@@ -65,26 +68,31 @@
   fpot_tol= - Inf, #newer criterion for IRLS NOT LevM; coherent with the following (implicit) ftol_abs:
   # ftol_abs= - Inf, # distinct from nloptr potential control; could be made explicit whereas is implicit NULL as-is. 
   optimize_tol=.Machine$double.eps^0.25, ## default tol value for optimize
-  bobyqa_margin=1e-14, # horrors may happen if bobyqa's init is precisely at a boundary
-  bobyqa_rhofn= function(lower,upper) min(155.2475, 0.1*min(upper-lower)), # min() to avoid infiniy here; 155.2475 is diff(spaMM:::.dispFn(c(1e-6,1e6)))/10
-  # For a long time this was effectively min(0.95.2475, 0.1*min(upper-lower)), where 0.95 is mysterious value from minqa doc.                                    
-  #                                   0.1 seems the right balance between time (increase with lower value) and effective minimization (cf 21 selected examples from test-nloptr) 
-  bobyqa=list(), 
+  bobyqa=list(), # template for the 'control' argument of bobyqa()
+  bobyqa_meta=list( # NOT elements of the 'control' argument of bobyqa()
+    rhofn= function(lower,upper) min(155.2475, 0.1*min(upper-lower)), # min() to avoid infinity here; 155.2475 is diff(spaMM:::.dispFn(c(1e-6,1e6)))/10
+    margin=1e-14 # horrors may happen if bobyqa's init is precisely at a boundary
+    # For a long time this was effectively min(0.95.2475, 0.1*min(upper-lower)), where 0.95 is mysterious value from minqa doc.                                    
+    #                                   0.1 seems the right balance between time (increase with lower value) and effective minimization (cf 21 selected examples from test-nloptr) 
+  ), 
   nlminb=list(), 
   # default value for nloptr() 'opts':
-  nloptr=list(algorithm="NLOPT_LN_BOBYQA",
-              xtol_rel=4e-6, # cf comment on compMatfit
-              print_level=0), # nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
-  ## further control of nloptr 'opts' (but not suitable input for 'opts'):
-  xtol_abs_factors=c(abs=1e-8, # That's the general one when next ones are not used. # cf comments in .xtol_abs_fn()
-                     rcLam=5e-7,rcCor=5e-6,others=5e-11), # ___F I X M E____ all only when there are ranCoefs...
-  # laxer rcLam=5e-5 strongly affect tests spherical transfo (+minor effect in test-poly)
-  xtol_abs=quote(.xtol_abs_fn(LowUp,  rC_transf = rC_transf)), # nloptr; zero's for max precision (?)
-  maxeval=quote(as.integer(10^(3+(log(length(initvec))-log(5))/log(4)))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
+  nloptr=list(# nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
+    algorithm="NLOPT_LN_BOBYQA",
+    xtol_rel=4e-6, # cf comment on compMatfit
+    xtol_abs=quote(.xtol_abs_fn(LowUp, factors=factors, rC_transf = rC_transf)), # nloptr; zero's for max precision (?)
+    print_level=0,
+    ## further control of nloptr 'opts' (but not suitable element of 'opts'):
+    xtol_abs_factors=c(abs=1e-8, # That's the general one when next ones are not used. # cf comments in .xtol_abs_fn()
+                       rcLam=5e-7,rcCor=5e-6,others=5e-11) # all only when there are ranCoefs...
+    # laxer rcLam=5e-5 strongly affect tests spherical transfo (+minor effect in test-poly)
+  ), 
+  ## used for nloptr's maxeval and bobyqa's maxfun (modified, recommends > 10 * npar^2)
+  maxeval=quote(as.integer(10^(3+(log(length(initvec))-log(5))/log(4)))), 
   maxeval_corr=1, # devel: for easy control of maxeval in .safe_opt()
   ## 
   allow_outer_phiGLM=TRUE,
-  ############## ranCoefs settings: (see also xtol_abs_factors)
+  ############## ranCoefs settings: (see also nloptr$xtol_abs_factors)
   optim_inner=".safe_opt",
   recheck_at_bound=FALSE, # control of .safe_opt()
   reuse_bobyqa=FALSE, # whether to reuse bobyqa when it reached its maxit at a boundary
@@ -120,7 +128,7 @@
   #   pow_lam_nu > 10/nu) || 1+pow_lam_nu+6*sqrt(pow_lam_nu/nu) > .spaMM.data$options$COMP_maxn),
   COMP_maxn=1e4,
   sanitize_eta=c(gauslog=20,COMPlog=16,otherlog=20), # otherlog value affects difficult Gamma(log) fits (cf Leucadendron_hard.R)
-  Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
+  Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in .update_phifitarglist() and in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
   beta_min_y = 1e-8, ##  for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var();  ___F I X M E____ value is quick ad hoc fix
   ###############
   example_maxtime=0.7,
@@ -187,7 +195,8 @@
   .betaFn=function(v) {sign(v)*log1p(abs(v))},
   .betaInv=function(v) {sign(v)*(exp(abs(v))-1)},
   n_names2expr=FALSE, # I fail to reproduce the problem that motivated the devel of ..n_names2expr()
-  doSeeMe = function(...) {NULL} # or warning or function(x,...) {if (inherits(x,"try-error") x)}
+  doSeeMe = function(...) {NULL}, # or warning or function(x,...) {if (inherits(x,"try-error") x)}
+  debugFromTheDepths=FALSE
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())

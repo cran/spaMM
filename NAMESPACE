@@ -3,7 +3,7 @@ export(".evalWrapper", ".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_disp
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
        ".crossprod", ".tcrossprod",  ".stripOffset", ".stripRanefs", ".modify_list") ## probitgem
 export(".HLfit_body_augZXy", ".solve_IRLS_as_ZX", ".solve_IRLS_as_spprec") ## must be exported to be traceable
-export(".safe_opt", ".setCluster") ## Infusion
+export(".safe_opt") ## Infusion ## removed ".setCluster"
 export(".unloads4spaMM",".is_spprec_fit") ## devel convenience
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
@@ -24,7 +24,7 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "na.omit", "na.exclude", "na.pass",
            "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
            "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula", 
-           "contrasts<-", "delete.response")
+           "contrasts<-", "delete.response","toeplitz")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail", "head")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -39,7 +39,8 @@ importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Va
            "getCovariate", "logDet", "recalc", "VarCorr")
 importFrom("pbapply", "pbapply", "pblapply", "pboptions", "pbreplicate")
 importFrom("minqa","bobyqa")
-importFrom("ROI", "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")
+importFrom("ROI", # NB: ROI Imports 'checkmate', 'slam', and 'registry'
+           "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")
 importFrom("boot", "boot.ci")
 importFrom("numDeriv", "hessian", "grad", "jacobian")
 export(coef) ## from stats namespace
@@ -114,20 +115,9 @@ S3method(CauchyCorr, default)
 S3method(CauchyCorr, dsCMatrix)
 S3method(CauchyCorr, dgCMatrix)
 S3method("[", spaMM_predictions)
-#S3method(as.matrix, spaMM_predictions)
 S3method("[", precision)
-#S3method(get_from_MME,sXaug_EigenDense_QRP_scaled)
 S3method(get_from_MME,sXaug_EigenDense_QRP_Chol_scaled)
-#S3method(get_from_MME,sXaug_EigenDense_QR_scaled)
-#S3method(get_from_MME,sXaug_baseDense_QRP_scaled)
-#S3method(get_from_MME,sXaug_EigenSparse_QR_scaled)
-#S3method(get_from_MME,sXaug_EigenSparse_QRP_scaled)
-#S3method(get_from_MME,sXaug_EigenSparse_LDLP_scaled)
-#S3method(get_from_MME,sXaug_EigenSparse_LDL_scaled)
-#S3method(get_from_MME,sXaug_EigenSparse_LLP_scaled)
-#S3method(get_from_MME,sXaug_Matrix_QRP_scaled)
 S3method(get_from_MME,sXaug_Matrix_QRP_CHM_scaled)
-#S3method(get_from_MME,sXaug_Matrix_cholP_scaled)
 S3method(get_from_MME,sXaug_Matrix_CHM_H_scaled)
 S3method(get_from_MME,AUGI0_ZX_spprec)
 S3method(get_from_MME,sparseMatrix)

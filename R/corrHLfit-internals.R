@@ -319,27 +319,29 @@ if (TRUE) {
 }
 
 .constr_ranCoefsFn <- function(vec, constraint, rC_transf) {
-  if ( ! is.null(constraint)) { 
-    if (attr(constraint,"isDiagFamily")) { 
-      ## occurs in tests with (i) fixed=list(..,ranCoefs=list("1"=c(NA,-0,NA)))
-      ## or (ii) fixed=list(ranCoefs=list("1"=c(NA,0,0.00001)))
-      ## Then vec should be a vector of variances (no elmt for corr)
-      ## moreover vec is only of the length of the variable positions,
-      ## so there is no constraint to put back into it.
-      ## So the following code is incorrect for test (ii):
-      # vdiagPos <- attr(constraint,"vdiagPos")
-      # constrpos <- (! is.na(constraint))
-      # constrposinvec <- constrpos[vdiagPos]
-      # vec[constrposinvec] <- constraint[constrpos]
-      ## rather, this is sufficient:
-      trRancoef <- .dispFn(vec) 
-    } else {
-      ## occurs in tests with fixed=list(ranCoefs=list("1"=c(NA,-0.99,NA))
+  if ( ! is.null(constraint) && attr(constraint,"isDiagFamily")) { 
+    ## occurs in tests with (i) fixed=list(..,ranCoefs=list("1"=c(NA,-0,NA)))
+    ## or (ii) fixed=list(ranCoefs=list("1"=c(NA,0,0.00001)))
+    ## Then vec should be a vector of variances (no elmt for corr)
+    ## moreover vec is only of the length of the variable positions,
+    ## so there is no constraint to put back into it.
+    ## So the following code is incorrect for test (ii):
+    # vdiagPos <- attr(constraint,"vdiagPos")
+    # constrpos <- (! is.na(constraint))
+    # constrposinvec <- constrpos[vdiagPos]
+    # vec[constrposinvec] <- constraint[constrpos]
+    ## rather, this is sufficient:
+    trRancoef <- .dispFn(vec) 
+  } else {
+    ## occurs in tests with fixed=list(ranCoefs=list("1"=c(NA,-0.99,NA))
+    if ( ! is.null(constraint)) {
       constrpos <- (! is.na(constraint))
       vec[constrpos] <- constraint[constrpos]
-      trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf) 
     }
-  } else trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf)
+    if (anyNA(vec)) stop("Partial inits do not work for ranCoefs (unless other values are fixed).")
+    # _____F I X M E____: is this avoidable? Partial fixing is possible... so there must a default vec in that case, which might be provided as additional arg to this fn? 
+    trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf) 
+  }
   trRancoef
 }
 
@@ -422,6 +424,21 @@ if (TRUE) {
     }
   }
   ranCoef # with Xi_ncol attribute too
+}
+
+# Core implementation of partially-fixed ranCoefs, as a trivial projection of ranCoefs into a subspace
+# This bears the cost of optimizing in more dimensions (of trRancoefs) than there are independent parameters,
+# but is simple, in particular as there is no simple way of expressing the constraint in transformed space.
+.partially_fix_trRancoefs <- function(trRanCoefs, # input always transf
+                                      constraints, return_tr=TRUE,
+                                      rC_transf=.spaMM.data$options$rC_transf) {
+  for (char_rd in names(trRanCoefs)) {
+    vec_rd <- .constr_ranCoefsInv(trRanCoef=trRanCoefs[[char_rd]], 
+                                  constraint=constraints[[char_rd]], rC_transf=rC_transf)
+    if (return_tr) vec_rd <- .ranCoefsFn(vec_rd, rC_transf = rC_transf)
+    trRanCoefs[[char_rd]] <- vec_rd 
+  }
+  trRanCoefs # output transf by default
 }
 
 if (FALSE) {
@@ -645,6 +662,7 @@ if (FALSE) {
 
 .calc_inits_ranCoefs <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
   if ( ! is.null(init.optim$ranCoefs)) { ## should always be a complete ordered list in the case for random-coefficient models
+    # _____F I X M E_____ init values already in init.optim when this is called ?
     if (! is.null(init$ranCoefs)) for (st in names(init$ranCoefs)) init.optim$ranCoefs[[st]] <- init$ranCoefs[[st]]
     init$ranCoefs <- init.optim$ranCoefs
     trRanCoefs <- init.optim$ranCoefs

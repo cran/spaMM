@@ -1,16 +1,21 @@
-.get_bobyqa_controls <- function(init, upper, lower, maxeval_corr=.spaMM.data$options$maxeval_corr) {
-  bobyqa_controls <- .spaMM.data$options$bobyqa
-  if (is.null(bobyqa_controls$npt)) bobyqa_controls$npt <- 2*length(init)+1L
-  if (is.null(bobyqa_controls$rhobeg)) bobyqa_controls$rhobeg <- .spaMM.data$options$bobyqa_rhofn(lower,upper)
-  if (is.null(bobyqa_controls$rhoend)) {
-    bobyqa_controls$rhoend <- max(1e-8, # lower values => bobyqa bugs, trying values out of the bounds (had this on ARp fits for timevarying corr)
-                                  bobyqa_controls$rhobeg*1e-8) # bobyqa's default is rhobeg*1e-6 which is unsafe in the test_rC_transf sph case
+.get_bobyqa_controls <- function(init, upper, lower, maxeval_corr=.spaMM.data$options$maxeval_corr,
+                                 control) {
+  template <- .spaMM.data$options$bobyqa
+  template <- .modify_list(template, control)
+  if (is.null(template$npt)) template$npt <- 2*length(init)+1L
+  if (is.null(template$rhobeg)) template$rhobeg <-  .spaMM.data$options$bobyqa_meta$rhofn(lower,upper)
+  if (is.null(template$rhoend)) {
+    template$rhoend <- max(1e-8, # lower values => bobyqa bugs, trying values out of the bounds (had this on ARp fits for timevarying corr)
+                           template$rhobeg*1e-8) # bobyqa's default is rhobeg*1e-6 which is unsafe in the test_rC_transf sph case
   }
-  if (is.null(bobyqa_controls$maxfun)) {
-    bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval,envir=list(initvec=init)))*maxeval_corr,
+  if (is.null(template$maxfun)) {
+    template$maxfun <- max(2*( eval(.spaMM.data$options$maxeval,envir=list(initvec=init)))*maxeval_corr,
                                   1+10*length(init)^2) # bobyqa will complain if not > second value
   }
-  bobyqa_controls
+  # Some control may be a expression depending on another control (cf in pois4mlogit()) 
+  # So eval() as last step:
+  for (st in names(template)) template[[st]] <- eval(template[[st]])
+  template
 }
 
 .get_nlminb_controls <- function(init, upper, lower, maxeval_corr=.spaMM.data$options$maxeval_corr,
@@ -24,28 +29,40 @@
   nlminb_controls
 }
 
-.get_nloptr_controls <- function(init, LowUp, maxeval_corr=.spaMM.data$options$maxeval_corr) {
-  nloptr_controls <- .spaMM.data$options$nloptr
-  if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
-  if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                                                          list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
-  if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- 1e-12
+.get_nloptr_controls <- function(init, LowUp, maxeval_corr=.spaMM.data$options$maxeval_corr,
+                                 control) {
+  template <- .spaMM.data$options$nloptr
+  template <- .modify_list(template, control)
+  if (is.null(template$maxeval)) template$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
+  if ( ! is.numeric(template$xtol_abs)) template$xtol_abs <- eval(template$xtol_abs, 
+                                                                  list(LowUp=LowUp,
+                                                                       factors=template$xtol_abs_factors,
+                                                                       rC_transf=.spaMM.data$options$rC_transf))
+  if (is.null(template$xtol_abs)) template$xtol_abs <- 1e-12
   #nloptr_controls$print_level <- 3L # can be controlled by spaMM.options()!
-  nloptr_controls$local_opts <- nloptr_controls
-  nloptr_controls$local_opts$algorithm <- "NLOPT_LN_BOBYQA"
-  nloptr_controls
+  template$local_opts <- template
+  template$local_opts$algorithm <- "NLOPT_LN_BOBYQA"
+  template$xtol_abs_factors <- NULL
+  # Some control may be a expression depending on another control (cf in pois4mlogit()) 
+  # So eval() as last step:
+  for(st in names(template)) template[[st]] <- eval(template[[st]])
+  template
 }
 
+# minimization
 .safe_opt <- function(init, objfn, lower, upper, verbose, maxeval_corr=.spaMM.data$options$maxeval_corr, 
                       recheck_at_bound=.spaMM.data$options$recheck_at_bound, 
                       adjust_init=list(), # to constrain the initial value
                       LowUp,  # In general, should be a structured list as expected by .xtol_abs_fn()
                               # Avoid providing empty list() to .xtol_abs_fn()!! (nloptr may segfault).
-                      ...) { # minimization
+                      control=list(),
+                      ...) { 
   names_init <- names(init) # may be lost in later operations
   prevmin <- Inf
-  delayedAssign("bobyqa_controls", .get_bobyqa_controls(init, upper, lower, maxeval_corr))
-  delayedAssign("nloptr_controls", .get_nloptr_controls(init, LowUp, maxeval_corr))
+  delayedAssign("bobyqa_controls", 
+                .get_bobyqa_controls(init, upper, lower, maxeval_corr, control$bobyqa))
+  delayedAssign("nloptr_controls", 
+                .get_nloptr_controls(init, LowUp, maxeval_corr, control$nloptr))
   dx <- upper-lower
   dx[is.infinite(dx)] <- 1
   use_bobyqa <- ( any(c(init-lower,upper-init)/dx<1e-4) || 
@@ -58,7 +75,7 @@
     if (use_bobyqa) {
       if (verbose) cat("bobyqa: ")
       # This only bc bobyqa is more sensitive to the 14th decimal than nloptr at the boundaries  
-      bobyqa_margin <- .spaMM.data$options$bobyqa_margin
+      bobyqa_margin <- .spaMM.data$options$bobyqa_meta$margin
       margin <- dx*bobyqa_margin # test_rC_transf (sph) was a test of (this together with rhoend) but in that case adjust_init is a better fix
       margin <- pmin(bobyqa_margin,margin) # handles infinite ranges (but not only)
       init <- pmax(lower+margin,pmin(upper-margin,init))
@@ -66,7 +83,9 @@
       if ( ! is.null(adjust_init$lower)) init <- pmax(adjust_init$lower, init)
       if ( ! is.null(adjust_init$upper)) init <- pmin(adjust_init$upper, init)
       #
-      optr <- minqa::bobyqa(par=init, fn=objfn, lower=lower, upper=upper, control=bobyqa_controls, ...) ## does not use gradients
+      in_fn_controls <- intersect(names(bobyqa_controls),c("npt","rhobeg","rhoend","iprint","maxfun"))
+      optr <- minqa::bobyqa(par=init, fn=objfn, lower=lower, upper=upper, 
+                            control=bobyqa_controls[in_fn_controls], ...) ## does not use gradients
       if (optr$fval > prevmin-1e-8) { # i.e. progress is at most 1e-8
         if (optr$fval > prevmin) optr <- prev_optr # bobyqa may return much worse than initial value! if the objfn diverges at the bounds
         if (inherits(optr,"bobyqa")) { # may be FALSE if prev_optr was brought back.

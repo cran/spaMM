@@ -357,18 +357,34 @@
        attrs=list(spec_levs=levs, is_incid=FALSE) )
 }
 
-.mrdots <- function(..., lhs=NULL) {
+.mrdots <- function(..., xpr=NULL) {
   dotlist <- list(...)
   eval(str2lang(paste0("c(",paste(dotlist, collapse=","),")")))
 }
 
-.mrnamed <- function(..., lhs=NULL) {
+.mrnamed <- function(..., xpr=NULL) {
   nmlist <- match.call()
   nmlist <- nmlist[c(1L,which(names(nmlist)!=""))]
   nmlist[[1L]] <- quote(list) 
-  eval(nmlist) # evaluated list of names arguments, excluding the dots which are assumed not named
+  eval(nmlist) # evaluated list of named arguments only.
 }
 
+.calc_lhs_weights <- function(xpr, data) {
+  # "1", say: the string in mv(1,2, xpr=".") 
+  # Get the model frame:
+  #leftOfBar_form <- as.formula(paste("~", namedargs))
+  leftOfBar_form <- as.formula(paste("~", xpr))
+  leftOfBar_terms <- terms(leftOfBar_form)
+  leftOfBar_mf <- model.frame(leftOfBar_terms, data)
+  if (ncol(leftOfBar_mf)) {
+    # eval the lhs as expression using the model frame
+    wghts <- eval(str2lang(xpr), leftOfBar_mf)
+  } else { # no variable is involved in lhs (this seems useless but occurs in some test code)
+    wghts <- rep(eval(str2lang(xpr)), nrow(data)) 
+  }
+  wghts <- as.numeric(wghts)
+  
+}
 
 .calc_LHS_blob <- function(LHSexpr, oldZA, data, raneftype, lcrandfamfam,
                            rmInt) {
@@ -378,23 +394,28 @@
     # .calc_Z_LHS_model_matrix() will 'expand' the template and .correct_ZA_mv_ranCoefs() will fill the template.
     #
     ## Telling apart submodel indices from names arguments.
-    ## Which named args are handled in build in the formals of .mrdots() and .mrnamed()
+    ## Which named args are handled is built in the formals of .mrdots() and .mrnamed()
     model_ids <- sub("(mv)(\\([^|]+)",".mrdots\\2", LHSstr) # converts to an expr such as 0+c(1,2)
     model_ids <- eval(str2lang(model_ids)) # evaluates c(1,2)...
-    mrterm  <- attr(terms(as.formula(paste("~", LHSstr))),"term.labels")
-    namedargs <- sub("(mv)(\\([^|]+)",".mrnamed\\2", mrterm) # converts the named args to an expression for a list
-    namedargs <- eval(str2lang(namedargs)) # namedargs is list of named arguments 
-    #
-    lhs <- namedargs$lhs
-    if (is.null(lhs)) {
-      submv <- sub("mv\\([^|]+",".mv", LHSstr) # "0+.mv(1,2)", say
-    } else submv <- lhs # "1", say
+    submv <- sub("mv\\([^|]+",".mv", LHSstr) # sub ".mv" to ".mv(1,2)" in "0+.mv(1,2)", say
     leftOfBar_form <- as.formula(paste("~", submv))
     leftOfBar_terms <- terms(leftOfBar_form)
     leftOfBar_mf <- model.frame(leftOfBar_terms, data.frame(.mv=factor(model_ids)), xlev = attr(oldZA,"LHS_levels"))
+    # computes matrix full of 1's: # later .correct_ZA_mv_ranCoefs() call will cancel blocks of it.
     dummymodmat <- .calc_Z_LHS_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype = NULL, lcrandfamfam = "gaussian")
-    LHS_modmat <- matrix(1, nrow=nrow(data), ncol=ncol(dummymodmat)) # assuming later .correct_ZA_mv_ranCoefs() call.
+    LHS_modmat <- matrix(1, nrow=nrow(data), ncol=ncol(dummymodmat)) 
     colnames(LHS_modmat) <- colnames(dummymodmat) # matching the model_ids 
+    #
+    # Now multiply rows by a vector of weights if mv() had an 'lhs' argument;
+    #  (we are NOT creating a second model matrix)
+    mrterm  <- attr(terms(as.formula(paste("~", LHSstr))),"term.labels")
+    namedargs <- sub("(mv)(\\([^|]+)",".mrnamed\\2", mrterm) # converts the named args to an expression for a list
+    namedargs <- eval(str2lang(namedargs)) # values is list of named arguments 
+    xpr <- namedargs$xpr
+    if ( ! is.null(xpr)) {
+      wghts <- .calc_lhs_weights(xpr, data)
+      LHS_modmat <- .Dvec_times_matrix(wghts, LHS_modmat)
+    } 
   } else if (grepl("mm(", LHSstr, fixed=TRUE)) {
     # We construct a template Z matrix from a fake modmat. 
     # .calc_Zmatrix() -> .expand_Z_mm() will expand according to levels 
@@ -556,7 +577,7 @@
       # then apply the ZA_update permutation?
       # The ZA colnames cannot be used anyway (they are typically permuted, and
       #   for composite ranefs, old_ZA has repeated colnames, whose order is
-      #   determined by the permutation in .ZA_update(), where the cols for the ranCoefs blocks
+      #   determined by the permutation in .A_ZA_update(), where the cols for the ranCoefs blocks
       #   are completely scrambled).
       ##  presumptive____F I X M E____: Next line presumably fails if a non-trivial (permutation) A matrix was declared by the user... 
       ## But I have no test for this odd case.

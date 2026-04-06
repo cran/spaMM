@@ -20,7 +20,7 @@ testthat::expect_equal(logLik(foo), c(P_v=-1224.65219293 ))
 
   (foo <- fitme(cbind(npos,nneg)~1+(1|clinic), method=c("ML","obs"),
                 family=binomial(cloglog),data=clinics))
-  testthat::expect_equal(logLik(foo), c(P_v=-40.4244075868),tol=1e-6)
+  testthat::expect_equal(logLik(foo), c(P_v=-40.4244075868),tolerance=1e-6)
 }
 
 {

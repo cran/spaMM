@@ -653,6 +653,7 @@ if (FALSE) {
   #########################
   isRandomSlope <- ranCoefs_blob$isRandomSlope
   lcrandfamfam <- attr(rand.families,"lcrandfamfam")
+  is_gammaId <- attr(rand.families,"is_gammaId")
   allLeveLam1 <- rep(FALSE, nrand)
   if (any(isRandomSlope)) {
     is_set <- ranCoefs_blob$is_set
@@ -713,7 +714,7 @@ if (FALSE) {
       unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
       allLeveLam1_it <- (warningEnv$leveLam1 && all(warningEnv$whichleveLam1[u.range]))
       if (allLeveLam1_it) warningEnv$allLeveLam1[it] <- TRUE
-      if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## Gamma(identity)
+      if (is_gammaId[it]) { ## Gamma(identity)
         # unique_lambda <- pmin(unique_lambda,1-1/(2^(iter+1)))  ## impose lambda<1 dans ce cas 
         while(unique_lambda>1) {
           localmax <- max(safe_dev.res_it)*0.9999/unique_lambda
@@ -806,8 +807,9 @@ if (FALSE) {
     linkS[[glmit]] <- glm_lambda$family$link
     linkinvS[[glmit]] <- glm_lambda$family$linkinv
     rf <- attr(resglm_lambdaS,"rand.families")
+    is_gammaId <- attr(rf,"is_gammaId")
     for (it in seq_len(length(rf))) { ## iteration over ranefs only for the local resglm
-      if (tolower(rf[[it]]$family)=="gamma" && rf[[it]]$link=="identity" && coeff_lambdas[it]>0) {
+      if (is_gammaId[it] && coeff_lambdas[it]>0) {
         message("lambda failed to converge to a value < 1 for gamma(identity) random effects.")
         message("This suggests that the gamma(identity) model with lambda < 1 is misspecified, ")
         message("and Laplace approximations are unreliable for lambda > 1. ")
@@ -945,7 +947,7 @@ if (FALSE) {
   # warningEnv # no need to return
 }
 
-# always retrun a list in mv obsInfo case.
+# always return a list in mv obsInfo case.
 .calc_w_resid <- function(GLMweights,phi_est, obsInfo) { ## One should not correct this phi_est argument by prior.weights (checked)
   if (inherits(GLMweights,"mvlist")) { # an mvlist of lists
     mv_res <- vector("list",length(GLMweights))
@@ -1525,7 +1527,7 @@ spaMM_Gamma <- local({
                           bin_mu_tol=.spaMM.data$options$bin_mu_tol,
                           processed) { # 'processed' added for mv fits
   if (is.null(family)) { # conceived for mv fit; 'processed' must then be provided.
-    # Such a call occurs in .eval_gain_clik_LevM()
+    # Such a call occurs in .eval_gain_clik_LevM() but then there is a nontrivial 'eta'
     families<- processed$families
     vec_nobs <- processed$vec_nobs
     cum_nobs <- c(0L,cumsum(vec_nobs))
@@ -2407,11 +2409,22 @@ spaMM_Gamma <- local({
   } else if (inherits(x,"dCHMsimpl")) { # There are two distinct concepts of tcrossprod here:
     if (perm) { # We want a permuted A matrix
       if (is.null(y)) {
-        resu <- .tcrossprod(solve(x, system="Lt", b=.sparseDiagonal(n=ncol(x), shape="g"))) # cov matrix for permuted ranefs from L=chol_Q  # or Matrix::chol2inv(t(as(x,"sparseMatrix")))
-        # Confusingly though, although the rows and cols of the tcrossprod are each permuted
-        # relative to those of the original factored matrix, the dimnames are here not permuted;
+        resu <- .tcrossprod(solve(x, system="Lt", b=.sparseDiagonal(n=ncol(x), shape="g"))) # cov matrix for permuted ranefs from L=chol_Q  
+        # # or Matrix::chol2inv(t(as(x,"sparseMatrix"))) which is _not_ faster, and does not retain dimnames
         if ( ! is.null(x@perm) && ! is.null(colnames(x))) {
-          colnames(resu) <- rownames(resu) <- colnames(x)[x@perm+1L]
+          # ?`symmetricMatrix-class` says for method 'dimnames'
+          #    "returns symmetric dimnames, even when the Dimnames slot only has row or column names." and 
+          #    "The validity checks do not require a symmetric Dimnames slot, so it can be list(NULL, <character>), 
+          #     e.g., for efficiency. However, dimnames() and other functions and methods should behave as if 
+          #     the dimnames were symmetric, i.e., with both list components identical."
+          # dimnames() appears to use the second element of the Dimnames slot to show symmetric 
+          # dimnames, and rownames() appears also to read/write in the second element.
+          # Hence it does not make sense to try to read/write in the first element. 
+          #
+          # These complications hide the distinct issue both the dimnames() 
+          # and the Dimnames slot of Cholesky(A, perm=TRUE) show the unpermuted 
+          # (colnames) of A. This is so too after .tcrossprod(solve()). We fix this:
+          dimnames(resu) <- list(NULL, colnames(x)[x@perm+1L])
           # cf # TAG colnames_in_permuted_Cholesky for file with test code 
         } 
         # originally this prompted a fix in .make_new_corr_mats_NOT_ranCoef (twice)
@@ -3173,76 +3186,42 @@ spaMM_Gamma <- local({
 
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense) 
 #                                 [and replacement by LMatrix may give a *m*atrix !]
-.ad_hoc_cbind <- function(ZALlist, # maybe a misnomer? This arg may be a @LIST slot in a (ZAXlist S4 class itself named ZALlist).
-                          as_matrix ) {
-  nrand <- length(ZALlist)
+.ad_hoc_cbind <- function(mMat_list, as_matrix ) {
+  nrand <- length(mMat_list)
   if ( as_matrix ) {
     for (rd in seq_len(nrand)) {
-      if (inherits(ZALlist[[rd]],"Kronfacto")) ZALlist[[rd]] <- ZALlist[[rd]]@BLOB$long
-      ZALlist[[rd]] <- as.matrix(ZALlist[[rd]]) 
+      if (inherits(mMat_list[[rd]],"Kronfacto")) mMat_list[[rd]] <- mMat_list[[rd]]@BLOB$long
+      mMat_list[[rd]] <- as.matrix(mMat_list[[rd]]) 
     }
-    if (nrand>1L) {ZAL <- do.call(cbind,ZALlist)} else ZAL <- ZALlist[[1L]]
+    if (nrand>1L) {ZAL <- do.call(cbind,mMat_list)} else ZAL <- mMat_list[[1L]]
   } else {
     for (rd in seq_len(nrand)) {
-      if (inherits(ZALlist[[rd]],"Kronfacto")) ZALlist[[rd]] <- ZALlist[[rd]]@BLOB$long
-      if ( # is.matrix(ZALlist[[rd]]) || ## seems to work but at a cost for speed.
-        inherits(ZALlist[[rd]],"dgeMatrix")) ZALlist[[rd]] <- as(ZALlist[[rd]],"CsparseMatrix")
+      if (inherits(mMat_list[[rd]],"Kronfacto")) mMat_list[[rd]] <- mMat_list[[rd]]@BLOB$long
+      if ( # is.matrix(mMat_list[[rd]]) || ## seems to work but at a cost for speed.
+        inherits(mMat_list[[rd]],"dgeMatrix")) mMat_list[[rd]] <- as(mMat_list[[rd]],"CsparseMatrix")
     }
     ## but leave diagonal matrix types unchanged 
-    if (nrand>1L) { ## ZAL <- suppressMessages(do.call(cbind,ZALlist))
-      ZAL <- ZALlist[[1L]]
+    if (nrand>1L) { ## ZAL <- suppressMessages(do.call(cbind,mMat_list))
+      ZAL <- mMat_list[[1L]]
       for (rd in 2L:nrand) {
-        if (inherits(ZAL,"dgCMatrix") &&  inherits(ZALlist[[rd]],"dgCMatrix") ) {
-          ZAL <- .cbind_dgC_dgC(ZAL, ZALlist[[rd]]) 
-        } else ZAL <- cbind(ZAL,ZALlist[[rd]])
+        if (inherits(ZAL,"dgCMatrix") &&  inherits(mMat_list[[rd]],"dgCMatrix") ) {
+          ZAL <- .cbind_dgC_dgC(ZAL, mMat_list[[rd]]) 
+        } else ZAL <- cbind(ZAL,mMat_list[[rd]])
       }
       
-    } else ZAL <- ZALlist[[1L]]
+    } else ZAL <- mMat_list[[1L]]
   } 
   return(ZAL)
 }
 
+# returns a ZAXlist, with exceptions. 
 .compute_ZAL <- function(XMatrix, ZAlist, as_matrix, bind.=TRUE, force_bindable=bind.,
                          NULL_X_is_Id=TRUE) { # ideally force_bindable should be ( ! processed$is_spprec)
-  ZALlist <- .compute_ZAXlist(ZAlist=ZAlist, XMatrix=XMatrix, force_bindable=force_bindable,
+  LIST <- .compute_ZAXlist(ZAlist=ZAlist, XMatrix=XMatrix, force_bindable=force_bindable,
                               NULL_X_is_Id=NULL_X_is_Id) # force_bindable=TRUE to avoid Kronfacto in result 
-  if ( bind. && ! inherits(ZALlist,"notBindable")) {
-    ZAL <- .ad_hoc_cbind(ZALlist, as_matrix )
-    return(ZAL)
-  } else return(new("ZAXlist", LIST=ZALlist)) # _F I X M E__ could add warning if bind. was TRUE
-}
-
-
-if (FALSE) { # that's not used.
-  ## cette fonction marche que si on a fixed effect + un terme aleatoire....
-  .eval_corrEst_args <- function(family,rand.families,predictor,data,X.Re,
-                                 REMLformula,ranFix,
-                                 term=NULL,
-                                 Optimizer) {
-    ## ici on veut une procedure iterative sur les params de covariance
-    #  HLCor.args$processed <- processed ## FR->FR dangerous in early development
-    corrEst.args <- list(family=family,rand.family=rand.families) ## but rand.families must only involve a single spatial effect 
-    loc.lhs <- paste(predictor)[[2]]
-    ## build formula, by default with only spatial effects
-    if (is.null(term)) term <- .findSpatial(predictor)
-    corrEst.form <-  as.formula(paste(loc.lhs," ~ ",paste(term)))
-    corrEst.args$data <- data ## FR->FR way to use preprocess ???                    
-    # if standard ML: there is an REMLformula ~ 0; ____processed$X.Re is 0-col matrix, not NULL____
-    # if standard REML: REMLformula is NULL: processed$X.Re is NULL
-    # non standard REML: other REMLformula: processed$X.Re may take essentially any value
-    if (is.null(X.Re) ) { ## processed$X.Re should be NULL => actual X.Re=X.pv => standard REML 
-      corrEst.args$REMLformula <- predictor ## standard REML 
-    } else corrEst.args$REMLformula <- REMLformula ## _ML_ _or_ non-standard REML
-    if (.old_NCOL(X.Re)) { ## some REML correction (ie not ML)
-      corrEst.args$objective <- "p_bv" ## standard or non-standard REML
-    } else corrEst.args$objective <- "p_v" ## ML
-    corrEst.args$ranFix <- ranFix ## maybe not very useful
-    corrEst.args$control.corrHLfit$optimizer<- Optimizer ## (may be NULL) 
-    corrEst.args$control.corrHLfit$optim$control$maxit <- 1 
-    corrEst.args$control.corrHLfit$optimize$tol <- 1e10 
-    return(list(corrEst.args=corrEst.args,corrEst.form=corrEst.form))
-  }
-  
+  if ( bind. && ! inherits(LIST,"notBindable")) {
+    .ad_hoc_cbind(LIST, as_matrix )
+  } else new("ZAXlist", LIST=LIST, as_matrix=as_matrix, envir=list2env(list())) # _F I X M E__ could add warning if bind. was TRUE
 }
 
 .corr_notEQL_lambda <- function(nrand,cum_n_u_h,lambda_est,lcrandfamfam) {  
@@ -3458,17 +3437,29 @@ if (FALSE) { # that's not used.
 }
 
 
-.nothing_to_fit <- function(phi.Fix, off, models, etaFix, rand.families, cum_n_u_h, 
+.nothing_to_inner_fit <- function(phi.Fix, #off, 
+                            models, etaFix, rand.families, cum_n_u_h, 
                             lambda.Fix, vec_n_u_h, n_u_h, fixed_adjacency_info, ZAL, BinomialDen, processed) {
   ## nothing to fit. We just want a likelihood
-  ### a bit the same as max.iter<1 ... ?
+  ### a bit the same as max.iter<1 ... ? BUT .nothing_to_inner_fit is called in context where HLfit_body()
+  ### does not return an object of class HLfit(). This is a potential problem in the case 
+  ### where (1) we fit ranPars for given linear predictor (met in devel code) and (2)
+  ### we still need an HLfit object (case not really met).
   phi_est <- phi.Fix
+  if ( ! is.null(processed$X_off_fn)) { # (__F I X M E___?) currently X_off_fn does not allow partial beta's (with potential mess with initial beta_eta )
+    #    both X_off and etaFix$beta are scaled here (check sur .p4m_by_outer_beta)
+    processed$off <- off <- processed$X_off_fn(etaFix$beta) # .solve_IRLS_as_ZX() uses processed$off
+    # AUGI0_ZX$X.pv must correspondingly have been reduced by .preprocess
+  } else {
+    off <- processed$off
+  }
   eta <- off
   if (models[[1]]=="etaHGLM") { ## linear predictor for mean with ranef
     ## we need u_h in calc_APHLS...() and v_h here for eta...
     v_h <- etaFix$v_h
     u_h <- etaFix$u_h
     if (is.null(u_h)) u_h <- processed$u_h_v_h_from_v_h(v_h)
+    lambda.Fix[processed$ranCoefs_blob$isRandomSlope] <- 1 # see comment about ranCoefs in .reformat_lambda()
     lambda_est <- .resize_lambda(lambda.Fix,vec_n_u_h,n_u_h, adjacency_info=fixed_adjacency_info)
     eta <- eta + drop(ZAL  %id*id%  etaFix$v_h) ## updated at each iteration
   } ## FREQS
@@ -3483,8 +3474,11 @@ if (FALSE) { # that's not used.
     H_global_scale <- .calc_H_global_scale(H_w.resid)
     weight_X <- .calc_weight_X(H_w.resid, H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
-    Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed)
-    sXaug <- do.call(processed$corr_method,
+    if ( ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      Xscal <- .make_Xscal(dcdv_p4m, ZAL_scaling = ZAL_scaling, processed=processed)
+    } else  Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed)
+    sXaug <- do.call(processed$sXaug_method,
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
   } else sXaug <- NULL 
   res <- list(APHLs=.calc_APHLs_from_ZX(processed=processed, which="p_v", sXaug=sXaug, phi_est=phi_est, 
@@ -3506,8 +3500,21 @@ if (FALSE) { # that's not used.
                      list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ad_hoc_corrPars, 
                           cum_n_u_h=processed$cum_n_u_h, w.ranef=wranefblob$w.ranef, H_w.resid=H_w.resid))
   } else {
-    Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
-    sXaug <- do.call(processed$corr_method, 
+    if ( ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+      # if (identical(attr(ZAL, "p4m"), TRUE)) browser("recursive ZALp4m") 
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      # Perturbing X should not affect p_v computation *for given parameters and v_h*
+      # It may matter for REML computation (p4m ______F I X M E____).
+      # The following debug code was used to check that p_v is not affected.
+      # if (DEVELp4m) {
+      #   dcdb_p4m <- .makeMatp4m(mat=processed$AUGI0_ZX$X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      #   Xscal <- .make_Xscal(dcdv_p4m, ZAL_scaling = ZAL_scaling, processed=processed, 
+      #                        as_matrix=.eval_as_mat_arg(processed) , X=dcdb_p4m)
+      # } else 
+      Xscal <- .make_Xscal(dcdv_p4m, ZAL_scaling = ZAL_scaling, processed=processed, 
+                           as_matrix=.eval_as_mat_arg(processed)) 
+    } else  Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
+    sXaug <- do.call(processed$sXaug_method, 
                           list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale)) 
   }
   APHLs <- .calc_APHLs_from_ZX(processed=processed, which=which, sXaug=sXaug, phi_est=phi_est, 
@@ -3898,7 +3905,7 @@ if (FALSE) { # that's not used.
   port_fit_values[["fv"]] <- predict(phifit)[,1]
   
   phifit_init_HLfit <- get_inits_from_fit(phifit,inner_lambdas = TRUE)$init.HLfit
-  phifit_init_HLfit$v_h <- .unlist(ranef(phifit))
+  phifit_init_HLfit$v_h <- ranef(phifit, type="bare.init")
   port_fit_values[["init_HLfit"]] <- phifit_init_HLfit
   
   phifit_init_corrPars <- .get_outer_inits_from_fit(phifit, keep_canon_user_inits = FALSE)$corrPars
@@ -4029,20 +4036,20 @@ if (FALSE) { # that's not used.
       return(beta * scale)
     } else if ( ! is.null(scale <- attr(X,"scale_info"))) { # unscaling a scaled beta post-fit [beta from optimInfo...]
       return(beta * scale)                                   
-    } else stop("No scaling info in matrix attributes.")
+    } else stop("No scaling info in matrix attributes.") # there should always be a scale even a trivial one
   }
 }
 
-.unscale <- function(X, beta=NULL) {
+.unscale <- function(X, beta=NULL, scale=attr(X,"scaled:scale")) {
   if (is.null(beta)) {
     Xattr <- attributes(X)
-    X <- .m_Matrix_times_Dvec(X, attr(X,"scaled:scale")) 
+    X <- .m_Matrix_times_Dvec(X, scale) 
     names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
-    attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
-    attr(X,"scale_info") <- attr(X,"scaled:scale")
+    attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes which messes S4 objects ?!
+    attr(X,"scale_info") <- scale
     attr(X,"scaled:scale") <- NULL ## otherwise there is a non-trivial scale on an unscaled matrix
     return(X)
-  } else if ( ! is.null(scale <- attr(X,"scaled:scale"))) { # unscaling a scaled beta in a debug session
+  } else if ( ! is.null(scale)) { # unscaling a scaled beta in a debug session
     return(beta / scale)
   } else if ( ! is.null(scale <- attr(X,"scale_info"))) { # unscaling a scaled beta post-fit [beta from optimInfo...]
     return(beta / scale)                                   
@@ -4158,7 +4165,7 @@ if (FALSE) { # that's not used.
   residProcessed$prior.weights <- structure((1-lev_phi)/2,unique=FALSE) # expected structure in 'processed'.
   # uses of prior weights matches that in input of calcPHI -> dispGammaGLM 
   residProcessed$data$.phi <- dev.res/(1-lev_phi) 
-  residProcessed$y <- residProcessed$data$.phi
+  residProcessed$y <- .Y_Gamma_fix_or_warn(residProcessed$data$.phi, fix=TRUE)
   residProcessed$iter_mean_dispFix <- max(200L,ceiling(100* mean(abs(log2(residProcessed$y)))))
   residProcessed$iter_mean_dispVar <- max(50L,ceiling(100* mean(abs(log2(residProcessed$y)))))
   residProcessed$main_terms_info$Y <- as.matrix(residProcessed$data$.phi)

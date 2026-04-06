@@ -98,7 +98,7 @@ dev_resids(object,...)
 Other return values are numeric (for \code{logLik}), vectors (most cases), matrices or dist objects (for \code{getDistMat}), or a family object (for \code{family}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). 
 }
 \seealso{
-See \code{\link{summary.HLfit}} whose return value include the tables of fixed-effects coefficients and random-effect variances displayed by the summary, \code{\link{residuals.HLfit}} to extract various residuals, \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
+See \code{\link{summary.HLfit}} whose return value include the tables of fixed-effects coefficients and random-effect variances displayed by the summary, \code{\link{residuals.HLfit}} to extract various residuals, \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs, \code{\link{optimBounds}} to extract optimization box constraints.
 }
 \references{
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.

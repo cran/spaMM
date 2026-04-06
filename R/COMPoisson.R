@@ -76,10 +76,6 @@
       # and as .get_inits_by_xLM() is called repeatedly for COMPoisson, we do so only if a warning was emitted by the glm
       # which means that COMP_maxn_warned was FALSE in entry to .get_inits_by_xLM()
       # which means that COMP_maxn_warned is not set to FALSE by .get_inits_by_xLM() when it was TRUE in entry to it.
-      # if (.spaMM.data$options$need_memoise_warning) {
-      #   warning("If the memoise package had been installed (prior to loading spaMM), faster computation could be possible.")
-      #   .spaMM.data$options$need_memoise_warning <- FALSE
-      # }
     }
   }
   res

@@ -212,7 +212,12 @@ SEXP logit(NumericVector mu) {
 
 // [[Rcpp::export(.is_evaluated)]]
 bool is_evaluated(Symbol name, Environment env) {
+#if R_VERSION >= R_Version(4, 6, 0)
+  R_BindingType_t typ= R_GetBindingType(name,env); 
+  return(typ != R_BindingTypeDelayed); // cf defs in Rinternals.h https://github.com/wch/r-source/blob/1403f68558a1e1258b0d07ed0cb2cfc1881428a7/src/include/Rinternals.h#L666
+#else 
   SEXP object = Rf_findVar(name, env);
   return CAR(object) != R_UnboundValue; // CAR() replacement for PRVALUE()
+#endif
 } // false if not promise or not evaluated 
 

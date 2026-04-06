@@ -35,6 +35,9 @@ fitme_body <- function(processed,
                                  verbose=verbose, optim.scale=optim.scale, For="fitme") 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   # init <- optim_blob$inits$`init` ## list; keeps all init values, all in untransformed scale
+  # For outer beta, $init.optim, $canon.init and $init.optim have $beta; (there is no $etaFix$beta)
+  # HLCor.obj() or HLfit.obj() willtake the $beta or $trBeta element of the relisted skeleton 
+  # and move this information to the etaFix argument.
   init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
   init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies 
   fixed <- optim_blob$fixed
@@ -133,7 +136,7 @@ fitme_body <- function(processed,
         ##### THE FIT:
         optPars <- .new_locoptim(init.optim, ## try to use gradient? But neither minqa nor _LN_BOBYQA use gradients. optim() can
                                  LowUp, 
-                                 control, objfn_locoptim=.objfn_locoptim, 
+                                 control, objfn_locoptim=.objfn_locoptim, objfn.extras=LUarglist,
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 
                                  user_init_optim=user_init_optim,
                                  grad_locoptim=NULL, verbose=verbose[["TRACE"]])
@@ -144,24 +147,20 @@ fitme_body <- function(processed,
       augZXy_phi_est <- proc1$augZXy_env$phi_est ## may be NULL: if phi was not estimated by augZXy
       refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
       HLCor.args <- refit_args$HLCor.args
-      ranPars_in_refit <- refit_args$ranPars_in_refit
-      if ( ! is.null(processed$X_off_fn)) { # beta outer-optimization => switch to inner optim for this refit
+      ranPars_in_refit <- refit_args$ranPars_in_refit # MAY contain beta estimates in case of outer beta estim, depending on refit_info
+      if ( ! is.null(processed$X_off_fn) && # outer beta
+           ! is.null(beta <- refit_args$HLCor.args$init.HLfit$fixef) # and we refit beta (which is the default)
+      ) { 
+        # => rebuild X.pv for inner optim in the refit that generates the ~full object
         processed$off <- environment(processed$X_off_fn)$ori_off
         X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
         processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
                                              sparse_precision=processed$is_spprec, 
                                              as_mat=.eval_as_mat_arg(processed))
-        if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale # trBeta is never used by default (spaMM option tr_beta).... (but check ADFun experiment if modifying this)
-          sc_fixef <- .spaMM.data$options$.betaInv(trBeta)
-          ranPars_in_refit$trBeta <- NULL
-        } else {
-          sc_fixef <- ranPars_in_refit$beta
-          ranPars_in_refit$beta <- NULL
-        }
-        HLCor.args$init.HLfit$fixef <- .unscale(X.pv, sc_fixef)
+        # HLCor.args$init.HLfit$fixef <- beta # mustr have been provided by .get_refit_args(); unscaled
         processed$port_env$port_fit_values$fixef <- NULL
-        processed$X_off_fn <- NULL
-        processed$vecdisneeded <- .vecdisneeded(pforpv=TRUE, processed$family, processed) # (_F I X M E__) ultimately extend this for outer beta for mv fits... except that outer beta without gradient is so bad  
+        processed$X_off_fn <- NULL # _____F I X M E_____ possible future programming problems
+        processed$vecdisneeded <- processed$vecdisneeded_ori
       }
     } ## end if ...getCall... else
     #

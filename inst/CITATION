@@ -2,7 +2,8 @@ citHeader("To cite 'spaMM' in publications use")
 
 bibentry(bibtype ="Article",
   title = "Testing environmental and genetic effects in the presence of spatial autocorrelation",
-  author = as.person("François Rousset [aut], Jean-Baptiste Ferdy [aut]"),
+  author = c(person(given="François", family="Rousset"), 
+             person(given="Jean-Baptiste", family="Ferdy")),
   journal      = "Ecography",
   year         = "2014",
   volume       = "37",

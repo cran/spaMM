@@ -107,7 +107,7 @@
     mu <- linkinv(eta)
     dev <- sum(dev.resids(y, mu, weights))
     if (fit$rank < nvars) 
-      coef[fit$pivot][seq.int(fit$rank + 1, nvars)] <- NA
+      coef[fit$pivot][seq.int(fit$rank + 1L, nvars)] <- NA
     nr <- min(sum(good), nvars)
     if (nr < nvars) {
       Rmat <- diag(nvars)

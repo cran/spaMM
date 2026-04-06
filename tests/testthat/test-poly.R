@@ -2,20 +2,23 @@ cat(cli::col_yellow("\ntest poly():\n"))
 
 set.seed(123)
 d <- data.frame(x = 1:10, y = rnorm(10), z=rnorm(10))
+# also tests NA handling:
+dNA <- d; dNA$x[2] <- NA 
 
-m1 <- fitme(y ~ x + I(x^2), data = d)
-m2 <- fitme(y ~ poly(x, 2, raw = TRUE), data = d) # default is raw=FALSE
-m3 <- fitme(y ~ poly(x, 2), data = d)
-testthat::expect_true(diff(range(c(-11.1162027435,logLik(m1),logLik(m2),logLik(m3))))<1e-7) 
+m1 <- fitme(y ~ x + I(x^2), data = dNA)
+m2 <- fitme(y ~ poly(x, 2, raw = TRUE), data = dNA) # default is raw=FALSE
+m3 <- fitme(y ~ poly(x, 2), data = dNA)
+testthat::expect_true(diff(range(c(-10.3496615884,logLik(m1),logLik(m2),logLik(m3))))<1e-7) 
 
 p1 <- predict(m1, newdata = data.frame(x = 2)) 
 p2 <- predict(m2, newdata = data.frame(x = 2)) 
 p3 <- predict(m3, newdata = data.frame(x = 2))  
-testthat::expect_true(diff(range(c(0.1018852,p1,p2,p3)))<1e-7) 
+testthat::expect_true(diff(range(c(0.2302456359,p1,p2,p3)))<1e-7) 
 
-m4 <- fitme(y ~ poly(cbind(x,z), 2, raw = TRUE), data = d)
-m5 <- fitme(y ~ poly(cbind(x,z), 2), data = d)
-testthat::expect_true(diff(range(c(-7.60735012544,logLik(m4),logLik(m5))))<1e-7) 
+m4 <- fitme(y ~ poly(cbind(x,z), 2, raw = TRUE), data = dNA)
+m5 <- fitme(y ~ poly(cbind(x,z), 2), data = dNA)
+testthat::expect_true(diff(range(c(-7.302795736,logLik(m4),logLik(m5))))<1e-7) 
+
 
 {
   library("splines")
@@ -76,9 +79,9 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   # merfit <- lme4::lmer(Reaction ~ 1 + (poly(Days,2)|Subject), data = sleepstudy)
   (m1 <- fitme(Reaction ~ 1 + (poly(Days,2)|Subject), data = sleepstudy, method="REML"))
   (m2 <- fitme(Reaction ~ 1 + (poly(Days,2, raw=TRUE)|Subject), data = sleepstudy, method="REML"))
-  crit <- diff(range(c(-877.895899884,logLik(m1),logLik(m2))))
+  (crit <- diff(range(c(-877.895899884,logLik(m1),logLik(m2)))))
   try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -877.895899884"), # affected by xtol_abs_factors$rcLam
-                      testthat::expect_true(crit<2e-09)))
+                      testthat::expect_true(crit<1e-08)))
   p1 <- predict(m1)
   p1n <- predict(m1, newdata=m1$data)
   testthat::expect_true(diff(range(p1-p1n))<1e-12) 

@@ -99,10 +99,10 @@ ARp <- function(p=1L, fixed=NULL, corr=TRUE, tpar=1/(1+seq(p))) {
     levelrange <- range(as.integer(.unlist(dimnams)))
     Qmat <- calc_Qmat_ARp(parvec=parvec, newlevels=seq(levelrange[1L],levelrange[2L]))
     corr_mat <- chol2inv(chol(Qmat)) # .precision2cov(Qmat) 
-    if (inherits(distmat,"dist")) {
-      corr_mat[dimnams,dimnams]
-    } else {
+    if (inherits(dimnams,"list")) { 
       corr_mat[dimnams[[1]],dimnams[[2]]]
+    } else {
+      corr_mat[dimnams,dimnams]
     }
   }
   
@@ -176,10 +176,10 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
     dimnams <- dimnames(distmat)
     levelrange <- range(as.integer(.unlist(dimnams)))
     corr_mat <- calc_Cmat_from_dist(parvec=parvec, levelrange)
-    if (inherits(distmat,"dist")) {
-      corr_mat[dimnams,dimnams]
-    } else {
+    if (inherits(dimnams,"list")) {
       corr_mat[dimnams[[1]],dimnams[[2]]]
+    } else {
+      corr_mat[dimnams,dimnams]
     }
   }
   

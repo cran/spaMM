@@ -56,7 +56,7 @@ map_ranef(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL,
    \code{Z} (not \code{x}), as is appropriate for use in \code{do.call(Ztransf,list(Z=Zvalues))}. 
 }
 \item{coordinates}{
-  The geographical coordinates. By default they are deduced from the model formula. For example if this formula is \code{resp ~ 1 + Matern(1| x + y )} the default coordinates are c("x","y"). If this formula is \code{resp ~ 1 + Matern(1| x + y + z )}, the user must choose two of the three coordinates.
+  Vector of character strings, giving the names of the geographical coordinates. By default they are deduced from the model formula. For example if this formula is \code{resp ~ 1 + Matern(1| x + y )} the default coordinates are c("x","y"). If this formula is \code{resp ~ 1 + Matern(1| x + y + z )}, the user must choose two of the three coordinates.
 }
  \item{xrange}{
    The x range of the plot (a vector of length 2); by default defined to cover all analyzed points.  
@@ -123,7 +123,7 @@ statements which draw axes on the plot key.
 \item{mv_it}{NULL or integer: for multivariate-response fits, specify a submodel. }
 
 \item{\dots}{
-  further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM} and \code{map_ranef}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
+  further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{predict.HLfit} and \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM} and \code{map_ranef}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
 }
 }
 \value{

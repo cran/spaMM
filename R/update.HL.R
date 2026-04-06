@@ -16,6 +16,31 @@ getCall.HLfit <- function(x, NbThreads=1L, ...) { ## FIXME ? getCall()$resid.mod
   }
 }
 
+# Compare to get_HLCorcall() which has specific code for extra arguments.
+# .get_processed_call() is used in a limited context (pois4mlogit)
+# where the extra args are the user-level data, 
+# not the mv-processed data that are in the fit object 
+# get_HLCorcall has more general syntax handling arguments not in the original call.
+.get_processed_call <- function(mc, # from match.call() in a fitting function
+                                ... # anything we want to replace in call 'mc'
+                                ) {
+  dotlist <- list(...)
+  for (st in names(dotlist)) 
+    mc[[st]] <- dotlist[[st]]
+  mc[["verbose"]]["getCall"] <- TRUE # This avoids the fit (since we want $processed)
+  mc <- eval(mc,parent.frame()) 
+  #
+  # if mc[[1]] was fitme/fitmv then ..._body() returned a call with $processed, 
+  # and the mc[[1]] function attached a $call to it.
+  # Then if we eval() a new call built from this return value
+  # the new call may have an argument $call that may be evaluated when the dotlist is analyzed
+  # This should be avoided! (argh). So
+  mc[["call"]] <- NULL
+  #
+  mc[["verbose"]]["getCall"] <- FALSE
+  mc[["processed"]]$"verbose"[["getCall"]] <- FALSE
+  mc
+}
 
 ##### OLD comment before I use fixed <- .modify_list(.)
 ## to get a call with the structure of the final HLCorcall in fitme or corrHLfit
@@ -23,7 +48,8 @@ getCall.HLfit <- function(x, NbThreads=1L, ...) { ## FIXME ? getCall()$resid.mod
 ## Therefore, the original ranFix of the outer_object is replaced, unless it is explicitly set to getCall(object)$ranFix or $fixed... (in confint.HLfit)
 ## Parameters not in ranFix are set to the initial value of of the optimization call.
 ##   
-## NB to get the $processed, it suffices to call a fitting function with verbose=c(getCall=TRUE)>...
+## NB to get the $processed, it suffices to call a fitting function 
+## with verbose=c(getCall=TRUE)>. This is wrapped in .get_processed_call()
 #
 get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list of call arguments
                           fixed, ## see comments above
@@ -35,12 +61,21 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   outer_call$fixed <- .modify_list(outer_call$fixed, fixed)
   #
   outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
-  if (outer_fn=="corrHLfit" && length(init <- eval(outer_call[["init.corrHLfit"]]))) {
+  if (outer_fn=="corrHLfit") {
+    init <- outer_call[["init.corrHLfit"]]
+  } else init <- outer_call[["init"]]
+  if (inherits(init,"name")) { # I should have commented this...
+    init <- attr(outer_object,"optimInfo")$LUarglist$"canon.init"
+  } else if (length(init)) { # user-level => Need to standardize it before trimming it.
+    init <- eval(init)
     init <- .reformat_ranPars(init, fitobject = outer_object)
-    outer_call[["init.corrHLfit"]] <- remove_from_parlist(init, removand=fixed)
-  } else if (length(init <- eval(outer_call[["init"]]))) { # user-level => Need to standardize it before trimming it.
-    init <- .reformat_ranPars(init, fitobject = outer_object)
-    outer_call[["init"]] <- remove_from_parlist(init, removand=fixed)
+  }
+  if (length(init)) {
+    if (outer_fn=="corrHLfit") {
+      outer_call[["init.corrHLfit"]] <- remove_from_parlist(init, removand=fixed)
+    } else { 
+      outer_call[["init"]] <- remove_from_parlist(init, removand=fixed)
+    }
   }
   ## compare to update.default, commented in R language Definition.
   extras <- match.call(expand.dots = FALSE)$...
@@ -57,6 +92,12 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   verbose["getCall"] <- TRUE # but this is automatically converted to an integer if there are integer elsewhere in the vector...
   outer_call$verbose <- verbose
   #
+  ## Currently I cannot use
+  #   HLCorcall <- .getFromTheDepths(eval(as.call(outer_call)), what="HLCorcall")
+  ## plus a matching  .sendFromTheDepths(HLCorcall=hlcor)  
+  ## because the .sendFromTheDepths() should be in eg HLfit() or fitme_body() depending in the outer_call fn
+  ## (bc in the second case attributes are added to the call).
+  ## MOREOVER, this might create conflicts with other .getFromTheDepths() ? 
   HLCorcall <- eval(as.call(outer_call)) ## calls outer fn and bypasses any optimization to get the inner call HLCor/HLfit... / fitmv?
   HLCorcall$call <- NULL ## $call kept the outer call! 
   if (inherits(HLCorcall[[1]], "function")) { # if it is of class "name", no need for this block
@@ -94,7 +135,7 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
   extras <- match.call(expand.dots = FALSE)$...
   if (!missing(formula.)) {
     ## fixme A long time ago I wrote "does not handle etaFix$beta"... 
-    if (is.null(data <- extras$data)) data <- object$data ## fortunately keeping more than the variables required in the original formula
+    # if (is.null(data <- extras$data)) data <- object$data ## fortunately keeping more than the variables required in the original formula
     oriform <- formula.HLfit(object, which="hyper") ## with hyper-ranefs and offset
     if (inherits(oriform,"list")) { 
       if ( ! inherits(formula.,"list")) stop("Old formula is list (presumably from fitmv()) but new formula is not")
@@ -110,10 +151,11 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
     } else call$formula <- .update_formula(oriform,formula.) 
   }
   if (length(extras)) {
+    dotlist <- list(...) # evaluates the extras
     existing <- !is.na(match(names(extras), names(call))) ## which to replace and which to add to the call
-    for (a in names(extras)[existing]) call[[a]] <- extras[[a]] ## replace
-    if (any(!existing)) {
-      call <- c(as.list(call), extras[!existing]) ## add
+    for (a in names(extras)[existing]) call[[a]] <- dotlist[[a]] 
+    if (any( ! existing)) {
+      call <- c(as.list(call), dotlist[!existing]) ## add
       call <- as.call(call)
     }
   }
@@ -168,8 +210,8 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
         resp_expr <- colnames(mf)[1L]
         if (resp_expr %in% colnames(re_data)) {
           re_data[resp_expr] <- newresp 
-        } else stop(paste0("Response, ",resp_expr,", is not a variable in the 'data'.\n",
-                           "See help('respName') for how to handle this case."))
+        } else stop(cli::format_error(paste0("Response, ",resp_expr,", is not a variable in the 'data'.\n",
+                           "See {.topic [respName](spaMM::respName)} for how to handle this case.")))
       } else if (respName %in% colnames(re_data)) {
         re_data[respName] <- newresp 
       } else stop(paste0("Variable, ",respName,", is not a variable in the 'data'."))

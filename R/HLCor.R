@@ -102,7 +102,7 @@ HLCor <- function(formula,
     }
   }
   ################# single processed, single data analysis: 
-  if (.safe_true(mc$processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call is verbose["getCall"'"] is TRUE or 1
+  if (.safe_true(mc$processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"'"] is TRUE or 1
   #
   # In a call from fitme -> fitme_body -> .new_locoptim -> .safe_opt -> nloptr::nloptr -> HLcallfn.obj -> HLCor.obj -> here,
   # the mc elements are "ranPars"      "processed" and possibly "control.dist" ... which correspond to the formals of HLCor_body:

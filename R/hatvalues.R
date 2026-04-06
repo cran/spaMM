@@ -52,11 +52,11 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
       if (which=="ranef") lev <- model$lev_lambda 
       if (which=="both") {
         lev <- list(ranef=model$lev_lambda,resid=model$lev_phi) 
-        if (any(sapply(lev, is.null))) lev <- NULL
+        if (any( ! sapply(lev, length))) lev <- NULL
       }
     }
     #### end of checks of available info.
-    if (is.null(lev)) {
+    if ( ! length(lev)) {
       sXaug <- model$envir$sXaug # NOT get_matrix() since get_matrix() provides matrices with blocks in Henderson's order,
       if (loctype=="fit") { 
         #### First gte the hat values, strito sensu
@@ -111,7 +111,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         if (which=="ranef") lev <- lev$ranef
       } else {
         lev <- get_from_MME(sXaug,which=loctype, B=c("phi", "lambda")) # loctype=hatval or hatval_Z
-        if (is.list(lev)) { # depends on corr_method
+        if (is.list(lev)) { # depends on sXaug_method
           if (which=="resid") lev <- lev$lev_phi
           if (which=="ranef") lev <- lev$lev_lambda 
         } else {
@@ -212,7 +212,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     # phi hence not poiss,binom:
     if (is.null(families <- processed$families)) {
       if (processed$family$family=="Gamma" && anynull_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
-        phiscaled <- phi_est/eval(prior.weights) ## 08/2014 ## bug "*" corrected -> "/" 2015/03/05
+        phiscaled <- as.vector(phi_est/eval(prior.weights)) ## as.vector drops the attributes inherited from prior.weights
         hatvals$resid <- hatvals$resid +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
       }    
     } else { # mv case, list of families

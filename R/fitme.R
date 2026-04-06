@@ -20,7 +20,7 @@
   #   warning("'lower' or 'upper' specifications without matching 'init' have no effect",immediate. = TRUE)
   # }
   #
-  dotnames <- setdiff(names(mc)[-1],c(names(formals(fitme)), "what_checked"))
+  dotnames <- setdiff(names(mc)[-1],c(names(formals(fitme)), c("what_checked","multinom_info")))
   argcheck <- setdiff(dotnames, .spaMM.data$options$HLnames)
   if (length(argcheck) && what_checked=="fitmv() call") argcheck <- setdiff(argcheck,"X2X")
   if (length(argcheck)) {
@@ -48,6 +48,7 @@
                              nb_cores = NULL, # to be used by SEM...
                              objective=NULL,
                              For="fitme", # alternative is "fitmv"
+                             multinom_info="ignored", # as it says (so that no need to modify the .preprocess_fitme() call from p4m functions)
                              ... 
 ) {
   # Here if e.g. 'data' is a promise, str(data) is OK but eval(mc$data) fails. We can manipulate mc elements 
@@ -142,7 +143,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   control.dist=list(),
                   method="ML", 
                   HLmethod=method, ## LRT fns assume HLmethod when they are called and when calling
-                  processed=NULL, 
+                  processed=NULL,  # passed to .preprocess_fitme()
                   nb_cores = NULL, # to be used by SEM...
                   objective=NULL,
                   weights.form=NULL,
@@ -191,6 +192,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   if (inherits(hlcor,"HLfitlist")) {
     attr(hlcor,"call") <- oricall
   } else {
+    # There is a control.dist in processed, and (a modified one using moreargs) in the HLCorcall,
     oricall$control.dist <- mc$processed$control_dist ## but never in the fitme_body() call
     hlcor$call <- oricall ## this is a call to fitme()
   }
