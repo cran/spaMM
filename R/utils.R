@@ -180,29 +180,38 @@ print.bootci4print <- function(x, ...) {
   return(length(target_call))
 }
 
-.mvrnorm <- function(n = 1, mu, Sigma, tol = 1e-6, empirical = FALSE, tcross_Sigma=NULL) {
-  if (is.null(tcross_Sigma)) {
-    return(mvrnorm(n, mu, Sigma, tol, empirical))
-  } else { # simplification of MASS::mvrnorm code
-    p <- length(mu)
+# derived of MASS::mvrnorm code, + 'tcross_Sigma' - 'empirical'
+.mvrnorm <- function(n = 1L, mu, Sigma, tol = 1e-6, tcross_Sigma=NULL) {
+  if (only_Sig <- is.null(tcross_Sigma)) {
+    eS <- eigen(Sigma, symmetric = TRUE)
+    ev <- eS$values
+    if (!all(ev >= -tol * abs(ev[1L]))) 
+      stop("'Sigma' is not positive definite")
+    
+    nr <- nrow(Sigma)
+    nc <- ncol(Sigma)
+    if (nr != length(mu)) stop("incompatible arguments (nrow(Sigma) != length(mu))")
+  } else {
     nr <- nrow(tcross_Sigma)
     nc <- ncol(tcross_Sigma)
-    if (nr != p) stop("incompatible arguments (nrow(tcross_Sigma) != length(mu))")
-    X <- matrix(rnorm(nc * n), n)
-    if (empirical) { # not tested
-      X <- scale(X, TRUE, FALSE)
-      X <- X %*% svd(X, nu = 0)$v
-      X <- scale(X, FALSE, TRUE)
-    }
-    X <- drop(mu) + tcrossprod(tcross_Sigma, X) #eS$vectors %*% diag(sqrt(pmax(ev, 0)), p) %*% t(X)
-    nm <- names(mu)
+    if (nr != length(mu)) stop("incompatible arguments (nrow(tcross_Sigma) != length(mu))")
+  }
+  
+  X <- matrix(rnorm(nc * n), n)
+  nm <- names(mu)
+  if (only_Sig) {
+    X <- drop(mu) + eS$vectors %*% diag(sqrt(pmax(ev, 0)), nr) %*% t(X)      
+    if (is.null(nm) && !is.null(dn <- dimnames(Sigma))) 
+      nm <- dn[[1L]]
+  } else {
+    X <- drop(mu) + tcrossprod(tcross_Sigma, X) 
     if (is.null(nm) && !is.null(dn <- dimnames(tcross_Sigma))) 
       nm <- dn[[1L]]
-    dimnames(X) <- list(nm, NULL)
-    if (n == 1) 
-      drop(X)
-    else as.matrix(t(X))
   }
+  dimnames(X) <- list(nm, NULL)
+  if (n == 1L) 
+    drop(X)
+  else as.matrix(t(X))
 }
 
 # if bool = TRUE, returns test whether in Rstudio session
@@ -223,7 +232,7 @@ projpath <- local({
   function() {
     if (is.null(ppp <- .spaMM.data$options$projpath)) {
       if (is.null(pp)) {
-        projpathinRstudio <- .inRstudio(silent=FALSE, bool=FALSE)
+        projpathinRstudio <- .inRstudio(silent=FALSE, bool=FALSE) # gets the path for the current project, not necess spaMM
         if (inherits(projpathinRstudio,"try-error") || is.null(projpathinRstudio)) { # not an Rstudio session || no active project
           if (interactive()) {
             message('Need to give the project path, say "D:/home/francois/travail/stats/spaMMplus/spaMM":')
@@ -474,4 +483,28 @@ projpath <- local({
   )
 }
 
+# generate permutations. No function in base R; 
+# See gtools::permutations for a rel. safe package dependency.
+.gen_all_perms <- function(x) {
+  if (length(x) == 1L) {
+    return(list(x))
+  }
+  result <- list()
+  for (i in seq_along(x)) {
+    remaining <- x[-i]
+    for (p in .gen_all_perms(remaining)) {
+      result <- c(result, list(c(x[i], p)))
+    }
+  }
+  return(result)
+}
 
+.ginv <- function(X, tol = sqrt(.Machine$double.eps)) {
+  Xsvd <- svd(X)
+  pos_d <- Xsvd$d > max(tol * Xsvd$d[1L], 0)
+  if (all(pos_d)) 
+    Xsvd$v %*% (1/Xsvd$d * t(Xsvd$u))
+  else if (!any(pos_d)) matrix(0, ncol(X), nrow(X))
+  else Xsvd$v[, pos_d, drop = FALSE] %*% 
+    (1 / Xsvd$d[pos_d] * t(Xsvd$u[, pos_d, drop = FALSE]))
+}

@@ -1,7 +1,27 @@
 # called by .calc_inits_by_xLM() -> llm.fit() ; or by .calc_etaXLMblob()
 # BinomialDen is distinctly handled between these two cases. 
-.calc_dlogL_blob <- function(eta, mu, y, weights, family, phi, muetaenv, BinomialDen) {
+.calc_dlogL_blob <- function(eta, mu, y, weights, family, phi, muetaenv, BinomialDen, processed) {
   famfam <- family$family
+  if (is.null(family)) { # mv fit with not only canonical GLMs; 'processed' must then be provided.
+    # my fitst mv tweedie since I changed to default "obs"...
+    families <- processed$families
+    vec_nobs <- processed$vec_nobs
+    cum_nobs <- c(0L,cumsum(vec_nobs))
+    dlogcLdeta <- d2logcLdeta2 <- numeric(length(y))
+    for (mv_it in seq_along(vec_nobs)) {
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      if (length(resp_range)) dlogL_blob <- 
+          .calc_dlogL_blob(eta=eta[resp_range], mu=mu[resp_range], y=y[resp_range], 
+                           weights=weights[[mv_it]], family=families[[mv_it]],
+                           phi=phi[[mv_it]],
+                           muetaenv=muetaenv$mv[[mv_it]],
+                           BinomialDen=BinomialDen[resp_range])
+      dlogcLdeta[resp_range] <- as.vector(dlogL_blob$dlogcLdeta)
+      d2logcLdeta2[resp_range] <- as.vector(dlogL_blob$d2logcLdeta2)
+    }
+    return(list(dlogcLdeta=dlogcLdeta, d2logcLdeta2=d2logcLdeta2))
+  }
+  
   if (famfam=="COMPoisson")  {
     dlogLdmu <- family$DlogLDmu(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2) 
     d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2)
@@ -105,8 +125,17 @@
   }
 }
 
-
-
+## stats::glm.fit computes null deviance as 
+# wtdmu <- if (intercept) 
+#   sum(weights * y)/sum(weights)
+# else linkinv(offset)
+# nulldev <- sum(dev.resids(y, wtdmu, weights))
+## which is the deviance of an intercept-only (or offset only) model, for GLMs.
+## But for more general LLMs, the intercept estimate is not wtdmu, 
+## SO computing null deviance would require a distinct fit.
+##
+## (in addition, the above wtdmu is correct with y = frequency and mu=muFREQS in binomial(), 
+## but betabin assumes both y=counts and mu=muFREQS so some adhockery would be needed.)
 llm.fit <- function (x, 
             y, # for glm.fit, y is "a vector of observations of length n" and here it is important this is a vector otherwise I may need a few more drop()"s.
             # But then the source code of glm.fit contains ynames <- if (is.matrix(y)) rownames(y) .. 
@@ -475,7 +504,7 @@ llm.fit <- function (x,
        effects = effects, R = R, 
        rank = rank, qr = fit_qr, family = family, 
        linear.predictors = eta, deviance = sum(dev.resids(y, mu=mu, wt=weights)), aic = aic.model, 
-       null.deviance = NA,   #   # Since best-fitting mu !=y, computing the null model would require a non-trivial fit...
+       null.deviance = NA,   # see comments above, and as formally documented. 
        iter = iter, 
        residuals = residuals, # "working" weights
        weights = wt,  # 'GLM' weights

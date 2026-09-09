@@ -1,14 +1,14 @@
 \name{beta_resp}
 \alias{beta_resp}
-%- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Beta-distribution family object
 }
 \description{
 Returns a \code{family} object for beta-response models.
-The model described by such a family is characterized by a linear predictor, a link function, and the beta density for the residual variation.
-
 The precision parameter \code{prec} of this family is a positive value such that the variance of the response given its mean \eqn{\mu} is \eqn{\mu(1-\mu)/(1+}\code{prec}). \code{prec} is thus the precision parameter \eqn{\phi} of Ferrari & Cribari-Neto (2004) and of the \pkg{betareg} package (Cribari-Neto & Zeileis 2010).  
+
+The family described by this object is not a GLM family, so it should not be used as a \code{\link[stats]{glm}} argument unless one additionally uses \code{method="llm.fit"} (see Examples for \code{\link{negbin1}} which is equivalent in this respect).
+But it is still characterized by the same concepts as GLMs: a linear predictor, a link function, and the given distribution of residual variation. 
 
 A \bold{fixed-effect} residual-dispersion model can be fitted, using the  \code{\link{resid.model}} argument, which is used to specify the form of the logarithm of the precision parameter (see Examples). Thus the variance of the response become \eqn{\mu(1-\mu)/(1+}\code{exp(<specified linear expression>)}).
 }
@@ -16,12 +16,12 @@ A \bold{fixed-effect} residual-dispersion model can be fitted, using the  \code{
 Prior weights are meaningful for this family and handled as a factor of the precision parameter (as for GLM families) hence here not as a divisor of the variance (in contrast to GLM families): the variance of the response become \eqn{\mu(1-\mu)/(1+}\code{prec*<prior weights>}). However, this feature is experimental and may be removed in the future. The fitting function's \code{resid.model} argument may be preferred to obtain the same effect, by specifying an \code{offset(log(<prior weights>))} in its formula (given the log link used in that model). As usual in \pkg{spaMM}, the offset(.) argument should be a vector and any variable necessary for evaluating it should be in the \code{data}.
 }
 \usage{
-beta_resp(prec = stop("beta_resp's 'prec' must be specified"), link = "logit")
+beta_resp(prec, link = "logit")
 }
-%- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{prec}{
-  Scalar (or left unspecified): precision parameter of the beta distribution. 
+  Scalar (or left unspecified): precision parameter of the beta distribution. The \dQuote{outer-optimizing} functions, such as \code{fitme} (see \code{\link{inner-vs-outer}}) will estimate this parameter if called with \code{family=beta_prec()} (no given \code{prec} value). In other usages of this family, \code{prec} must be specified. 
+
 }
   \item{link}{
   logit, probit, cloglog or cauchit link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
@@ -48,3 +48,5 @@ Journal of Applied Statistics, 31(7), 799-815.
   ## With model for residual dispersion:
   # fitme(y ~1+(1|grp), family=beta_resp(), data= beta_dat, resid.model= ~ x_het)
 }
+\keyword{models}
+\keyword{regression}

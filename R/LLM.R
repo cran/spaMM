@@ -22,6 +22,15 @@
                                     },
                                     "inverse" = function(eta) { 2/(eta*eta*eta) }, # for gaussian(inverse) -> does not mean -1/...
                                     "loglambda" = function(eta) {stop("this function should not be called")},
+                                    "power" = {
+                                      q <- NULL # q would be later updated in the environment of the function
+                                      # But .tweedie() does not call this function.
+                                      function(eta) {
+                                        if (q==0)  {
+                                          .safe_exp(eta)
+                                        } else ((1-q)*eta^(1/q-2))/(q^2)
+                                      }
+                                    },
                                     stop("link not yet handled in .D2muDeta2() [but easy to fix]")
 )
 
@@ -51,6 +60,15 @@
                                       -6/(eta2*eta2)
                                     }, # for gaussian(inverse) -> does not mean -1/...
                                     "loglambda" = function(eta) {stop("this function should not be called")},
+                                    "power" = {
+                                      q <- NULL # q would be later updated in the environment of the function
+                                      # But .tweedie() does not call this function.
+                                      function(eta) {
+                                        if (q==0)  {
+                                          .safe_exp(eta)
+                                        } else ((1-q)*(1-2*q)*eta^(1/q-3))/(q^3)
+                                      }
+                                    },
                                     stop("link not yet handled in .D3muDeta3() [but easy to fix]")
 )
 
@@ -171,7 +189,7 @@
   damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
   newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
   dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob,
-                                 BinomialDen=BinomialDen)
+                                 BinomialDen=BinomialDen, processed=processed)
   for (innerj in seq_len(maxit.mean)) {
     ## breaks when Xtol_rel is reached
     clik <- newclik
@@ -232,7 +250,7 @@
     } else dbetaV <- beta_eta - old_beta_eta
     dlogL_blob <- .calc_dlogL_blob(eta, mu=muetablob$mu, # muCOUNT 
                                    y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob,
-                                   BinomialDen=BinomialDen)
+                                   BinomialDen=BinomialDen, processed=processed)
     if (verbose["trace"]) {
       print(paste0("Inner iteration ",innerj))
       print_err <- c(beta_eta=beta_eta)
@@ -247,6 +265,7 @@
   } ## end for (innerj in 1:maxit.mean)
   names(beta_eta) <- colnames(X.pv)
   return(list(eta=muetablob$sane_eta, muetablob=muetablob, beta_eta=beta_eta, w.resid= - dlogL_blob$d2logcLdeta2, innerj=innerj,
+              phi_est=phi_est, # needed for TRACE(inner=TRUE)
               sXaug=structure(NA,info="no sXaug returned by .calc_etaLLMblob().") 
               ))
 }

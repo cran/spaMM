@@ -31,6 +31,9 @@ We need a syntax such that a single variance and a single vector are fitted (as 
 \code{(1|id)} where \code{id} is *not* an actual factor in the \code{data} but is an alias for the variable \code{id_y} in the first formula and \code{id_b} in the second one. This interpretation of the \code{(1|id)} term is specified by the argument
 \code{aliases=list(id=c("id_y","id_b"))}.
 }
+\seealso{
+\code{vignette("Multinomial-logit", package = "spaMM")} for more examples.
+}
 \examples{
 # Toy data
 set.seed(123)

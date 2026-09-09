@@ -76,7 +76,8 @@
     } else condnum <- decomp$eigrange[2]/decomp$eigrange[1]
   } else if (is.null(processed$envir$divinfo_warned)) { # else condnum remains NULL
     warning(cli::format_warning(paste0("Increase 'diagnose_conv' threshold above ",nc,
-                   " if you want a (possibly slow)\n diagnosis of non-convergence (see {.topic [div_info](spaMM::div_info)}" ), immediate.=TRUE))
+                   " if you want a (possibly slow)\n diagnosis of non-convergence (see {.topic [div_info](spaMM::div_info)}" )), 
+            immediate.=TRUE)
     processed$envir$divinfo_warned <- TRUE
   }
   

@@ -17,15 +17,18 @@ Of related interest, see \code{\link{numInfo}} which evaluates numerically the i
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
-  \item{parm}{character vector, integer vector, or function, or a quoted expression. If \bold{character}, the name(s) of parameter(s) to be fitted; if \bold{integer}, their position in the \code{fixef(object)} vector. Valid names are those of this vector. If a \bold{function}, it must return a (vector of) parameter estimate(s) from a fit object. If a \bold{quoted expression}, it must likewise extract parameter estimate(s) from a fit object; this expression must refer to the fitted object as \sQuote{hlfit} (see Examples).}
+  \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}. This includes objects also inheriting from class \code{pois4mlogit}.}
+  \item{parm}{character vector, integer vector, or function, or a quoted expression. If \bold{character}, the name(s) of parameter(s) to be fitted; if \bold{integer}, their position in the \code{fixef(object)} vector. Valid names are those of this vector. If a \bold{function}, it must return a (vector of) parameter estimate(s), from a fit object as single argument. If a \bold{quoted expression}, it must likewise extract parameter estimate(s) from a fit object; this expression must refer to the fitted object as \sQuote{hlfit} (see Examples).}
   \item{level}{The coverage of the interval.}
   \item{verbose}{whether to print the interval or not. As the function returns its more extensive results invisibly, 
-  this printing is the only visible output.}
+  this printing is the only visible output. In some cases, this argument may also control the verbosity of fits performed by \code{confint} to find the bound of the intervals: see \code{\link{verbose}} for details.}
   \item{boot_args}{NULL or a list of arguments passed to functions \code{\link{spaMM_boot}} and \code{\link[boot]{boot.ci}}. It must contain element \code{nsim} (for \code{spaMM_boot}). The \code{type} argument of \code{boot.ci} can only be given as element \code{ci_type}, to avoid conflict with the \code{type} argument of \code{spaMM_boot}.
   }
   \item{format}{Only effective non-default value is \code{"stats"} to return results in the format of the \code{stats::\link[stats]{confint}} result (see Value).}
-  \item{\dots}{Additional arguments (maybe not used, but conforming to the generic definition of \code{confint}).}
+  \item{\dots}{Additional arguments, which may be ignored and have no currently suggested use, apart from any exception described in the Details (notably \code{progress} for \code{pois4mlogit} fits).}
+}
+\details{
+The \dots arguments may have an effect (1) in the basic LRT procedure, only when the input \code{object} inherits from class \code{\link{pois4mlogit}} (being a fit by the so-named function). In this case the \dots are useful to pass a \code{progress} value down to the \code{pois4mlogit} function; (2) in the bootstrap procedure, where the \dots are ultimately passed to the fitting procedure applied to each bootstrap sample (but there is no suggested use of this feature).   
 }
 \value{
 The format of the value varies, but in all cases distinguished below, one or more tables are included, as a \code{table} attribute, in the format of the \code{stats::\link[stats]{confint}} result, to facilitate consistent extraction of results. By default \code{confint} returns invisibly the full values described below, but if \code{format="stats"}, only the \code{table} attribute is returned. 

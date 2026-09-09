@@ -1,19 +1,24 @@
-betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "logit") {
+
+# !!! differs from design of binomial() wherein y as freqs. Here they are counts. !!!
+betabin <- function (prec, link = "logit") {
   trunc <- FALSE
   .BinomialDen <- NULL # hack so that non need for special handling of BinomialDen in llm.fit()
   resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
-  mc <- match.call()
-  if (inherits(shch <- substitute(prec),"character") ||
-      (inherits(shch,"name") && inherits(prec, "function")) # "name" is for e.g. beta_resp(logit)
-      # (but testing only "name" would catch e.g. negbin(prec=prec) )
-  ) { 
-    if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
-    errmess <- paste0('It looks like betabin(',shch,') was called, which absurdly means betabin(prec=',shch,
-                      ').\n  Use named argument: betabin(link=',shch,') instead.')
-    stop(errmess)
+  if (missing(prec)) {
+    delayedAssign("prec", stop("betabin's 'prec' must be specified"))
+  } else {
+    if (inherits(shch <- substitute(prec),"character") ||
+        (inherits(shch,"name") && inherits(prec, "function")) # "name" is for e.g. beta_resp(logit)
+        # (but testing only "name" would catch e.g. negbin(prec=prec) )
+    ) { 
+      if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
+      errmess <- paste0('It looks like betabin(',shch,') was called, which absurdly means betabin(prec=',shch,
+                        ').\n  Use named argument: betabin(link=',shch,') instead.')
+      stop(errmess)
+    }
+    # When 'prec' is recognized as as call, we eval it so it is no longer recognized as a call by .calc_optim_args()
+    if (inherits(shch,"call")) prec <- eval(shch, parent.frame()) 
   }
-  # When 'shape' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
-  if (inherits(shch,"call") && deparse(shch[[1]])!="stop") prec <- eval(shch) 
   
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
@@ -46,9 +51,12 @@ betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "
   }
   validmu <- function(mu) all(mu > 0 & mu < 1)
   
-  # in the following functions I must distingusih the wt= prior weights for the prec model, and the BinomialDen; by contrast wt is used for BinomialDen in the binomial code
-  logl <- function(y, n=.BinomialDen, mu, wt) { # mu is muFREQS is alpha/(alpha+beta) = alpha/prec so mu*prec=alpha
-    y <- drop(y)
+  # in the following functions I must distinguish the wt= prior weights for the prec model, and the BinomialDen; by contrast wt is used for BinomialDen in the binomial code
+  logl <- function(y, # counts
+                   n=.BinomialDen, 
+                   mu, # mu is muFREQS is alpha/(alpha+beta) = alpha/prec so mu*prec=alpha
+                   wt) { 
+    y <- drop(y) 
     prec <- prec*c(wt) 
     lchoose(n,y)  +  lbeta(y+mu*prec, n-y+(1-mu)*prec)  -  lbeta(mu*prec, (1-mu)*prec)
   }
@@ -101,7 +109,7 @@ betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "
     logl(y=y,n=BinomialDen, mu=muFREQS, wt=wt)
   } 
   
-  dev.resids <- function(y,mu,BinomialDen=.BinomialDen, wt) { # input (y, mu=fv, BinomialDen=BinomialDen, ,wt="argh"), cf .dev_resids() extractor; the mu are muFREQS
+  dev.resids <- function(y,mu, wt,BinomialDen=.BinomialDen) { # input (y, mu=fv, BinomialDen=BinomialDen, ,wt="argh"), cf .dev_resids() extractor; the mu are muFREQS
     2*(sat_logL(y, BinomialDen=BinomialDen, wt=wt)-logl(y,n=BinomialDen, mu=mu,wt=wt)) } #
   
   aic <- function(y, n=.BinomialDen, mu, wt, ...) { # 'wt' for the prior weights on the precision parameter
@@ -119,10 +127,10 @@ betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "
     } else if (NCOL(y) == 2L) {
       if (any(abs(y - round(y)) > 0.001)) 
         warning("non-integer counts in a betabinomial model!", domain = NA)
-      .BinomialDen <- y[, 2L] + (y <- y[, 1L]) # different handling of y relative do stats::binomial
-      if (any(n0 <- .BinomialDen == 0L)) y[n0] <- 0
+      .BinomialDen <- y[, 2L] + (y <- y[, 1L]) # y becomes vector of counts: not as in stats::binomial
+      if (any(n0 <- .BinomialDen == 0L)) y[n0] <- 0 # not sure what it's for
       mustart <- (y + 0.5)/(.BinomialDen + 1)
-    } else stop("for the 'betabin' family, y must be a vector of 0 and 1's\nor a 2 column matrix where col 1 is no. successes and col 2 is no. failures", 
+    } else stop("for the 'betabin' family, y must be a vector of 0 and 1's\nor a 2-column matrix where col 1 is no. successes and col 2 is no. failures", 
                 domain = NA)
     environment(family$aic)$.BinomialDen <- .BinomialDen
   })

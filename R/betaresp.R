@@ -1,18 +1,21 @@
-beta_resp <- function (prec = stop("beta_resp's 'prec' must be specified"), link = "logit") {
+beta_resp <- function (prec, link = "logit") {
   trunc <- FALSE
   resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
-  mc <- match.call()
-  if (inherits(shch <- substitute(prec),"character") ||
-      (inherits(shch,"name") && inherits(prec, "function")) # "name" is for e.g. beta_resp(logit)
-      # (but testing only "name" would catch e.g. negbin(prec=prec) )
-  ) { 
-    if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
-    errmess <- paste0('It looks like beta_resp(',shch,') was called, which absurdly means beta_resp(prec=',shch,
-                      ').\n  Use named argument: beta_resp(link=',shch,') instead.')
-    stop(errmess)
+  if (missing(prec)) {
+    delayedAssign("prec", stop("beta_resp's 'prec' must be specified"))
+  } else {
+    if (inherits(shch <- substitute(prec),"character") ||
+        (inherits(shch,"name") && inherits(prec, "function")) # "name" is for e.g. beta_resp(logit)
+        # (but testing only "name" would catch e.g. negbin(prec=prec) )
+    ) { 
+      if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
+      errmess <- paste0('It looks like beta_resp(',shch,') was called, which absurdly means beta_resp(prec=',shch,
+                        ').\n  Use named argument: beta_resp(link=',shch,') instead.')
+      stop(errmess)
+    }
+    # When 'prec' is recognized as as call, we eval it so it is no longer recognized as a call by .calc_optim_args()
+    if (inherits(shch,"call")) prec <- eval(shch, parent.frame()) 
   }
-  # When 'shape' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
-  if (inherits(shch,"call") && deparse(shch[[1]])!="stop") prec <- eval(shch) 
   
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 

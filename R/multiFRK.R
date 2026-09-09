@@ -182,7 +182,7 @@ IMRF <- function(...) {
     detVM <- vM[4]*vM[1]-vM[2]*vM[3]
     dpt <- (pointsXY[pt_it,]-simplex[1L,])
     if (detVM==0) { ## which should not occur if the mesh is OK
-      solve_vM <- ginv(vM) 
+      solve_vM <- .ginv(vM) 
       p2m.b[pt_it,2:3] <- dpt %*% solve_vM    
     } else {
       W1 <- (vM[4]*dpt[1]-vM[2]*dpt[2])/detVM
@@ -345,16 +345,30 @@ IMRF <- function(...) {
   }
 }
 
-
+# patch for pmatch bug
+.pmatch <- function(x, table, nomatch=NA_integer_, duplicates.ok=FALSE, 
+                    Xi_ncol) {
+  if (Xi_ncol<2L) {
+    pmatch(x=x, table=table, nomatch=nomatch, duplicates.ok=duplicates.ok)
+  } else {
+    blocksize <- length(x) %/% Xi_ncol
+    dim(x) <- dim(table) <- c(blocksize, Xi_ncol)
+    resu <- sapply(Xi_ncol, function(jt) {
+      (jt-1L)*blocksize + pmatch(x[,jt],table[,jt])
+    })
+    .unlist(resu)
+  }
+}
 
 .get_new_AMatrices <- function(object, newdata, newZlist,
                                corr_families=.get_from_ranef_info(object)$corr_families) { 
+  oldZAlist <- object$ZAlist
   if (recent <- object$spaMM.version > "3.10.22") {
     amatrices <- object$ranef_info$sub_corr_info$AMatrices # may be a list with NULL elements
-  } else amatrices <- attr(object$ZAlist,"AMatrices")
+  } else amatrices <- attr(oldZAlist,"AMatrices")
   
   
-  exp_spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
+  exp_spatial_terms <- attr(oldZAlist,"exp_spatial_terms")
   if (recent) {
     corr_types <- object$ranef_info$sub_corr_info$corr_types # object$spaMM.version > "3.10.22" ?
   } else corr_types <- attr(exp_spatial_terms,"type")
@@ -362,7 +376,7 @@ IMRF <- function(...) {
     corr_type <- corr_types[rd]
     if ( ! is.na(corr_type)) {
       char_rd <- as.character(rd)
-      if ( ! is.null(Amatrix <- amatrices[[char_rd]]) && 
+      if ( ! is.null(Amatrix <- amatrices[[char_rd]]) && # some A matrices are specific to spprec (representing the perm of the Cholesky facto)
            ! is.null(Z_ <- newZlist[[char_rd]])) { # second test handles re.form; only strictly necessary in case where Z_ is used
         if (corr_type == "IMRF") {
           perm <- attr(Amatrix, "perm") # the 'perm' slot of a CHMfactor
@@ -386,8 +400,11 @@ IMRF <- function(...) {
           # found for efficiently subsetting a corrMatrix (cf .A_update()).
           # The code must allow for repeated names as in
           # pmatch(c("b","a","b","a"),c("a","b","c","a","b","c")) gives 2 1 5 4 
-          # which seems to nicely do the job of subsetting with repeated names when both args are repeated, same-order blocks.
-          rep_perm <- pmatch(colnames(Z_), rownames(amatrices[[char_rd]]))
+          # to do the expected job of subsetting with repeated names when both args are repeated, same-order blocks.
+          # This differs from which( . %in% .), which would give 1 2 3 4
+          # pmatch would nicely do the job.... except for some bug...
+          rep_perm <- .pmatch(colnames(Z_), rownames(amatrices[[char_rd]]), 
+                              Xi_ncol=attr(oldZAlist,"Xi_cols")[rd]) 
           amatrices[[char_rd]] <- Amatrix[rep_perm,, drop=FALSE] 
         }      
       }

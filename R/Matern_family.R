@@ -222,8 +222,8 @@ corrFamily <- function(corrfamily=NULL, ...) {
   resu <- list(...)
   if (is.null(resu$title)) resu$title <- "Stub for the corrFamily before .preprocess_corrFamily() provides all required info."
   if (is.null(resu$levels_type)) resu$levels_type <- "stub"
-  # calc_moreargs= function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
-  # canonize = function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
+  # calc_moreargs= function(...) {return(NULL)}, # so that calling .calc_corrfams_moreargs() on a submodel does not generate an error.
+  # canonize = function(...) {return(NULL)}, # so that calling .calc_corrfams_moreargs() on a submodel does not generate an error.
   # calc_inits= function(...) {return(NULL)} # same idea for .calc_inits...
   resu
 }
@@ -306,7 +306,7 @@ adjacency <- function(...) {
             class="corr_family")
 }
 
-SAR_WWt <- adjacency ## for .calc_inits and .calc_moreargs: implied by older code where only argument values may differ between adjacency and SAR_WWt 
+SAR_WWt <- adjacency ## for .calc_inits and .calc_corrfams_moreargs: implied by older code where only argument values may differ between adjacency and SAR_WWt 
 
 print.corr_family <- function (x, ...) {
   cat("\nCorrelation family:", x$corr_family, "\n")

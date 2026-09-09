@@ -44,7 +44,7 @@ dofuture <- function(newresp, fn, nb_cores=NULL,
     cluster_args <- .set_cluster_type(cluster_args, nb_cores=nb_cores)
     nb_cores <- cluster_args$spec
     if (debug. && nb_cores>1L ) debug. <- 1L 
-    assign("debug.", debug., environment(fn))
+    if ( ! environmentIsLocked(environment(fn))) assign("debug.", debug., environment(fn))
     if (is.null(dim(newresp))) newresp <- matrix(seq(newresp),ncol=newresp,nrow=1) # assuming newresp is an integer
     nsim <- ncol(newresp)
     time1 <- Sys.time() 

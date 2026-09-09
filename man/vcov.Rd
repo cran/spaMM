@@ -22,7 +22,7 @@ This is (as other covariances matrices above) a matrix of expected values, gener
 }
 \usage{
 \method{vcov}{HLfit}(object, ...)
-\method{VarCorr}{HLfit}(x, sigma = 1, add_residVars=TRUE, verbose=TRUE, format="lmelike",...)
+\method{VarCorr}{HLfit}(x, sigma = 1, add_residVars=TRUE, verbose=TRUE, format="data.frame",...)
 Corr(object, A=TRUE, cov2cor.=TRUE, ...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -42,7 +42,7 @@ Any matrix returned by the \code{Corr} extractor is by default the unconditional
 
 But it may also be an heteroscedastic matrix for some random effects if \code{cov2cor.} is set to FALSE. In particular, the \code{\link{IMRF}} and \code{\link{MaternIMRFa}} models are by default defined in terms of the inverse of an heteroscedastic covariance matrix (with \code{tcrossprod} factor \bold{L}), and of a \bold{A} matrix of weights. The product \bold{AL} will be the \code{tcrossprod} factor of a covariance matrix rather than a correlation matrix, unless a non-default normalization was requested when declaring the random-effect terms. User-defined random-effects models may also be heteroscedastic. In all these cases \code{Corr} will by default return the correlation matrix, by applying \code{cov2cor} to the tcrossproduct. 
 
-For \code{format="lmelike"} (the default), \code{VarCorr.HLfit} returns a data frame whose format is roughly consistent with (although distinct from) that of objects produced by \code{nlme::VarCorr.lme}, in particular including columns with consistent names for easier extraction. 
+For \code{format="data.frame"} (the default), \code{VarCorr.HLfit} returns a \code{data.frame}, whose format was inspired by that of objects produced by \code{nlme::VarCorr.lme}, in particular including columns with consistent names for easier extraction; but with several differences (e.g. numbers are converted to character strings in the \code{nlme::VarCorr.lme}, but not here).
 
 For the alternative \code{format="merMod"}, \code{VarCorr.HLfit} returns an object whose format is consistent with that of objects produced by \code{lme4:::VarCorr.merMod}, and inheriting from the class \code{"VarCorr.merMod"}, so that the \code{as.data.frame} and \code{print} methods defined in \pkg{lme4} for this class can be selected for this returned object.
 

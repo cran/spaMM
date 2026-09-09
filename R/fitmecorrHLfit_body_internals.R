@@ -110,6 +110,7 @@
       # but they may also be taken from a previous fit and will have complex names (eg test-dhglm) 
       names(init_lambda) <- seq_len(nrand) ## erases complex names
     } else { 
+      warning("'init' value may be ignored as its length\n does no match the number of random effects.", immediate. = TRUE)
       lambda <- structure(rep(default,nrand),names=seq_len(nrand)) ## default=NA implies that fitme will outer optimize them
       lambda[names(init_lambda)] <- init_lambda ## the lambda's should be indexed "1",...
       if (length(lambda)>nrand) stop("length(lambda)>nrand: case not handled")
@@ -132,7 +133,7 @@
 #   return(fixed)
 # }
 
-.calc_moreargs <- function(processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
+.calc_corrfams_moreargs <- function(processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
                            corr_types, fixed, init.optim, control_dist, NUMAX=50, LDMAX=50, 
                            KAPPAMAX=100.000001, # so that users can set it to 100...
                            init.HLfit, corr_info, verbose, lower, upper) {
@@ -299,50 +300,54 @@
 }
 
 
-.try_RSpectra <- local({
+.warn_once_RSpectra <- local({
   RSpectra_warned <- FALSE
-  function(M, symmetric) {
-    if (requireNamespace("RSpectra",quietly=TRUE)) { # https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
-      # may generate (Rcpp::warning): only 1 eigenvalue(s) converged, less than k = 2  
-      if (inherits(M,c("matrix", "dgeMatrix", "dgCMatrix"))) {
-        if (symmetric) { # unfortunately eigs_sym not quite robust numerically.
-          eigrange <- try(suppressWarnings(RSpectra::eigs_sym(M, k=2, which="BE", opts=list(retvec=FALSE))$values),
-                          silent=TRUE)
-          if (inherits(eigrange,"try-error")) { 
-            resu <- .try_RSpectra(M, symmetric=FALSE)
-          } else if ( length(eigrange)==2L) {
-            resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
-          } else resu <- NULL
-        } else { # "eigs() with matrix types "matrix", "dgeMatrix", "dgCMatrix" and "dgRMatrix" can use "LM", "SM", "LR", "SR", "LI" and "SI"" =>hence not "BE"
-          largest <- suppressWarnings(RSpectra::eigs(M, k=1, which="LR", opts=list(retvec=FALSE))$values)
-          if ( length(largest)) {
-            lowest <- suppressWarnings(RSpectra::eigs(M, k=1, which="SR", opts=list(retvec=FALSE))$values)
-            if ( length(lowest)) {
-              resu <- list(eigrange=c(lowest,largest))
-            } else resu <- NULL
-          } else resu <- NULL
-        }
-      } else {
-        eigrange <- suppressWarnings(RSpectra::eigs(M, k=2, which="BE", opts=list(retvec=FALSE))$values) 
-        if ( length(eigrange)==2) {
+  function() {
+    if ( ! RSpectra_warned) {
+      message("If the 'RSpectra' package were installed, an extreme eigenvalue computation could be faster.")
+      RSpectra_warned <<- TRUE
+    } 
+  }
+})
+
+.try_RSpectra <- function(M, symmetric) {
+  if (requireNamespace("RSpectra",quietly=TRUE)) { # https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
+    # may generate (Rcpp::warning): only 1 eigenvalue(s) converged, less than k = 2  
+    if (inherits(M,c("matrix", "dgeMatrix", "dgCMatrix"))) {
+      if (symmetric) { # unfortunately eigs_sym not quite robust numerically.
+        eigrange <- try(suppressWarnings(RSpectra::eigs_sym(M, k=2, which="BE", opts=list(retvec=FALSE))$values),
+                        silent=TRUE)
+        if (inherits(eigrange,"try-error")) { 
+          resu <- .try_RSpectra(M, symmetric=FALSE)
+        } else if ( length(eigrange)==2L) {
           resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
         } else resu <- NULL
+      } else { # "eigs() with matrix types "matrix", "dgeMatrix", "dgCMatrix" and "dgRMatrix" can use "LM", "SM", "LR", "SR", "LI" and "SI"" =>hence not "BE"
+        largest <- suppressWarnings(RSpectra::eigs(M, k=1, which="LR", opts=list(retvec=FALSE))$values)
+        if ( length(largest)) {
+          lowest <- suppressWarnings(RSpectra::eigs(M, k=1, which="SR", opts=list(retvec=FALSE))$values)
+          if ( length(lowest)) {
+            resu <- list(eigrange=c(lowest,largest))
+          } else resu <- NULL
+        } else resu <- NULL
       }
-      resu
     } else {
-      if ( ! RSpectra_warned) { #if ( ! identical(spaMM.getOption("RSpectra_warned"),TRUE)) {
-        message("If the 'RSpectra' package were installed, an extreme eigenvalue computation could be faster.")
-        RSpectra_warned <<- TRUE # .spaMM.data$options$RSpectra_warned <- TRUE
-        # an alternative would be irlba::partial_eigen but https://bwlewis.github.io/irlba/comparison.html suggests that RSpectra is faster for partial eigenvalue problems.
-      }
-      NULL
+      eigrange <- suppressWarnings(RSpectra::eigs(M, k=2, which="BE", opts=list(retvec=FALSE))$values) 
+      if ( length(eigrange)==2) {
+        resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
+      } else resu <- NULL
     }
+    resu
+  } else {
+    # an alternative would be irlba::partial_eigen but https://bwlewis.github.io/irlba/comparison.html suggests that RSpectra is faster for partial eigenvalue problems.
+    .warn_once_RSpectra()
+    NULL
   }
-}) # extreme eigenvalues ordered as range()
+} # extreme eigenvalues ordered as range()
 
 .provide_AR_factorization_info <-function(adjMatrix, sparse_precision, corr.model) {
     if (corr.model  %in% c("SAR_WWt")) {
-      decomp <- eigen(adjMatrix,symmetric=FALSE) ## could be symmetric=TRUE if adjMatrix is dsC as in adjacency case.
+      decomp <- .eigen(adjMatrix,symmetric=FALSE) ## could be symmetric=TRUE if adjMatrix is dsC as in adjacency case.
       return(list(u=decomp$vectors,d=decomp$values,u.=solve(decomp$vectors)))
     }
     # ELSE
@@ -352,17 +357,19 @@
       if ( sparse_precision) {
          decomp <- .try_RSpectra(adjMatrix, symmetric=TRUE)
         if (is.null(decomp)) {
-          eigvals <- eigen(adjMatrix, symmetric=TRUE, only.values = TRUE)$values # first converts to dense matrix, so quite inefficient.
+          eigvals <- .eigen(adjMatrix, symmetric=TRUE, only.values = TRUE)$values # first converts to dense matrix, so quite inefficient.
           decomp <- list(eigrange=range(eigvals)) 
         }
       } else {
-        decomp <- eigen(adjMatrix, symmetric=TRUE)
+        decomp <- .eigen(adjMatrix, symmetric=TRUE)
         svdnames <- names(decomp)
         svdnames[svdnames=="values"] <- "d"
         svdnames[svdnames=="vectors"] <- "u"
         names(decomp) <- svdnames
+        # rownames(decomp$u) <- rownames(adjMatrix) # (names kept as decomp element by .eigen() or .svd())
+        # (adjMatrix received automatic names if user did not provide them).
         decomp$adjd <- decomp$d
-        decomp$eigrange=range(decomp$adjd)
+        decomp$eigrange <- range(decomp$adjd)
       }
       return(decomp)
     }
@@ -507,9 +514,9 @@
     urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
     if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,digits),collapse=" ")," ")
   }
-  if ( ! is.null(beta <- attr(processed$off,"beta"))) 
-    cat("beta=",paste(signif(beta,digits),collapse=" ")," ") 
-  # => old comment: "outer beta" but at least not always the right code for this case. Rather:
+  # if ( ! is.null(beta <- attr(processed$off,"un_beta"))) 
+  #   cat("beta=",paste(signif(beta,digits),collapse=" ")," ") 
+  # this is run on entry rather than on exit, so it shows a previous $beta before $off is updated. Rather:
   if ( ! is.null(beta <- etaFix$beta)) 
     cat("beta=",paste(signif(beta,digits),collapse=" ")," ") # outer beta
 }
@@ -776,7 +783,7 @@
     }
   } else not_inner_phi <- FALSE ## complex phi model, we weed inner optim
   if (not_inner_phi) {
-    if (is.null(init.optim$phi)) { 
+    if (is.null(init.optim$phi) || is.na(init.optim$phi)) { 
       init.optim$phi <- .get_inits_by_xLM(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
       # if init.optim$phi too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
     }  
@@ -870,11 +877,25 @@
   for (rd in stillNAs) { ## fam_corrected_guess for each ranef in stillNAs
     if ( ! is.null(processed$families)) {
       which_mv <- attr(processed$ZAlist[[rd]],"which_mv")
+      # trunc_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="zero_truncated")) 
       link_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="link")) 
-      trunc_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="zero_truncated")) 
+      link_[link_=="loglambda"] <- "log" 
+      if (any(powlink <- link_=="power")) {  
+        q_ <- .unlist(lapply(processed$families[which_mv][powlink],
+                             function(family) environment(family$aic)$"q")) # q_ potentially shorter than which_mv
+        link_[powlink][abs(q_)<0.05] <- "log"
+        link_[powlink][abs(q_-1)< 0.05] <- "identity"
+      }
     } else {
-      link_ <- processed$family$link
-      trunc_ <- processed$family$zero_truncated
+      family <- processed$family 
+      # trunc_ <- family$zero_truncated
+      link_ <- family$link
+      link_[link_=="loglambda"] <- "log" 
+      if (link_=="power") {  
+        q_ <- environment(family$aic)$"q"
+        link_[abs(q_)<0.05] <- "log"
+        link_[abs(q_-1)< 0.05] <- "identity"
+      }
     }
     if (is.null(ZAL)) {
       ZA <- processed$ZAlist[[rd]]
@@ -889,7 +910,9 @@
     denom <- denom[denom!=0] ## so that same result in dense and sparse if ZA has empty cols in sparse
     ZA_corrected_guess <- guess_from_glm_lambda/sqrt(mean(denom)) 
     #if (corr_types[it]=="AR1") ZA_corrected_guess <- log(1.00001+ZA_corrected_guess) ## ad hoc fix but a transformation for ARphi could be better FIXME
-    fam_corrected_guess <- .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, trunc_=trunc_, For=For, processed=processed, nrand=nrand)
+    fam_corrected_guess <- 
+      .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, q_=q_,
+                                For=For, processed=processed, nrand=nrand)
     init_lambda[rd] <- .preprocess_valuesforNAs(lcrandfamfam_rd=lcrandfamfam[rd], 
                                                 link_rd=rand.families[[rd]]$link, init.lambda=fam_corrected_guess)
   }
@@ -946,35 +969,28 @@
     # Here it is (1) get inits by xLM (2) adjust according to family (3) (sort of) adjust according to ZA 
     guess_from_glm_lambda <- .get_inits_by_xLM(proc1)$lambda * (3L*nranterms)/((nranterms+1L)) # +1 for residual
     fam_corrected_guess <- .calc_fam_corrected_guess(guess=guess_from_glm_lambda, For="optim", processed=proc1) ## divides by nrand...
+    Xi_cols <- attr(proc1$ZAlist,'Xi_cols')
     for (rt in which(var_ranCoefs)) {
       char_rt <- as.character(rt)
+      Xi_ncol <- Xi_cols[rt]
+      rc <- rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
+      lampos <- rev(length(rc) - cumsum(seq(Xi_ncol))+1L)  ## NOT cumsum(seq(Xi_cols))
+      rc[lampos] <- fam_corrected_guess/(Xi_ncol)
+
       if (is.null(init.optim$ranCoefs[[char_rt]])) {
-        Xi_cols <- attr(proc1$ZAlist,'Xi_cols')
-        Xi_ncol <- Xi_cols[rt]
-        rc <- rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
-        #rc <- rep(0.0001,Xi_ncol*(Xi_ncol+1L)/2L)
-        #
-        if (FALSE) { # guess to find good initial value, but no useful impact...
-          # gaussian at least: fits the model y~Zv and uses the corr of the v's...
-          ZAlist <- proc1$ZAlist
-          ZA <- .compute_ZAL(NULL,proc1$ZAlist[rt], as_matrix=FALSE)
-          coef <-.lmwith_sparse_QRp(ZA,1.0*(as.numeric(proc1$y)*1.0-proc1$off),returntQ = FALSE,returnR = TRUE)$coef 
-          cor <- cov2cor(cov(matrix(coef,ncol=Xi_ncol)))
-          rc <- cor[lower.tri(cor,diag = TRUE)]
-        }
-        #
-        lampos <- rev(length(rc) -cumsum(seq(Xi_ncol))+1L)  ## NOT cumsum(seq(Xi_cols))
-        rc[lampos] <- fam_corrected_guess/(Xi_ncol)
-        #rc[lampos] <- 1e-3*fam_corrected_guess/(Xi_ncol)
-        #rc[lampos[1]] <- fam_corrected_guess/(Xi_ncol)
-        init.optim$ranCoefs[[char_rt]] <- rc ## see help(ranCoefs)
+        init.optim$ranCoefs[[char_rt]] <- rc 
+      } else {
+        urC_rt <- init.optim$ranCoefs[[char_rt]] # user-provided
+        NApos <- is.na(urC_rt)
+        urC_rt[NApos] <- rc[NApos]
+        init.optim$ranCoefs[[char_rt]] <- urC_rt # provides full init vector that may later be overwritten by constraints
       }
     }
   }
   return(init.optim)
 }
 
-# NOT called by corrHLfit...
+# NOT called by corrHLfit: cf condition on 'For' in .calc_optim_args() to call this fn.
 .more_init_optim <- function(proc1, processed, corr_types, init.optim, phi_by_augZXy,user_init_optim) {
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   phimodel1 <- proc1$models[['phi']]
@@ -991,6 +1007,14 @@
   calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) 
   is_gammaId <- attr(processed$rand.families,"is_gammaId") 
   sufficient_reasons_for_outer_lambda <- (
+    (
+      (
+        processed$objective != "p_v" || # all variants of REML
+          processed$HL[1L]==0L # PQL sensu lato
+      ) &&
+      phimodel1 == "phiScal" # For structured-disp  fitme REML does not automatically switch to outer lambda. 
+                             # affects test-probitgem timing and doubtless others.
+    ) ||
     any(is_gammaId) || # Then we can, and generally need, to control the range of lambda values, so use outer optim. 
     anyNA(init.optim$lambda) || # first one meaning that the user explicitly set a NA init lambda
       any(var_ranCoefs) || # includes mv()
@@ -998,7 +1022,8 @@
                                                                 #       and FALSE for fit_REML in test-devel-predVar-AR1
       # *** next case ad hoc but motivated by 'ahzut' example in private test-COMPoisson-difficult.R ***
     ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape)) || 
-                           ( ! is.null(init.optim$beta_prec)) || ( ! is.null(init.optim$rdisPars))) ) # lambda + family pars 
+                           ( ! is.null(init.optim$beta_prec)) || ( ! is.null(init.optim$rdisPars)) ||
+                           ( ! is.null(init.optim$Tw_index))|| ( ! is.null(init.optim$Tw_link))) ) # lambda + family pars 
   ) 
   other_reasons_to_chech_inner_costs <- ( # when there are other outer-estimated parameters ## 
     has_corr_pars ||
@@ -1059,7 +1084,8 @@
         init_optim_outer_phiGLM_blob <- # This is where "outer phiGLM" is allowed.
           .init_optim_outer_phiGLM(proc1, init.optim, nrand1, 
                                    reasons_for_outer=(init_optim_will_have_lambda_or_ranCoefs_anyway || 
-                                                        outer_phiScal_spares_costly_comput) &&
+                                                        outer_phiScal_spares_costly_comput || 
+                                                        proc1$family$family=="tweedie") &&
                                      .spaMM.data$options$allow_outer_phiGLM)
         init.optim <- init_optim_outer_phiGLM_blob$init.optim
         other_reasons_for_outer_lambda <- init_optim_outer_phiGLM_blob$not_inner_rdisp
@@ -1067,7 +1093,7 @@
         init_optim_phi_blob <- 
           .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
                           reasons_for_outer=init_optim_will_have_lambda_or_ranCoefs_anyway || 
-                            outer_phiScal_spares_costly_comput)
+                            outer_phiScal_spares_costly_comput || proc1$family$family=="tweedie")
         init.optim <- init_optim_phi_blob$init.optim
         other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi
       }
@@ -1141,11 +1167,30 @@
   rdisPars
 }
 
+# force the stop() or anything else.
+.force_fampar_stop <- function(family, fampar) {
+  tmp <- paste('substitute(',fampar,', env=environment(family$aic))')
+  tmp <- eval(str2expression(tmp))
+  eval(tmp, environment(family$aic)) 
+} 
+
+# Evaluates to TRUE when the fampar is a call to stop().
+# The tested object should always "exist", whether "missing" or not.
+.is_fampar_missing <- function(family,fampar) { 
+  if ( ! exists(fampar, envir=environment(family$aic))) 
+    stop(paste0("'",fampar, "' does not exists in the environment."))
+  #
+  tmp <- paste('substitute(',fampar,', env=environment(family$aic))')
+  tmp <- eval(str2expression(tmp))
+  (inherits(tmp,"call") && deparse(tmp[[1]])=="stop") 
+}
+
+
 # Called only on individual submodels:
 .calc_init.optim_family_par <- function(family, init.optim, fixed, processed, 
                                         inits_by_xLM=.get_inits_by_xLM(processed)) {
   if (family$family=="COMPoisson") {
-    if (inherits(substitute(nu, env=environment(family$aic)),"call")) {
+    if (.is_fampar_missing(family=family, fampar="nu")) {
       if (processed$models$rdispar=="rdiForm") {
         init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model)
       } else if (is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 # template: .calc_inits will modify it according to lower, upper 
@@ -1156,7 +1201,7 @@
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
   } else if (family$family %in% c("beta_resp","betabin")) {
-    if (inherits(substitute(prec, env=environment(family$aic)),"call")) {
+    if (.is_fampar_missing(family=family, fampar="prec")) {
       if (processed$models$rdispar=="rdiForm") {
         init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
                                               init_by_glm=inits_by_xLM$beta_prec)
@@ -1170,7 +1215,7 @@
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
   } else if (family$family  %in% c("negbin1","negbin2")) {
-    if (inherits(substitute(shape, env=environment(family$aic)),"call")) {
+    if (.is_fampar_missing(family=family, fampar="shape")) {
       # If NB_shape init is 5 :
       # => trShape is 1 given current .NB_shapeFn) 
       #    => the next points tried are 2 and 0 on transformed scale (=> NB_shape=1e6 and 1)
@@ -1186,6 +1231,27 @@
       if ( ! is.null(init.optim$NB_shape)) {
         warning("initial value is ignored when 'NB_shape' is fixed.") # i.e. anything but Intercept model
         init.optim$NB_shape <- NULL
+      } # and this should have the effect that user lower and upper values should be ignored too.
+    }  
+  } else if (family$family  == c("tweedie")) {
+    if (.is_fampar_missing(family=family, fampar="p")) {
+      if (processed$models$rdispar=="rdiForm") {
+        stop("A resid.model should instead affect the canonical GLM dispersion parameter")
+      } else if (is.null(init.optim$Tw_index)) init.optim$Tw_index <- 1.5
+    } else {
+      if ( ! is.null(init.optim$Tw_index)) {
+        warning("initial value is ignored when 'Tw_index' is fixed.") # i.e. anything but Intercept model
+        init.optim$Tw_index <- NULL
+      } # and this should have the effect that user lower and upper values should be ignored too.
+    }  
+    if ( get("q_missing", environment(family$aic), inherits = FALSE)) {
+      if (processed$models$rdispar=="rdiForm") {
+        stop("A resid.model should instead affect the canonical GLM dispersion parameter")
+      } else if (is.null(init.optim$Tw_link)) stop("Give explicit 'init' value for the 'link' argument.")
+    } else {
+      if ( ! is.null(init.optim$Tw_link)) {
+        warning("initial value is ignored when 'Tw_link' is fixed.") # i.e. anything but Intercept model
+        init.optim$Tw_link <- NULL
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
   } else if (processed$models$phi=="phiGLM") { # "outer phiGLM" 
@@ -1213,10 +1279,10 @@
   if ( ! is.null(fixed)) fixed <- .reformat_corrPars(fixed, corr_families=corr_info$corr_families)
   if ( ! is.null(user_init_optim$phi) ) {
     if (proc_it$models[["phi"]]=="") {
-      warning("initial value for 'phi' is ignored when there is no phi parameter (e.g. poisson or binomial families)") # i.e. anything but Intercept model
+      warning("initial value for 'phi' is ignored when there is no phi parameter, or it is fixed by the call.") # i.e. anything but Intercept model
       user_init_optim$phi <- NULL # erase the un-usable value otherwise the residModel would be ignored!
     } else if (proc_it$models[["phi"]]!="phiScal") {
-      warning("initial value for 'phi' is ignored when there is a non-default resid.model") # i.e. anything but Intercept model
+      warning("initial value for 'phi' is ignored when there is a non-default resid.model.") # i.e. anything but Intercept model
       user_init_optim$phi <- NULL # erase the un-usable value otherwise the residModel would be ignored!
     }
   }
@@ -1252,8 +1318,6 @@
       phi_by_augZXy <- ( augZXy_cond && is.null(user.lower$phi) && is.null(user.upper$phi)) 
       if (augZXy_cond && ! phi_by_augZXy) {
         proc_it$augZXy_cond <- structure(phi_by_augZXy, inner=attr(proc_it$augZXy_cond, "inner"))
-#        .do_TRACE(processed) # all the more hypothetical as this might no longer work if .do_TRACE() is called twice. 
-                             # .do_TRACE() now expects a string in processed$HLfit_body_fn, and this is no longer a string after .do_TRACE() has been called once.  
       }
     }
     # Now create a template for optimization, deciding for outer/inner optimisations:
@@ -1292,17 +1356,12 @@
   
   if (For=="fitmv") { # in that case the ranefs differ across submodels and we want submodel-specific proc1 to be used eg in 
     #   IMRF_pars=attr(attr(attr(processed$ZAlist,"exp_spatial_terms")[[rd]],"type"),"pars")
-    moreargs <- .calc_moreargs(processed= proc_it, 
-                               # We might need something equiv to .calc_range_info computing a mean(nbUnique) from multi()-processed
-                               # But (1) .makeLowUp_stuff_mv() is *the* place for handling processed itself, 
-                               #           so does it or can it deal with that ? __FIXME__
-                               #     (2) structure of mv-processed differs from that of multi()-processed.
-                               #     (3) Even the structure of ranefs of mv-processed$unmerged differs from that of multi()-processed.
+    moreargs <- .calc_corrfams_moreargs(processed= proc_it, 
                                corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc_it$control_dist, 
-                               init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)  
-  } else moreargs <- .calc_moreargs(processed=processed, 
+                               init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=user.lower, upper=user.upper)  
+  } else moreargs <- .calc_corrfams_moreargs(processed=processed, 
                              corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc_it$control_dist, 
-                             init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
+                             init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=user.lower, upper=user.upper)
   fixed <- .expand_hyper(fixed, hyper_info=proc_it$hyper_info, moreargs=moreargs)
   inits <- .calc_inits(init.optim=init.optim, # user, + added automatic ones
                        init.HLfit=init.HLfit,
@@ -1320,15 +1379,19 @@
     # The local moreargs may be defective for adjacency models 
     # (as we try to avoid determining spprec and what depends on it when preprocessing eahc submodel)
     # And then, any merged LowUp will be defective.
-    # Instead, .makeLowUp_stuff_mv() will compute mv-LUarglist and mv-LowUp from the global "processed"  and the merged other arguments
-    return(list(inits=inits, fixed=fixed, corr_types=corr_types))
-  } else {
+    # Instead, .makeLowUp_stuff_mv() will compute mv-LUarglist and mv-LowUp 
+    # from the global "processed"  and the merged other arguments,
+    # by itself calling .makeLowerUpper() with arguments for multiple response families.
+    return(list(inits=inits, fixed=fixed, corr_types=corr_types)) ##### RETURN
+  } else { # univariate-response fit
 
     if ( ! is.null(rdispar <- inits$`init`$rdisPars)) {
       famdisp_lowup <- .wrap_calc_famdisp_lowup(proc_it) 
     } else famdisp_lowup <- NULL
     
-    if (! is.null(processed$X_off_fn)) { # outer beta... the effect is not convincing (__F I X M E___). 
+    if (.has_X_off_betas(processed) &&
+        length(user_init_optim$beta) ) { # for outer beta. 
+      # Tests of outer beta too vicious (COMPoisson difficult) to demonstrate performance (___F I X M E___ create others?). 
       # In fitmv() I assume that the user provides bounds, but not here.
       # The COMP try currently runs but the results are pathetic with this 'fixef_lowup',
       # and abysmal with a NULL 'fixef_lowup'.
@@ -1344,12 +1407,15 @@
                       moreargs=moreargs,
                       famdisp_lowup=famdisp_lowup,
                       fixef_lowup=fixef_lowup,
-                      is_gammaId=attr(proc_it$rand.families,'is_gammaId')) ## list needed as part of attr(,"optimInfo")
+                      is_gammaId=attr(proc_it$rand.families,'is_gammaId'),
+                      famfam=proc_it$family$family) ## LUarg*list*, not promises or environment, needed as part of attr(,"optimInfo")
     LowUp <- do.call(".makeLowerUpper",LUarglist) 
     return(list(inits=inits, fixed=fixed, corr_types=corr_types, LUarglist=LUarglist,LowUp=LowUp))
-   ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction
   } 
 } 
+# contains $LowUp: a list with elements lower and upper that inherits names from init.optim, 
+# which must be in optim.scale as init.optim is by construction.
+
 
 .is.multi <- function(family) {
   # Where call at the end of fitting fn, 'family' is the evaluated argument of the call, possibly not yet interpreted as final family()

@@ -3,10 +3,78 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.7.0}{  
+\subsection{NEW FEATURES, except those specific to multinomial-logit fits}{
+\itemize{
+\item The 'tweedie' response family is implemented. 
+\item Fits by the sparse-correlation method, of models with random effects with many levels, may be notably faster than before. 
+\item It is now possible to fit ranGCA(<LHS>|<RHS>) and antisym(<LHS>|<RHS>) effects with a random-coefficient LHS (two kinds of 'composite-corrFamily' random effect which could not previously be fitted).
+\item An experimental implementation of the binding of predictions to the data frame of predictors (by predict(., binding=<character>)) is now available for multivariate-response fits.
+\item summary.HLfit(., details=list(full.form=FALSE)) allows long multiline formulas to be truncated; numeric values of this new feature allow finer control. 
+\item New remove_fixef() utility may be useful for programming likelihood-ratio tests. 
+\item get_drawSizes() extractor, used in new (but backward-compatible) default value of the 'sizes' argument of simulate.HLfit(). 
+\item sigma.HLfit() method for the generic stats::sigma() extractor.
+}
+}
+\subsection{NEW FEATURES OF MULTINOMIAL LOGIT FITS}{
+\itemize{
+\item The likelihoods returned are now those for the multinomial model rather than for an underlying surrogate Poisson  model. This does not affect any inference. 
+\item some fits may be substantially faster (50 to 100-fold in some cases). 
+\item simulate() and bootstrap procedures based on it may be expected to work, except possibly for some esoteric options.
+\item numInfo() can now compute information matrices from these fits. 
+\item confint() can now compute intervals for fixed effects from these fits. This may be prohibitively slow, and is awaiting a few tweaks. 
+\item Fit summaries more correctly report estimated random-effects parameters previous shown as 'fixed'.
+\item Experimental check to detect unidentifiable random effect components.
+}
+}
+\subsection{DOCUMENTATION}{
+\itemize{
+\item New vignette about multinomial-logit models.
+\item Some outdated documentation has been revised, in particular referring to the new "inner-vs-outer" documentation topic. 
+\item hatvalues.HLfit() documentation has been rewritten.
+}
+}
+\subsection{FIXED BUGS IN PROCEDURES FOR MULTIVARIATE-RESPONSE MODELS}{
+\itemize{
+\item Simulation of fitted multivariate-response models whose original data had missing information could fail in many ways. This is now expected to work, except possibly for some esoteric options.
+\item An 'A' matrix (as 'covStruct' attribute) could be ignored in multivariate-response models when the random effect was not a corrFamily or another correlated random effect (hence was only a group term or random-coefficient term).
+\item predict() from multivariate-response models with some zero-truncated families could still fail.
+\item predict() from multivariate-response models with an 'X2X' argument returned incorrect values for submodels with a single regressor variable (e.g., only a intercept.
+\item Multivariate-response GLMs (as contrasted to the more obviously useful multivariate-response mixed-models) could not be fitted using observed information matrix, when this matrix differs from the expected one (i.e., for non-canonical link). This was not much of a problem, given that this was not the default method, and that this changes only the shown standard errors: see User-Level Changes.
+}
+}
+\subsection{OTHER FIXED BUGS}{
+\itemize{
+\item LRT() failed when neither of the models compared had fixed effets, preventing LRT computation comparing different random-effect structures (with all its caveats) in this case. 
+\item A bug that occasionally prevented the default confint() procedure for a fixed-effect coefficient from finding correct bounds.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item For GLMs, the default has changed from using the expected information matrix to the observed one ins some computations (for mixed-effect models, this change has been done in version 4.0.0). This does not change point estimates, and changes their reported SEs only when the link is non-canonical. See help("method") for further information.
+\item The simulate(<multivariate-response fit>) return value will now contain NA elements when nformation is missing to predict and simulate these elements. 
+\item The matrix returned by model.matrix(<fit object>) now has row names.
+\item Results of PQL[/L] or REML fits by fitme() or fitmv() to small data sets may be slightly different from past versions. This is because the "outer optimization" method is now more systematically preferred in the PQL/REML cases, where its results are expected to differ from those using the "inner iterations" method for fitting dispersion parameters (see Details of help("inner-vs-outer")).  
+\item The colnames of the random-coefficient covariance matrix shown in model summaries, and of correlation columns in VarCorr output, have been modified.
+\item The VarCorr(. format) default value has been changed, and is synonymous to the older default. 
+\item For multivariate-response fits, the summary() now shows the number of observations used per submodel.
+\item Apparent, but not real, change in default values of dispersion parameters of several response families (COMPoisson, negative binomial, beta-resp and betabin), because previous apparent default values (which were stop calls) were confusing, and not real default values anyway. 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item Now requires a version >= 1.5-0 of the "Matrix' package.
+\item New dependency 'matrixStats' in Imports.
+\item New dependencies 'tweedieDistr' and 'tweedie' in Suggests. At least one of them must be available to fit models with the spaMM::tweedie response family.
+\item New dependencies 'knitr' and 'rmarkdown' in Suggests, because of the newly included vignette.
+\item 'MASS' is now a 'Suggests' and no longer an 'Imports'. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.6.65}{   
 \subsection{NEW FEATURES}{
 \itemize{
-\item gof() function gets a plot feature, an argument 'testfn' to control the way normality is assessed, and a distinct default test for inputs no handled by stats::shapiro.test().
+\item gof() function gets a plot feature, an argument 'testfn' to control the way normality is assessed, and a distinct default test for inputs not handled by stats::shapiro.test().
 \item The pois4mlogit() function for multinomial logit models uses a sounder algorithm than its previous version. It also allows inclusion of additional submodels not belonging to the multinomial model.
 \item The lower and upper ranges of random-coefficients parameters can now be controlled through the 'lower' and 'upper' arguments of the higher-level fitting functions (notably fitme() and fitmv()).
 \item New function genX2X() to facilitate use of the X2X argument of fitmv().
@@ -81,7 +149,7 @@
 \itemize{
 \item Fits with multiple precision matrices, or multiple correlation matrices, specified by the covStruct argument for multiple corrMatrix terms, generally returned incorrect results.   
 \item Better control of the size of the plots produced by filled.mapMM(), spaMMplot2D() and related functions, avoiding errors.
-\item Summary() could fail for some multivariate-response models.
+\item summary() could fail for some multivariate-response models.
 \item An inefficient step in interpretation of nested random effects could prevent some fits (no incorrect fit were returned).
 }
 }
@@ -99,7 +167,6 @@ However, INLA::inla.spde2.matern() is still needed to fit IMRF models.
 \item New dependency 'reformulas' in Imports.
 }
 }
-
 }
 
 \section{CHANGES UP TO VERSION 4.5.0}{  
@@ -350,7 +417,7 @@ Although using HLfit() to fit such models now works for all response families, t
 \section{CHANGES UP TO VERSION 3.13.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
-\item Non-GLM response families can now be fitted, the first two implemented being the 'negbin1' and 'beta_resp'. This is experimental and are limitations (notably, this is not yet possible in multivariate-response fits).
+\item Non-GLM response families can now be fitted, the first two implemented being the 'negbin1' and 'beta_resp'. This is experimental and with limitations (notably, this is not yet possible in multivariate-response fits).
 \item plot_effects() now handles the case where the focal variable is a factor.
 \item AIC.HLfit() now handles several fitted-model objects as described for the stats::AIC generic (the AIC.HLfit formals have been modified for that purpose but no backward-incompatibility should result). 
 \item New 'which' value "fixef_left_ginv" handled by get_matrix() extractor.
@@ -1024,7 +1091,7 @@ due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
 \item Function remove_from_parlist() for manipulating a structured list of parameters.
 \item spaMM_boot() now rbind's into a data frame the results of the 'simuland' calls when each call returns a 1-row data frame (the previous behaviour was undocumented and effectively inconsistent across different parallel backends). 
 \item More explicit error message when variables for prior weights are not in the 'data'.
-\item logLik(., which="logL_Lap") to compute Laplace approximation using observed Hessian (currently only for family=Gamma(log), for demonstration purposes).
+\item logLik(., which="logL_Lap") to compute Laplace approximation using observed information matrix (currently only for family=Gamma(log), for demonstration purposes).
 \item Low response variance could result in poor fits. A warning is now issued and several steps have been taken for more robust results.
 \item New family() extractor.
 }

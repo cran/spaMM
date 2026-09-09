@@ -20,13 +20,13 @@
 ## Remove the random-effects terms from a mixed-effects formula
 .stripRanefs <- function (term) { ## different from lme4::nobars
   nb <- .stripRanefs_(term)
-  if (is(term, "formula") && length(term) == 3 && ! inherits(nb,"formula")) {
+  if (is(term, "formula") && length(term) == 3L && ! inherits(nb,"formula")) {
     nb <- as.formula(paste(deparse(nb),"~ 0")) ## apparently needed bc model.frame(...)) does not handle the formula  '~ 0' (?)
   }
   nb
 }
 
-# cf .remove_all_fixef() for opposite effect  
+# cf .stripFixefs_() for opposite effect  
 .stripRanefs_ <- function (term) { ## compare to lme4:::nobars_ ; 'term is formula or any term, recursively
   if ( ! ("|" %in% all.names(term))) return(term) ## no bar => not a ranef term
   termname <- term[[1L]]
@@ -53,6 +53,46 @@
   term[[3L]] <- nb3
   term
 }
+
+# This is called by .remove_fixef()
+# An API near-equivalent is remove_fixef(form, form, keep_intercept=<T|F depending on later use>)
+#   but remove_fixef can add explicit 0 or 1, in contrast to this internal function.
+.stripFixefs <- function (term, keep_offset) { ## different from lme4::nobars
+  nb <- .stripFixefs_(term, keep_offset = keep_offset)
+  if ( ! inherits(nb,c("formula","NULL"))) nb <- as.formula(paste("~", deparse(nb)))
+  nb
+} # either NULL or a *formula*
+
+
+.stripFixefs_ <- function (term, keep_offset) { 
+  if (length(term) == 1L) return(NULL)
+  termname <- term[[1L]]
+  if (termname == as.vector("|", "symbol")) return(term) # (.|.) ranef
+  if (as.vector(termname, "character") %in% .spaMM.data$keywords$all_ranefs) return(term) # rather explicit
+  if (termname == as.vector("multIMRF")) return(term) # "multIMRF" is not (formally declared as) a ranef keyword so special handling
+  if (termname == as.vector("offset")) {
+    if (keep_offset) {
+      return(term)
+    } else return(NULL)
+  } 
+  if (length(term) ==  2L) { 
+    nb <- .stripFixefs_(term[[2L]],keep_offset=keep_offset)
+    if (is.null(nb)) 
+      return(NULL)
+    term[[2L]] <- nb
+    return(term)
+  }
+  nb2 <- .stripFixefs_(term[[2L]],keep_offset=keep_offset)
+  nb3 <- .stripFixefs_(term[[3L]],keep_offset=keep_offset)
+  if (is.null(nb2)) 
+    return(nb3)
+  if (is.null(nb3)) 
+    return(nb2)
+  term[[2L]] <- nb2
+  term[[3L]] <- nb3
+  term
+}
+
 
 # Correct, used until v3.6.15, but operations on 'symbols' in .subbarsMM() are now sufficient => obsolete
 .asNoCorrFormula <- function(formula) {
@@ -497,8 +537,7 @@ if (FALSE) { # seems correct, but ultimately not needed
     if (inherits(verif,"simpleError")) {
       stop("All variables should be in the 'data', including those for prior weights.")
     } else {
-      eval(call2mf) # repets the error without the tryCatch()
-      # return(verif)
+      eval(call2mf) # repeats the error without the tryCatch()
     } 
   }
   return(list(rownames=rownames(resu), weights=model.weights(resu))) # so that valid rows and weights always have the same length.
@@ -539,40 +578,37 @@ if (FALSE) { # seems correct, but ultimately not needed
   y
 }
 
-.sanitize_Y <- local({
-  #int_warned <- FALSE
-  function(y, famfam) {
-    if ( famfam %in% c("binomial","poisson","COMPoisson","negbin1","negbin2", "betabin")) { # COUNTS
-      ## the response variable should always be Counts
-      safe_y <- as.integer(y+0.5) # non-negative values only # non-array from array, hence:
-      if (NCOL(y)) dim(safe_y) <- dim(y)
-      if (max(abs(y-safe_y))>1e-05) {
-        anynegy <- any(y<0L)
-        if (anynegy) { # at this point, there are 'large' negative values
-          stop(paste0("negative values not allowed for the '",famfam,"' family"))
-        } else stop("response variable should be integral values.")
-      } else {
-        # if ( ! int_warned) {
-        #   int_warned <<- TRUE
-        #   message("Response converted to integer for integral-response families")
-        # }
-        y <- safe_y # silent sanitizing # tiny negative values would stop() later
-      }
-    } else if (famfam=="Gamma") {
-      y <- .Y_Gamma_fix_or_warn(y, fix=FALSE)
-    } else if (famfam=="beta_resp") {
-      if (any(y < 0 | y > 1)) {
-        stop("Found Beta responses outside valid (0,1) range.")
-      }
-      beta_min_y <- .spaMM.data$options$beta_min_y
-      if (any(y < beta_min_y | y > 1 - beta_min_y)) {
-        #y[which(is_low_y)] <- Gamma_min_y
-        warning(paste0("Found Beta responses close to 0 or 1 by less than ",beta_min_y,") . Troubles may happen."), immediate. = TRUE)
-      }
+.sanitize_Y <- function(y, famfam) {
+  if ( famfam %in% c("binomial","poisson","COMPoisson","negbin1","negbin2", "betabin")) { # COUNTS
+    ## the response variable should always be Counts
+    safe_y <- as.integer(y+0.5) # non-negative values only # non-array from array, hence:
+    if (NCOL(y)) dim(safe_y) <- dim(y)
+    if (max(abs(y-safe_y))>1e-05) {
+      anynegy <- any(y<0L)
+      if (anynegy) { # at this point, there are 'large' negative values
+        stop(paste0("negative values not allowed for the '",famfam,"' family"))
+      } else stop("response variable should be integral values.")
+    } else {
+      # if ( ! int_warned) {
+      #   int_warned <<- TRUE
+      #   message("Response converted to integer for integral-response families")
+      # }
+      y <- safe_y # silent sanitizing # tiny negative values would stop() later
     }
-    return(y)
+  } else if (famfam=="Gamma") {
+    y <- .Y_Gamma_fix_or_warn(y, fix=FALSE)
+  } else if (famfam=="beta_resp") {
+    if (any(y < 0 | y > 1)) {
+      stop("Found Beta responses outside valid (0,1) range.")
+    }
+    beta_min_y <- .spaMM.data$options$beta_min_y
+    if (any(y < beta_min_y | y > 1 - beta_min_y)) {
+      #y[which(is_low_y)] <- Gamma_min_y
+      warning(paste0("Found Beta responses close to 0 or 1 by less than ",beta_min_y,") . Troubles may happen."), immediate. = TRUE)
+    }
   }
-})
+  return(y)
+}
 
 .get_Y <- function(full_frame, famfam) {
   Y <- model.response(full_frame, "any")

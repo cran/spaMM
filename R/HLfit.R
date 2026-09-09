@@ -43,10 +43,8 @@ HLfit <- function(formula,
       data <- environment(formula)
       warning("It is _strongly_ recommended to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
     }
-    #oricall$formula <- .preprocess_formula(formula, env=control.HLfit$formula_env)
     ################### create data list if family is multi #################################
     family <- .checkRespFam(family)
-    #family <- .as_call_family(family) ## same, family as HLCor argument ?
     ## mix of mc$family and family:
     ## only the evaluated multi() family is certain to have a $binResponse and ad $binfamily
     ## error for missing "npos" typically follows from lack of explicit $binResponse 
@@ -106,24 +104,18 @@ HLfit <- function(formula,
       attr(fitlist,"APHLs") <- as.list(liks)
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
-    } else { ## there is one processed for a single data set 
-      # mc$processed <- processed
-      # HLfit_body() called below
-    }
+    } # else there is one processed for a single data set 
   }
-  #
   
-  # pnames <- c("data","family","formula","prior.weights", "weights.form", "HLmethod","method","rand.family","control.glm","REMLformula",
-  #             "resid.model","verbose")
   pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","ranFix") 
   for (st in pnames) mc[st] <- NULL ## info in processed
-  mc[[1L]] <- processed$HLfit_body_fn2 # One of the "HLfit_body... functions
+  mc[[1L]] <- processed$HLfit_body_fn 
   if (.safe_true(processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"] is TRUE or 1
-  hlfit <- eval(mc,parent.frame()) # HLfit_body() call
+  hlfit <- eval(mc,parent.frame()) # HLfit_body() call ####
   .check_conv_dispGammaGLM_reinit()
   if ( ! is.null(processed$return_only)) {
-    return(hlfit)    ########################   R E T U R N   a list with $APHLs
+    return(hlfit)    ########################   R E T U R N   a list with $APHLs ####
   }
   if ( processed$fitenv$prevmsglength) { # there was output for a phi-resid.model. The fit object may then be printed...
     cat("\n")
@@ -163,7 +155,7 @@ HLfit <- function(formula,
   HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
 
   ranefParsList <- relist(ranefParsVec, skeleton)
-  if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation
+  if ( .has_X_off_betas(processed)) { # beta outer-optimisation
     if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
       ranefParsList$trBeta <- NULL
       HLfit.call$etaFix$beta <- .spaMM.data$options$.betaInv(trBeta)
@@ -176,7 +168,7 @@ HLfit <- function(formula,
   rpType <- .modify_list(attr(fixed, "type"), attr(skeleton, "type"))
   attr(fixed, "type") <- rpType
   if (processed$augZXy_cond) { 
-    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, fixed=fixed)) # .HLfit_body_augZXy has only these two arguments
+    hlfit <- eval(call(.spaMM.data$options$augZXy_body, processed=processed, fixed=fixed)) # .HLfit_body_augZXy has only these two arguments
     aphls <- hlfit$APHLs
     resu <- aphls[[objective]]
     if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
@@ -196,11 +188,6 @@ HLfit <- function(formula,
                       .canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)))
       processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
     } 
-    ## Old comment:
-    # since there is a $processed, we can call HLfit_body here (with HLnames <- names(formals(HLfit_body))), rather than HLfit
-    # The main difference is a more definite selection of arguments in the HLfit_body() call through HLfit()
-    # and the call to .check_conv_dispGammaGLM_reinit()
-    ## But the called fn, processed$HLfit, is HLfit() and there are distinct processed$HLfit_body_fn[2]
     HLfit.call$fixed <- fixed
     HLfit.call[[1L]] <- processed$HLfit # "HLfit"
     hlfit <- eval(HLfit.call)

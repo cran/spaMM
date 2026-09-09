@@ -86,14 +86,18 @@
                    is_gammaId=is_gammaId, unique.psi_M=unique.psi_M))
 }
 
+# Why can't all the masking issues be tested at the end of .checkRespFam() ?
 .checkRespFam <- function(family, spaMM.=TRUE) {
   family <- tryCatch(family,error=function(e) e)
   if (inherits(family, "simpleError")) { # presumably 'mgcv::negbin()' ['mgcv::negbin' handled below]
-    if ( family$message == "'theta' must be specified") {
-      mess <- "spaMM::negbin is masked by mgcv::negbin. Unload mgcv, or use 'family=spaMM::negbin'."
+    errmess <- family$message
+    if ( errmess == "'theta' must be specified") {
+      mess <- "spaMM::negbin is masked by mgcv::negbin. Use 'family=spaMM::negbin' or some other solution."
       stop(mess)
-      #family <- spaMM::negbin()
-    }
+    } else if ( errmess == "$ operator is invalid for atomic vectors") {
+      mess <- "family function may be shadowed by another package (glmmTMB?)."
+      stop(mess)
+    } else stop(errmess)
   } 
   ## lines derived from glm().
   if (is.character(family)) {
@@ -102,8 +106,8 @@
   if (is.function(family)) {
     envname <- environmentName(environment(family))
     if ( ! envname %in% c("stats","spaMM","")) { ## " typically occurs when family has already been checked...
-      if (envname=="mgcv") {
-        mess <- "spaMM::negbin is masked by mgcv::negbin. Unload  mgcv, or use 'family=spaMM::negbin'."
+      if (envname %in% c("mgcv","glmmTMB")) {
+        mess <- paste0("family function appears masked by ",envname,". Use 'family=spaMM::...' or some other solution.")
         stop(mess)
       } else message(paste("family from namespace environment",envname,"possibly not correctly handled"))
     }
@@ -113,10 +117,18 @@
     spaMM. <- (! length(grep("stats::",paste(family)[1L]))) ## spaMM. becomes FALSE if explicit quote(stats::...)
     family <- eval(family) 
   } 
-  if (family$family=="Gamma" && spaMM.) {
+  # if ('family' is an error object) then error when trying to access $family:
+  if (family$family=="Gamma" && spaMM.) { 
     family <- spaMM_Gamma(link=family$link) 
+  } else if (family$family=="tweedie" && is.null(family$flags)) {
+    if (length(grep("needs_nonneg", ls(environment(family$aic))))) {
+      mess <- "spaMM::tweedie is masked by glmmTMB::tweedie. Use 'family=spaMM::tweedie' or some other solution."
+    } else {
+      mess <- "spaMM::tweedie appear to be masked by another package's tweedie."
+    }
+    stop(mess)
   }
-  return(family) ## input negbin(...) or COMPoisson(...) are evaluated without error and returned as is => nu/shape unaffected
+  return(family) 
 }
 
 .eval_v_h_bounds <- function(cum_n_u_h, rand.families) {
@@ -214,10 +226,10 @@
     return(family) ## FR->FR tempo fix
   } else {
     as_call <- environment(family$aic)$mc ## shouldn't be called on multi...
+    famfam <- family$family 
     if (is.null(as_call)) { ## then we have a stats::  family 
-      as_call <- call(family$family, link=family$link) ## need a substitute() ? 
+      as_call <- call(famfam, link=family$link) ## need a substitute() ? 
     } else if (get_param) { ## param values are constant or dynamically assigned to processed$family
-      famfam <- family$family 
       if (famfam %in% c("negbin1","negbin2")) {
         as_call$shape <- environment(family$aic)$shape
       } else if (famfam %in% c("beta_resp","betabin")) {
@@ -274,9 +286,7 @@
   ZAfix <- .ad_hoc_cbind(processed$ZAlist, as_matrix=FALSE)   
   if (processed$is_spprec) {
     if ( ! inherits(ZAfix,"sparseMatrix")) {
-      if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
-        ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
-      } else ZAfix <- as(as(ZAfix,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+      ZAfix <- as(as(ZAfix,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
     }
     processed$AUGI0_ZX$is_unitary_ZAfix <- FALSE
   }
@@ -318,40 +328,50 @@
     for (it in seq_along(object)) eval(parse(text=assignment),envir=object[[it]]) 
   } else eval(str2lang(assignment),envir=object)
   ## no need to return the modified environment
-}
+} # _____F I X M E_____ this looks like a naive syntax
 
-.calc_fam_corrected_guess <- function(guess, For, processed, link_=NULL, trunc_=NULL, nrand=NULL) {
-  if (is.null(link_)) link_ <- processed$family$link
-  link_[link_=="loglambda"] <- "log" # For mv, link_ is actually several links
+# called for each ranef which has no init lambda.
+# For univar fits, all calls have identical effect so very slight inefficiency _____F I X M E_____
+# Check of consistency after rewriting:
+# D:/home/francois/travail/stats/spaMMplus/spaMM/package/doc_code/calc_fam_corrected_guess.R
+.calc_fam_corrected_guess <- function(guess, For, processed, link_=NULL, q_=NULL, nrand=NULL) {
+  if (is.null(link_)) { # allowed only for univariate case in .init_optim_lambda_ranCoefs()
+    family <- processed$family
+    link_ <- family$link
+    link_[link_=="loglambda"] <- "log" 
+    if (link_=="power") {
+      q_ <- environment(processed$family$aic)$"q"
+      if (link_=="power") {  
+        link_[abs(q_)<0.05] <- "log"
+        link_[abs(q_-1)< 0.05] <- "identity"
+      }
+    }
+  } # Otherwise all arguments should be available, from .eval_init_lambda_guess()
+  # For mv, link_ is actually all the links that refer to the focal ranef
   if (is.null(nrand)) nrand <- length(processed$ZAlist)
-  if ( any(link_ != "identity")) {
+  if ( all(link_ == "identity")) {
+    if (For=="optim") {
+      fam_corrected_guess <- min(guess, 2/nrand) 
+    } else {
+      fam_corrected_guess <- guess
+    }
+  } else if (any(link_=="log")) { ## test of family.ies, not rand.family... 
+    fam_corrected_guess <- log(1.00001+guess/nrand) 
+  } else if (any(link_=="power")) {  
+    fam_corrected_guess <- (1.00001+guess/nrand)^min(abs(q_))
+  } else {
     if (For=="optim" || ## to avoid high initial values of lambda with spuriously high logLik by Laplace approx.
         processed$HL[1L]=="SEM") { 
-      if (any(link_=="log")) { ## test of family, not rand.family... 
-        fam_corrected_guess <- log(1.00001+guess/nrand) 
-      } else {
-        if (processed$bin_all_or_none) {
-          maxinit <- 0.1 ##  a low init value is better even if final lambda estimate is high.
-        } else maxinit <- 0.2 
-        fam_corrected_guess <- min(guess, maxinit/nrand)
-      }
-    } else { ## iterative: allow larger values, but within some limits
-      if (any(link_=="log")) { ## test of family, not rand.family...
-        fam_corrected_guess <- log(1.00001+guess/nrand) 
-      } else {
-        maxinit <- 2 ## even for processed$bin_all_or_none, test_all does not support lower value; but this is all based on ~ nothing
-        fam_corrected_guess <- min(guess, maxinit/nrand)
-      }
-    }
-  } else { ## identity link
-    if (For=="optim") {
-      maxinit <- 2
+      if (processed$bin_all_or_none) {
+        maxinit <- 0.1 ##  a low init value is better even if final lambda estimate is high.
+      } else maxinit <- 0.2 
     } else {
-      maxinit <- Inf
+      maxinit <- 2 ## iterative: allow larger values, but within some limits.
+      ## Even for processed$bin_all_or_none, test_all does not support lower value; 
+      ## but this is all based on ~ nothing
     }
-    fam_corrected_guess <- min(guess, maxinit/nrand) 
+    fam_corrected_guess <- min(guess, maxinit/nrand)
   }
-  # if (any(trunc_)) fam_corrected_guess <- fam_corrected_guess/2 # quick patch but has drawbacks
   return(fam_corrected_guess)
 }
 
@@ -466,15 +486,16 @@
 .is_link_canonical <- function(family) {
   if (is.null(canonicalLink <- family$flags$canonicalLink)) {
     canonicalLink <- FALSE
-    if (family$family=="gaussian" && family$link=="identity") {
+    famfam <- family$family
+    if (famfam=="gaussian" && family$link=="identity") {
       canonicalLink <- TRUE
-    } else if (family$family=="poisson" && family$link=="log") {
+    } else if (famfam=="poisson" && family$link=="log") {
       canonicalLink <- TRUE
-    } else if (family$family=="binomial" && family$link=="logit") {
+    } else if (famfam=="binomial" && family$link=="logit") {
       canonicalLink <- TRUE
-    } else if (family$family=="Gamma" && family$link=="inverse") {
+    } else if (famfam=="Gamma" && family$link=="inverse") {
       canonicalLink <- TRUE
-    } else if (family$family=="COMPoisson" && family$link=="loglambda") {
+    } else if (famfam=="COMPoisson" && family$link=="loglambda") {
       canonicalLink <- TRUE
     } ## no implemented canonical link case for negbin
   }
@@ -492,13 +513,14 @@
                                prior.weights=processed$prior.weights) {
   GLMMbool <- (length(lcrandfamfam) && all(lcrandfamfam=="gaussian") ) ## only allowed gaussian rand.family is gaussian(identity) 
   const_pw <- ( ! inherits(prior.weights,"call"))
+  famfam <- family$family
   unit_GLMweights <- (
-                     (family$family=="gaussian" && family$flags$canonicalLink ) ||
-                     (family$family=="Gamma" && family$link=="log") 
+                     (famfam=="gaussian" && family$flags$canonicalLink ) ||
+                     (famfam=="Gamma" && family$link=="log") 
                   )
   unit_Hobs_weights <- (
-    (family$family=="gaussian" && family$flags$canonicalLink ) ||
-      (family$family=="Gamma" && family$link=="log" && ! processed$how$obsInfo) 
+    (famfam=="gaussian" && family$flags$canonicalLink ) ||
+      (famfam=="Gamma" && family$link=="log" && ! processed$how$obsInfo) 
   )
   const_Hobs_wresid <- unit_Hobs_weights && const_pw # constant non-unit GLM weights do not occur in actual families otherwise that case might need to be distinguished (cd muetafn).
   if (GLMMbool) { # const w.ranef
@@ -506,7 +528,7 @@
     # GLGLLM_const_w controls whether the weights and augmented matrix need to be updated over iterations of IRLS.
     # it is not that the weights are constant across augmented 'levels' (hence const_pw is not determined by unique(pw))
     # Likewise it does not mean that phi is not reestimated between IRLSs. phi valeus are always constant within IRLS.
-    LMMbool <- (family$family=="gaussian" && family$flags$canonicalLink ) 
+    LMMbool <- (famfam=="gaussian" && family$flags$canonicalLink ) 
     LLM_const_w <- (LMMbool && const_Hobs_wresid) 
   } else LMMbool <- LLM_const_w <- GLGLLM_const_w <- FALSE
   return(structure(models, LMMbool=LMMbool, GLMMbool=GLMMbool, LLM_const_w=LLM_const_w,  
@@ -764,7 +786,7 @@
   if (augZXy_cond_inner) augZXy_cond_inner <- (is.null(processed$intervalInfo)) 
   if (augZXy_cond_inner) augZXy_cond_inner <-   attr(processed$models,"LMMbool")
   if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(processed$X.Re) || ! ncol(processed$X.Re)) ## exclude only non-standard REML 
-  if (augZXy_cond_inner) augZXy_cond_inner <- is.null(processed$X_off_fn) # not outer beta estimation
+  if (augZXy_cond_inner) augZXy_cond_inner <- is.null(processed$X_off_Xb_fn) # not outer beta estimation (nor dynoffset, though perhaps this might be implemented)
   augZXy_cond <- (augZXy_cond_inner && augZXy_cond) 
   # Conditions specific to outer optim
   if (augZXy_cond) augZXy_cond <- (processed$For=="fitme")
@@ -827,11 +849,20 @@
   }
 }
 
+# elements or the resulting 'resid.model' *list*:
+# ? $formula
+# $resid.model (typically ~1) it is , DHGLM style, the formula for the resid dispersion of the resid.model
+# $fixed$phi : typically a fixed value for the resid dispersion of the resid.model (again think of DHGLM)
+# $family
+# $rand.family
+# If input was NULL, a list(family=spaMM_Gamma(log), rand.family=gaussian()) is returned.
+# The list format may be assumed even for poisson, binomial... according to an old comment.
 .reformat_resid_model <- function(resid.model
                                   #  check_old_syntax for back compatibility,
                                   # to check whether control.HLfit$resid.family was used, when resid.model is only a formula
                                   # This use of control.HLfit is no longer documented
                                   ,check_old_syntax=NULL) { 
+  # if (inherits(resid.model,"formula")) resid.model <- list(formula=resid.model) # has always worked without it.
   fixed <- as.list(resid.model$fixed) ## converts NULL to list() as exp'd for 'fixed' in fitme_body()
   if ( ! is.null(resid.model)) { 
     if ( ! is.null(form <- resid.model$formula)) {
@@ -846,7 +877,7 @@
       #        message("'phi' of residual dispersion model set to 1 by default") ## inappropriate when resid.model=~1
     } else if (is.na(fixed[["phi"]])) fixed[["phi"]] <- NULL ## to force estimation of this phi; 
     resid.model$fixed <- fixed
-    if (is.null(resid.model$resid.model)) resid.model$resid.model <- .preprocess_formula(~1)
+    if (is.null(resid.model$resid.model)) resid.model$resid.model <- .preprocess_formula( ~ 1) 
   } 
   resid.family <- resid.model$family
   if (is.null(resid.family)) {
@@ -894,9 +925,7 @@
   Xattr <- attributes(X.pv)
   if ( ncol(X.pv)) {
     if (sparse_X) { ## sparse_X is useful for rankinfo bc Matrix::qr can be much faster
-      if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
-        X.pv <- as(X.pv,"dgCMatrix") # .Rcpp_as_dgCMatrix(X.pv) # 
-      } else X.pv <- as(as(X.pv,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(X.pv) #
+      X.pv <- as(as(X.pv,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(X.pv) #
     }
   } 
   if (ncol(X.pv)) {
@@ -1005,9 +1034,7 @@
     ZAfix <- .ad_hoc_cbind(ZAlist, as_matrix=FALSE)  
     if (sparse_precision) {
       if ( ! inherits(ZAfix,"sparseMatrix"))  {
-        if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
-          ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
-        } else ZAfix <- as(as(ZAfix,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+        ZAfix <- as(as(ZAfix,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
       }
       rsZA <- rowSums(ZAfix) ## test that there a '1' per row and '0's otherwise:  
       AUGI0_ZX$is_unitary_ZAfix <- (all(unique(rsZA)==1L) && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
@@ -1020,9 +1047,17 @@
   return(AUGI0_ZX)
 }
 
-.assign_X.Re_objective <- local({
+.warn_once_objective_arg <- local({
   obj_warned <- FALSE
-  function(processed, 
+  function() {
+    if ( ! obj_warned) {
+      warning("Non-NULL 'objective' is deprecated except for development purposes.", immediate. = TRUE)
+      obj_warned <<- TRUE
+    }
+  }
+})
+
+.assign_X.Re_objective <- function(processed, 
            XReinput, # used only if  ! is.null(REMLformula)  && identical(attr(REMLformula,"isML"),TRUE)
            REMLformula, data, 
            X.pv, # used only if  ! is.null(REMLformula) !! may be different from XReinput: seek cases where 'keepInREML' is TRUE 
@@ -1062,14 +1097,11 @@
         processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, HLfit may return_only="p_bvAPHLs" but use $objective in logL_tol convergence test
       } else processed$objective <- "p_v"
     } else {
-      if ( ! obj_warned) {
-        warning("Non-NULL 'objective' is deprecated except for development purposes.", immediate. = TRUE)
-        obj_warned <<- TRUE
-      }
+      .warn_once_objective_arg()
       processed$objective <- objective
     }
   }
-})
+
 
 .assign_corr_types_families <- function(covStruct, # may be NULL on input
                                           corr_info, exp_ranef_types, exp_barlist) {
@@ -1133,16 +1165,37 @@
   # so that covStruct[[nrand]] does not yield 'indice hors limites'
 }
 
-
-.def_off_fn <- function(X_off, ori_off) { # outer beta; also numInfo()
-  force(X_off)
-  force(ori_off)
-  if (is.null(ori_off)) ori_off <- 0
-  function(beta) {
-    off <- drop(ori_off + X_off %*% beta)
-    attr(off,"beta") <- beta
+# Tests by numInfo & outer beta (for X_fixed), pois4mlogit (for dynoffset) and pois4mlogit-confint (both):
+.def_off_Xb_fn <- function(X_fixed, offsets, sc_betaFix=NULL) { # outer beta; also numInfo()
+  has_betas <- ncol(X_fixed)>0L
+  if ( ! is.null(scale <- attr(X_fixed,"scaled:scale"))) {
+    X_off_is_scaled <-  TRUE # otherwise it is unscaled BUT
+  } else if ( ! is.null(scale <- attr(X_fixed,"scale_info"))) { # This occurs in numInfo() (first fit in test-numInfo)
+    X_off_is_scaled <-  FALSE # otherwise it is unscaled BUT that would also be used by .scale() (which we don't want here).
+  } else stop("Ambiguous design matrix")
+  # that would also be used by .scale() (which we don't want here).
+  if (is.null(offsets)) offsets <- 0
+  if ( is.null(sc_betaFix)) {Xb_fix <- 0} else Xb_fix <- drop(X_fixed %*% sc_betaFix)
+  
+  function(new_offsets=NULL, new_un_betaFix=NULL, new_sc_betaFix=NULL) { # stored as processed X_off_Xb_fn
+    if (! is.null(new_offsets)) offsets <<- new_offsets
+    if (X_off_is_scaled) {
+      if (! is.null(new_un_betaFix)) new_sc_betaFix <- .scale(beta = new_un_betaFix,X = X_fixed)
+      if (! is.null(new_sc_betaFix)) Xb_fix <<- drop(X_fixed %*% new_sc_betaFix)
+      off <- offsets + Xb_fix
+      attr(off,"un_beta") <- new_un_betaFix # for tracing purposes
+    } else { # This happens in .numInfo.objfn()
+      if (! is.null(new_un_betaFix)) Xb_fix <<- drop(X_fixed %*% new_un_betaFix)
+      off <- offsets + Xb_fix
+      attr(off,"un_beta") <- new_un_betaFix # for tracing purposes
+    } 
     off
   }
+}
+
+.has_X_off_betas <- function(processed) {
+  ! is.null(X_off_Xb_fn <- processed$X_off_Xb_fn) &&
+    environment(X_off_Xb_fn)$has_betas
 }
 
 # This fn is called but its code is virtual in the sense that I currently have no example of user-defined A matrix.
@@ -1169,7 +1222,19 @@
   }
 }
 
-
+#preprocess() has no 'control' argument but preprocess_fitme has, so the latter 
+# provides preprocess_args$CONTROL <- ...
+# Put 'For' into CONTROL later ? _____F I X M E____ 
+# This converts the 'control' argument of a fitting fn into the "CONTROL" argument
+# of .preprocess.
+# Callit it on its own result may be wrong (p4m being lost from the return value).
+.reformat.CONTROL <- function(ppc_reactvt_warn=TRUE, dyndyn=FALSE, 
+                              p4m="", ...) {
+  if (is.null(ppc_reactvt_warn)) ppc_reactvt_warn <- TRUE
+  if (is.null(dyndyn) || p4m !="H") dyndyn <- FALSE
+  list(ppc_reactvt_warn=ppc_reactvt_warn, dyndyn=dyndyn)
+}
+  
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
                        predictor, resid.model,
                        REMLformula, data, family,
@@ -1182,8 +1247,9 @@
                        distMatrix=NULL, 
                        control.dist=NULL,
                        init=NULL, # for .preprocess_augZXy() ... and outer-beta
-                       ADFun=NULL # default for private argument; any non-default value input by a user is copied in 'processed';
+                       ADFun=NULL, # default for private argument; any non-default value input by a user is copied in 'processed';
                                   # Possible ADFun values are then defined by the .wrap_MakeADFun() code.
+                       CONTROL=list(ppc_reactvt_warn=TRUE,dyndyn=FALSE)
                        ) {
   callargs <- match.call() 
   #
@@ -1198,24 +1264,37 @@
     })
     return(processed) ## a list of environments
   }
-  ############### initiate 'processed' envir ##############
+  CONTROL <- do.call(.reformat.CONTROL,CONTROL)
   if (For_fitmv <- (For=="fitmv")) For <- "fitme" # i.e. treat as "fitme" except where identified by For_fitmv or callargs$For
-  resid.model <- .reformat_resid_model(resid.model,check_old_syntax=control.HLfit$resid.family) ## calls .preprocess_formula() ## the list(...) is used even for poisson, binomial...
   
   ##### some family processing
   canonicalLink <- .is_link_canonical(family)
+  famfam <- family$family
+  if (famfam=="poisson") .warn_glm_poisson_rates_0_once_per_fit(reinit=CONTROL$"ppc_reactvt_warn")
   if (not_spaMM_fam <- is.null(family$flags)) { # standard stats:: family or perhaps from 3rd package
     obs <- ( # According to the documentation:
       canonicalLink || 
-      family$family=="binomial" ||## implemented through ad hoc bit of code outside the family object so perhaps that could have been done for Poisson)
-        (family$family %in% c("Gamma","gaussian") && family$link=="log") #" Same remark...
+        famfam=="binomial" ||## implemented through ad hoc bit of code outside the family object so perhaps that could have been done for Poisson)
+        (famfam %in% c("Gamma","gaussian") && family$link=="log") #" Same remark...
     )
     family$flags <- list(exp=TRUE,obs=obs, LLgeneric=FALSE) # represent capacity for these exp or obs methods, resp., 
                                                             # whether through code in the family object or not
   }
   family$flags$canonicalLink <- canonicalLink
-  family$flags$LMbool <- (canonicalLink && family$family=="gaussian")
+  family$flags$LMbool <- (canonicalLink && famfam=="gaussian")
+  
+  # Integrate user-level resid.model info (calls .preprocess_formula()... etc):
+  resid.model <- .reformat_resid_model(resid.model,check_old_syntax=control.HLfit$resid.family)  
+  # This resid.model will be used by .preprocess_phi_model() to produce processed$residModel;
+  # it is a list and remains so into processed$residModel (we won't re-write into it). 
+  # By contrast the family's $resid.model is assumed by other code 
+  # to be a writable environment, often used as 'disp_env': 
   if (is.null(family$resid.model)) family$resid.model <- list2env(list(off=0))  # used for "outer phiGLM"
+  # It we keep this distinction then we need to copy the following info from the list to the envir
+  # (seek disp_env$link[fun|inv] for usage):
+  family$resid.model$linkfun <- resid.model$family$linkfun # LHS "family" is a main-response family, while.... 
+  family$resid.model$linkinv <- resid.model$family$linkinv # ... RHS family is the residual disp model family.
+  
   #
   # nrand now needed early...
   exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE; also -> .parseBars() -> .process_IMRF_bar() parses RHS info
@@ -1237,7 +1316,8 @@
                              control.glm=do.call("glm.control", control.glm),
                              how=list(obsInfo=obsAlgo_needed),
                              intervalInfo = control.HLfit$intervalInfo, # used by .preprocess_augZXy and beyond
-                             ADFun=ADFun
+                             ADFun=ADFun,
+                             CONTROL=CONTROL
                              ))
   #
   if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case for primary fit
@@ -1265,18 +1345,22 @@
       # m <- match(c(<some relevant names>), names(callargs), 0L)
       # loccall <- callargs[c(1L, m)]  
       loccall[[1L]] <- get(".GetValidData_info", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-      validData_info <- eval(loccall,parent.frame()) # 
+      validData_info <- eval(loccall,parent.frame()) 
       
       data <- data[validData_info$rownames,,drop=FALSE] 
     } else {
       stop("'data' is not a data.frame.")
     }
-    main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=family$family, weights=validData_info$weights) ## design matrix X, Y... 
+    main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=famfam, weights=validData_info$weights) ## design matrix X, Y... 
+    # :(____F I X M E___ only pb for non-API use of offset:) 
+    # here offset must have length EXcluding NA rows, 
+    # while in .GetValidData_info offset must have length including NA rows.
+    # => offset(rep(...)) does not work when rows must be removed.
   } else { # results from update response -> .update_main_terms_info() provide response-update model frame for mean response.
     # The data (although not any response variable) may still be needed for other purposes (=> the resid model) 
     # (what if the response of the main model were a predictor for the residual dispersion model?)
     attr(data,"updated_terms_info") <- NULL # immediately clean the 'data' attribute to avoid mix-ups.
-    main_terms_info$Y <- .get_Y(full_frame=main_terms_info$mf, famfam=family$family)
+    main_terms_info$Y <- .get_Y(full_frame=main_terms_info$mf, famfam=famfam)
     fixef_terms <- main_terms_info$fixef_terms
     if (fixef_terms[[length(fixef_terms)]]==0L) { ## check that the fixef are only an explicit '0' (odd that it compares to 0L, but it does)
       main_terms_info$X <- matrix(nrow=nrow(main_terms_info$mf),ncol=0L) ## model without fixed effects, not even an Intercept 
@@ -1299,21 +1383,23 @@
   #                               fixefvarnames=rownames(attr(main_terms_info$fixef_off_terms,"factors")), 
   #                               fixefpredvars=attr(main_terms_info$fixef_off_terms,"predvars"))
   # } else 
-  BinomialDen <- .calc_Binomial_Den(main_terms_info$Y, family, nobs)
+  BinomialDen <- .calc_Binomial_Den(main_terms_info$Y, famfam, nobs)
   if (is.logical(BinomialDen)) {
     data <- data[ ! BinomialDen ,,drop=FALSE]
-    main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=family$family, weights=validData_info$weights) ## design matrix X, Y... 
+    main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=famfam, weights=validData_info$weights) ## design matrix X, Y... 
     nobs <- NROW(main_terms_info$X) ## not using Y which may be NULL
     if (nobs==0L) stop("No line in the data has the information required to fit the model.")
     BinomialDen <- rowSums(main_terms_info$Y)
   }
   processed$BinomialDen <- BinomialDen
   processed$data <- structure(data,  # this will be used by preprocess_phi_model() so we cannot put main_terms_info$mf here. 
-                                     # rawvarnames=main_terms_info(data), # not yet used
-                                     # fixef_terms=main_terms_info$fixef_terms, #in the main_terms_info
-                                     # fixef_levels=main_terms_info$fixef_levels, #in the main_terms_info
-                                     fixefvarnames=rownames(attr(main_terms_info$fixef_off_terms,"factors")), 
-                                     fixefpredvars=attr(main_terms_info$fixef_off_terms,"predvars"))
+                              # rawvarnames=main_terms_info(data), # not yet used
+                              # fixef_terms=main_terms_info$fixef_terms, #in the main_terms_info
+                              # fixef_levels=main_terms_info$fixef_levels, #in the main_terms_info
+                              fixefvarnames=rownames(attr(main_terms_info$fixef_off_terms,"factors")), 
+                              fixefpredvars=attr(main_terms_info$fixef_off_terms,"predvars"),
+                              validrownames=NULL # avoids problem if used-provided data has this attribute. 
+  )
   # 
   processed$prior.weights <- .preprocess_pw(subs_p_weights=substitute(prior.weights), nobs, model_frame=main_terms_info$mf)
   ##### Storing main_terms_info EXCEPT $mf:
@@ -1401,7 +1487,7 @@
       corr_info$levels_types <- levels_types 
       # (2) Create Z matrices using corrFamilies' levels_type:
       Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, 
-                           corr_info=corr_info,
+                           corr_info=corr_info, For="fit",
                            lcrandfamfam=processed$lcrandfamfam) 
       corr_info$corr_families <- c_i_cF
     } else {
@@ -1423,7 +1509,7 @@
       
       # (2) Create Z matrices using corrFamilies' levels_type:
       Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, 
-                           corr_info=corr_info,
+                           corr_info=corr_info, For="fit",
                            lcrandfamfam=processed$lcrandfamfam) 
       # (3) initialize things in the corrFamilies using the Z matrices:
       for (rd in which(corr_info$is_cF_internally)) {
@@ -1453,6 +1539,11 @@
     ## Same for corrFamilies that have some:
     .assign_AMatrices_corrFamily(corr_info, Zlist, exp_barlist=exp_barlist, processed$data, control_dist=processed$control_dist)
     ZAlist <- .calc_ZAlist(Zlist=Zlist, AMatrices=corr_info$AMatrices)
+    # When MaternIMRFa is used as a When the *ranef term*, .preprocess_corrFamily() has not yet been run, so A is not yet available
+    # and this ZAlist does not yet integrates it.
+    # But when MaternIMRFa is used to give the covStruct in a corrMatrix for an *IMRF ranef term*, 
+    # IMRF is one of the special ranefs not handled by the general corrFamily code, 
+    # and the ZAlist has just integrated A.
     attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
     attr(ZAlist,"exp_ranef_types") <- exp_ranef_types ## expanded
 
@@ -1498,21 +1589,22 @@
   #
   if (For=="is_separated") {
     return(ncol(X.pv) && is_separated(X.pv, as.numeric(y),verbose=FALSE)) 
-  } else if (family$family  %in% c("binomial","betabin") && processed$bin_all_or_none) {
+  } else if (famfam  %in% c("binomial","betabin") && processed$bin_all_or_none) {
     abyss <- (ncol(X.pv) && is_separated(X.pv, as.numeric(y)))
   }
   ## Now X.pv has its final ncol := pforpv
   #
-  if (.spaMM.data$options$X_scaling && ## use scaled X.pv by default v.2.4.83
-      ( is.null(processed$REMLformula) || ncol(processed$X.Re)==0L)
-  ) X.pv <- .scale(X.pv) # scales and adds "scaled:scale" attribute
+  # if (.spaMM.data$options$X_scaling && ## use scaled X.pv by default v.2.4.83
+  #     ( is.null(processed$REMLformula) || ncol(processed$X.Re)==0L)
+  # ) 
+    X.pv <- .scale(X.pv) # scales and adds "scaled:scale" attribute
 
   use_outer_beta <- (! For_fitmv && length(init_beta <- init[["beta"]]))
   # The distinction is between, say, 
-  # * fitmv(., etaFix=list(beta=.)):    [ case if length(betaFix <- etaFix$beta) above ]
-  #    an offset could be set at preprocessing time, there is no need for an X_off_fn and no final inner 'refit' of beta is considered.  
+  # * fitmv(., etaFix=list(beta=.)):    [ case if length(betaFix <- etaFix$beta) in .preprocess_X_XRe_off() ]
+  #    an offset could be set at preprocessing time, there is no need for an X_off_Xb_fn and no final inner 'refit' of beta is considered.  
   # * fitmv(., init=list(beta=.)): outer optimization of beta
-  #    an X_off_fn is used to compute  X_off %*% beta for each new beta, 
+  #    an X_off_Xb_fn is used to compute  X_off %*% beta for each new beta, 
   #    and a final inner 'refit' of beta is possible => distinct 'vecdisneeded_ori' to be used then. (vecdisneeded code is further below) 
   ## In both cases, cols of merged_X are removed, so the two are not compatible (at least for the same coefficients).
   if (use_outer_beta) { # outer beta
@@ -1526,7 +1618,7 @@
     # It's useless to rename init_beta here bc init is not preprocessed (__F I X M E___?): the init used later is the one in the call of the parent fn
     X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
     X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
-    processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
+    processed$X_off_Xb_fn <- .def_off_Xb_fn(X_fixed=X_off, offsets=processed$off)
   }
   if ( ! For_fitmv) {
     thread_nbr <- control.HLfit$NbThreads
@@ -1615,20 +1707,18 @@
   processed$LevenbergM <- .preprocess_LevM(control.HLfit$LevenbergM, processed, nrand=nrand) # uses $models, $HL & optionally $bin_all_or_non & $cum_n_u_h
   #####
   .preprocess_augZXy(processed, init=init, ranFix=ranFix)  # may be modified later.
-  # the problem of changing augZXy_cond later would be that .do_TRACE() -> may then be tracing the wrong function
-  # So we minimize such later changes. But see handling of phi user controls in .calc_optim_args()
-  #####
   if ( ! For_fitmv) {
-    if (processed$augZXy_cond) {
-      processed$HLfit_body_fn <- ".HLfit_body_augZXy"
-      processed$HLfit_body_fn2 <- .spaMM.data$options$HLfit_body
-      .do_TRACE(processed) # and replace the names by the now-traced functions:
+    if (processed$augZXy_cond) { # Later, this condition may be reversed. So we need to trace both body functions:
+      # So we minimize such later changes. But see handling of phi user controls in .calc_optim_args()
+      processed$augZXy_body_fn <- .spaMM.data$options$augZXy_body
+      processed$HLfit_body_fn <- .spaMM.data$options$HLfit_body
+      .do_TRACE(processed) # :operates on function *names*. Now replace the names by the now-traced functions:
+      processed$augZXy_body_fn <- get(processed$augZXy_body_fn, asNamespace("spaMM"), inherits=FALSE) 
       processed$HLfit_body_fn <- get(processed$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
-      processed$HLfit_body_fn2 <- get(processed$HLfit_body_fn2, asNamespace("spaMM"), inherits=FALSE) 
     } else {
       processed$HLfit_body_fn <- .spaMM.data$options$HLfit_body
       .do_TRACE(processed)
-      processed$HLfit_body_fn <- processed$HLfit_body_fn2 <- get(processed$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
+      processed$HLfit_body_fn <- get(processed$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
     }
     delayedAssign("HLCor_body", get("HLCor_body", asNamespace("spaMM"), inherits=FALSE), assign.env = processed) 
     delayedAssign("HLCor", get("HLCor", asNamespace("spaMM"), inherits=FALSE), assign.env = processed) 
@@ -1656,7 +1746,7 @@
 # (2) where this is to be called and as function of argument found there, un a delayedAssign calling this function, e.g.
 # delayedAssign("inits_by_glm", {
 #   processed$envir$get_inits_by_glm$get_inits_by_glm(processed, family=family,
-#                       reset=quote(family$family %in% c("COMPoisson","negbin2")) )
+#                       reset=quote(famfam %in% c("COMPoisson","negbin2")) )
 #   }
 
 .eval.update.call <- function(mc,...) { # not currently used

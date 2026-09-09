@@ -9,13 +9,8 @@
       rr <- rA %*% lA # not A= lA %*% rA
       return(sum(t(rr)*rr)) ## not sum(rr^2) which is the result when B=A (as used below)
     } else { # more subtly handling the case of NULL B than in  'more ranefs' case (the crossprds are trivial)
-      if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "generalMatrix"))
-        ll <- .crossprod(lA, lB)
-        rr <- .tcrossprod(rA, rB) ### dsC or dpo or...?    # slower if *both* matrices have sparse storage though being dense
-      } else {
-        ll <- as(.crossprod(lA, lB),"generalMatrix")
-        rr <- as(.tcrossprod(rA, rB),"generalMatrix") ## slower if *both* matrices have sparse storage though being dense
-      }
+      ll <- as(.crossprod(lA, lB),"generalMatrix")
+      rr <- as(.tcrossprod(rA, rB),"generalMatrix") ## slower if *both* matrices have sparse storage though being dense
       return(sum(ll*rr)) # elementwise product of dsC if no as(.,"generalMatrix"). Matrix v1.4-2 might complain.
     }
   } else {
@@ -137,7 +132,9 @@
       #
       ZAphant <- object$ZAlist
       for (rd in seq_along(ZAphant)) ZAphant[[rd]] <- Diagonal(n=ncol(ZAphant[[rd]]))
-      ZAXlist <- .compute_ZAXlist(ZAlist=ZAphant, XMatrix=object$strucList, force_bindable=TRUE)
+      ZAXlist <- .compute_ZAXlist(ZAlist=ZAphant, XMatrix=object$strucList, 
+                                  cols_from_RHS = FALSE,
+                                  force_bindable=TRUE)
       RES$Lmatrix <- do.call(Matrix::bdiag,ZAXlist) # it would be nice to avoid this
       #
       .get_ZAfix(object) ## makes sure that ZAfix is written in the object's $envir

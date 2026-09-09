@@ -125,12 +125,12 @@
   REML <- unique(c(REML1,REML2))
   
   Fnest <- NULL
+  meth1 <- object$HL
+  meth2 <- object2$HL
+  if (! identical(meth1,meth2) || length(REML)>1L ) {
+    stop("object fitted by different methods cannot be compared.", call.=FALSE)
+  } else is_REML <-  ! is.null(REML) && REML
   if (! args_are_phimodels) {
-    meth1 <- object$HL
-    meth2 <- object2$HL
-    if (! identical(meth1,meth2) || length(REML)>1L ) {
-      stop("object fitted by different methods cannot be compared.", call.=FALSE)
-    }
     if (mv_model <- is.null(object$family)) {
       nestedfam <- all(sapply(object$families, `[[`, x="link")==sapply(object2$families, `[[`, x="link"))
     } else nestedfam <- (object$family$link==object2$family$link) 
@@ -291,11 +291,11 @@
     }
     if (length(XRnest)==2L) {
       message("Models differing both by their fixed and by their random terms. ")
-      if (REML) warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect", 
+      if (is_REML) warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect", 
               immediate.=TRUE, call.=FALSE)
       testlik <- "p_v" 
     } else if (length(uXRnest)==0L) { # that means that the difference is in Pnest
-      if (REML) {
+      if (is_REML) {
         testlik <- "p_bv" 
       } else {
         message("Note: ML fits used to compare different residual-dispersion models.")
@@ -303,7 +303,7 @@
       }
     } else {
       if (is.null(Rnest) && is.null(Pnest)) { ## fixed effect test 
-        if (REML) {
+        if (is_REML) {
           ## checking the comparability of REML fits (must be an hack for non-standard REML)
           if ( ! is.null(fullm$distinctX.Re) ) {
             df.f.Re <- ncol(fullm$distinctX.Re)
@@ -341,7 +341,7 @@
           df <- NA # inhibits asymptotic LRT
           RLRbool <- FALSE
         }
-        if (REML) {
+        if (is_REML) {
           testlik <- "p_bv" 
           if (is.null(Xnest) && RLRbool) message(cli::format_message("Note: procedures from package 'RLRsim' may be useful for this test. See {.help [{.fun get_RLRsim_args}](spaMM::get_RLRsim_args)}."))
         } else {
@@ -380,6 +380,12 @@
       } else if ((parname <- paste("beta_prec",mv_it,sep=".")) %in% names_u_c_inits) {
         parlist[["beta_prec"]][char_mv_it] <- environment(fam_it$aic)$prec # <vector element> <- 
         if (type_attr) attr(parlist,"type")[["beta_prec"]][char_mv_it] <- "outer" 
+      } else if ((parname <- paste("Tw_index",mv_it,sep=".")) %in% names_u_c_inits) {
+        parlist[["Tw_index"]][char_mv_it] <- environment(fam_it$aic)$"p" # <vector element> <- 
+        if (type_attr) attr(parlist,"type")[["Tw_index"]][char_mv_it] <- "outer" 
+      } else if ((parname <- paste("Tw_link",mv_it,sep=".")) %in% names_u_c_inits) {
+        parlist[["Tw_link"]][char_mv_it] <- environment(fam_it$aic)$"q" # <vector element> <- 
+        if (type_attr) attr(parlist,"type")[["Tw_link"]][char_mv_it] <- "outer" 
       } else if (! is.null(vec <- canon.init$rdisPars[[char_mv_it]])) {
         fitted_beta <- fam_it$resid.model$beta[names(vec)]
         parlist[["rdisPars"]][char_mv_it] <- list(fitted_beta)
@@ -404,6 +410,14 @@
   if ("beta_prec" %in% names_u_c_inits) {
     parlist$beta_prec <- environment(fitobject$family$aic)$prec
     if (type_attr) attr(parlist,"type")$beta_prec <- "outer" 
+  }
+  if ("Tw_index" %in% names_u_c_inits) {
+    parlist$Tw_index <- environment(fitobject$family$aic)$"p"
+    if (type_attr) attr(parlist,"type")$Tw_index <- "outer" 
+  }
+  if ("Tw_link" %in% names_u_c_inits) {
+    parlist$Tw_link <- environment(fitobject$family$aic)$"q"
+    if (type_attr) attr(parlist,"type")$Tw_link <- "outer" 
   }
   if (! is.null(vec <- canon.init[["rdisPars"]])) {
     fitted_beta <- fitobject$family$resid.model$beta[names(vec)]
@@ -567,8 +581,9 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
 }
 
 .update_control <- function(fit_call, optim_boot, from_fn=NULL) {
-  if (is.null(from_fn)) from_fn <- paste(fit_call[[1]])
-  if (from_fn=="fitme") {
+  if (is.null(from_fn)) # does not occur programmatically, but otherwise might be solved by:
+    from_fn <- .get_bare_fnname.HLfit(object=NULL, call.=fit_call) 
+  if (from_fn %in% c("fitme","fitmv","pois4mlogit")) {
     ctrl_opt <- fit_call[["control"]]
     if (is.null(ctrl_opt)) {
       ctrl_opt <- list(optimizer=optim_boot) 
@@ -598,7 +613,7 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   full_fit_fn <- .get_bare_fnname.HLfit(fullfit) 
   newinits <- .get_outer_inits_from_fit(fitobject=nullfit, keep_canon_user_inits = FALSE) # for next new_nullfit
   ctrl_opt <- .update_control(fit_call=null_call, optim_boot=.spaMM.data$options$optim_boot, from_fn=null_fit_fn) # need .safe_opt when newinits are at bound.
-  if (null_fit_fn=="fitme") {
+  if (null_fit_fn %in% c("fitme","fitmv","pois4mlogit")) {
     new_args <- list(init=newinits, control=ctrl_opt, verbose=verbose)
   } else if (null_fit_fn=="corrHLfit") {
     new_args <- list(init.corrHLfit=newinits, control.corrHLfit=ctrl_opt, verbose=verbose)
@@ -635,7 +650,7 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   # subsets_inits is always a list of lists, with at least one element (minimally: list(list()))
   for (it in seq_along(subsets_inits)) {
     inits <- subsets_inits[[it]]
-    if (full_fit_fn=="fitme") {
+    if (full_fit_fn %in% c("fitme","fitmv","pois4mlogit")) {
       new_args <- list(init=inits[["init"]], init.HLfit=inits[["init.HLfit"]], control=ctrl_opt, verbose=verbose)
     } else if (full_fit_fn=="corrHLfit") {
       new_args <- list(init.corrHLfit=inits[["init.corrHLfit"]], init.HLfit=inits[["init.HLfit"]], 
@@ -907,7 +922,8 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
     resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT=fix_neg_LRT,
                               nullfit=nullfit, fullfit=fullfit)
   }
-  if (include=="call") {
+  # Return calls rather than input fits (by contrast, fixedLRT() *performs* the fits and always returns them).
+  if (include=="call") { 
     resu$nullfit <- getCall(nullfit)
     resu$fullfit <- getCall(fullfit)
   } else if (include=="fit") {
@@ -1299,7 +1315,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
   X <- .ensure_full_rank(X, silent = TRUE, test.ans = FALSE)
   .extract_contrasts_type3 <- get("extract_contrasts_type3", asNamespace("lmerTest"))
   type3ctr <- .extract_contrasts_type3(model, X = X)
-  map <- zapsmall(ginv(X) %*% Xorig)
+  map <- zapsmall(.ginv(X) %*% Xorig)
   rownames(map) <- colnames(X)
   lapply(type3ctr[which], function(L) L %*% map)
 }

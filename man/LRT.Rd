@@ -33,10 +33,10 @@ LRT(object, object2, boot.repl = 0L, resp_testfn = NULL,
   a function, passed to \code{\link{spaMM_boot}}. See argument \code{\link{eval_replicate}} for default value and requirements.
 }
 \item{include}{character string, either \code{"fit"} or  \code{"call"} (default; other values are ignored). 
-Controls whether the fits compared, or only their calls, are included in the return value.}
+This argument controls whether the fits compared, or only their calls, are included in the return value.}
 %
 \item{\dots}{
-  Further arguments, passed to \code{\link{spaMM_boot}} (e.g., for parallelization).
+  Further arguments, passed to \code{\link{spaMM_boot}} (e.g., for parallelization, or a random seed).
 }
 }
 \details{
@@ -51,6 +51,8 @@ Controls whether the fits compared, or only their calls, are included in the ret
   \code{LRT} perform some checks based on comparison of the data used by the two models. However, a perfect check all cases where the informative data differ is not easily defined. For example, data may appear different but still contain the same information if lines of the data are reordered. Hence, users remain ultimately responsible for checking whether informative data are equivalent in the two models. They should keep in mind that data processing is applied on a per-submodel basis for multivariate-response fits, and \code{\link{pois4mlogit}} has further criteria for definition of informative data for each model.
 
   * \bold{Bootstrap LRTs}: A raw bootstrap p-value can be computed from the simulated distribution as \code{(1+sum(t >= t0))/(N+1)} where \code{t0} is the original likelihood ratio, \code{t} the vector of bootstrap replicates and \code{N} its length. See Davison & Hinkley (1997, p. 141) for discussion of the adjustments in this formula. However, a computationally more economical use of the bootstrap is to provide a Bartlett correction for the likelihood ratio test in small samples. According to this correction, the mean value \eqn{m} of the likelihood ratio statistic under the null hypothesis is computed (here estimated by a parametric bootstrap) and the original LR statistic is multiplied by \eqn{n/m} where \eqn{n} is the number of degrees of freedom of the test. 
+  
+  \bold{Bootstrap samples} are not returned, and they are by default simulated internally (by a call to \code{\link{spaMM_boot}} itself calling \code{\link{simulate4boot}}). There are several ways to recover the samples if you need them: (1) simulate them beforehand and provide them as the \code{boot_samples} argument, passed to \code{spaMM_boot} through the \dots argument; (2) provide a \code{seed} value (passed down to \code{simulate4boot} through the \dots argument) and re-run \code{simulate4boot} with this \code{seed} and with other relevant arguments of the original \code{LRT} call; (3) same as (2), but using the \code{set.seed} function insted of the \code{seed} argument; (4)  given only an \code{LRT} output where the previous solutions were ignored, you can still use the \code{RNGstates} value contained in the object returned by \code{LRT} to reset the generator state and re-run \code{\link{simulate4boot}}, as shown in the Examples for that function.  
   
   * \bold{Caveats}: (1) An evaluated log-likelihood ratio can be slightly negative, e.g. when a fixed-effect model is compared to a mixed one, or a spatial random effect to a block effect, if parameters of the more complete model are estimated within bounds (e.g., variance>1e-06, or Matern smoothness>0.005) designed to avoid numerical singularities, while the less complete model corresponds to a boundary case (e.g., variance=0, or smoothness=0). The bootstrap procedure tries to identify these cases and then corrects slightly negative logL ratios to 0. (2) The Bartlett correction is applicable when the true distribution of the LRT departs smoothly from the chi-square distribution, but not in cases where it has a probability mass in zero (at typically occurs in the same boundary cases).     
 }
@@ -67,6 +69,7 @@ and, if a bootstrap was performed:
  \describe{
 \item{bootreps}{A table of fitted likelihoods for bootstrap replicates;  }
 \item{meanbootLRT}{The mean likelihood ratio chi-square statistic for bootstrap replicates;  }
+\item{RNGstates}{the state of \code{.Random.seed} at the beginning of the simulation of the bootstrap samples (present only is such simulation was run).}
  } %- describe
 } %- item
 

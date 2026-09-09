@@ -88,12 +88,12 @@ if (FALSE) {
     )
   } else warning("'EarthChord' entry already present in proxy::pr_DB database.")
   backports::import(pkgname, "...names") # to ensure back compat as long as spaMM supports R < 4.1
-  .setNbThreads(thr=1L) # at C++ level for Eigen; only initialization, can be modified by control.HLfit$nbTHreads
-  .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2") # 1st Matrix public version 1.5-0 (2022-09-09 r3636)
-  # so if I wait 4 years to tidy Matrix_old: september 2026...
+  .setNbThreads(thr=1L) # at C++ level for Eigen; only initialization, can be modified by control.HLfit$nbThreads
+  .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.6-2") 
   # Version 1.7 of Matrix requires R 4.4.0 so if I require it I change my R requirement
   # earlier Matrix version required R 3.5.0, but this was a bit buggy before Matrix version 1.6-2 (2023-11-05 r4503)
-  # => require version 1.6-2 and don't wait 4 years ?
+  # Also missing 'b' in solve() became part of API on 16 may 2023 => 1.6-0. (is that faster anyway ?)
+  
   .spaMM.data$options$HLnames <- unique(c(names(formals(HLCor)),names(formals(HLfit)), 
                                    "ADFun", # so that this private arg, in the dots, causes no warning and is passed to .preprocess() 
                                    names(formals(mat_sqrt)),names(formals(make_scaled_dist))))

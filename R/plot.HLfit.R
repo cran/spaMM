@@ -33,7 +33,7 @@ plot.HLfit <- function(
     abline(0,1)
   }
   if ("ranef" %in% which) {
-    if (! x$family$family %in% c("gaussian","Gamma")) { 
+    if (! x$family$family %in% c("gaussian","Gamma","tweedie")) { 
       lev_phi <- NULL # i.e. no plot for them
     } else lev_phi <- hatvalues(x, type="std", which="resid")
     lev_lambda <- hatvalues(x, type="std", which="ranef")

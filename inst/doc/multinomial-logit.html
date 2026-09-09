@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Multinomial-logit models in spaMM</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+<style type="text/css">
+
+div.csl-bib-body { }
+div.csl-entry {
+clear: both;
+}
+.hanging div.csl-entry {
+margin-left:2em;
+text-indent:-2em;
+}
+div.csl-left-margin {
+min-width:2em;
+float:left;
+}
+div.csl-right-inline {
+margin-left:2em;
+padding-left:1em;
+}
+div.csl-indent {
+margin-left: 2em;
+}
+</style>
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Multinomial-logit models in spaMM</h1>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#introduction" id="toc-introduction">Introduction</a></li>
+<li><a href="#a-fixed-effect-model-and-the-x2x-argument" id="toc-a-fixed-effect-model-and-the-x2x-argument">A fixed-effect model,
+and the <code>X2X</code> argument</a>
+<ul>
+<li><a href="#context-and-data" id="toc-context-and-data">Context and
+data</a></li>
+<li><a href="#fit" id="toc-fit">Fit</a></li>
+</ul></li>
+<li><a href="#random-intercept-model-and-the-aliases-argument" id="toc-random-intercept-model-and-the-aliases-argument">Random-intercept
+model, and the <code>aliases</code> argument</a></li>
+<li><a href="#correlated-random-effects-across-submodels" id="toc-correlated-random-effects-across-submodels">Correlated random
+effects across submodels</a>
+<ul>
+<li><a href="#fits-with-random-effect-term-included-in-3-submodels" id="toc-fits-with-random-effect-term-included-in-3-submodels">Fits with
+random-effect term included in 3 submodels</a></li>
+<li><a href="#fits-with-random-effect-term-included-in-4-submodels" id="toc-fits-with-random-effect-term-included-in-4-submodels">Fits with
+random-effect term included in 4 submodels</a></li>
+</ul></li>
+<li><a href="#references" id="toc-references">References</a></li>
+</ul>
+</div>
+
+<!-- cf comments about vignette creation and cache management in knit4package.R -->
+<p>Although this vignette is compiled with the version of
+<code>spaMM</code> shown below, the included fit results may have been
+obtained with a previous version.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(spaMM)</span></code></pre></div>
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>This vignette presents an informal tour of using the
+<code>pois4mlogit</code> function to fit multinomial-logit models. In
+these models, the probabilities <span class="math inline">\(p_{ic}\)</span> of the different response
+categories <span class="math inline">\(c=1,...,C\)</span> for the <span class="math inline">\(i\)</span>th multinomial draw <span class="math inline">\((n_{i1},...,n_{iC})\)</span> are of the form <span class="math display">\[p_{ic}=\frac{e^{\eta_{ic}}}{\sum_{c=1}^C
+e^{\eta_{ic}}}\]</span> where each <span class="math inline">\(\eta_{ic}\)</span> takes the usual form of linear
+predictors for GL(M)Ms, including fixed and random effects.</p>
+<p>This type of models can in principle be fitted as Poisson non-linear
+models <span class="citation">(<a href="#ref-ChenK01">Chen and Kuo
+2001</a>)</span>, as the denominator makes <span class="math inline">\(\log(p_{ic})\)</span> non-linear, in comparison to
+each <span class="math inline">\(\eta_{ic}\)</span>. <code>spaMM</code>
+does not have procedures for non-linear models, but the
+<code>pois4mlogit</code> function uses surrogate Poisson
+multivariate-response GLMMs (with some further adjustments) to fit the
+multinomial model, from which it owes its name.</p>
+<p>Each response category <span class="math inline">\(c\)</span> may
+depend on distinct effects, so there is one sub-model for each <span class="math inline">\(c\)</span>.<br />
+To allow flexible specification of the full statistical model, the
+<code>pois4mlogit</code> function inherits the features of the
+<code>fitmv</code> function for multivariate-response models (which it
+calls), including in particular several features that are illustrated
+below: the <code>X2X</code> argument to declare fixed-effect
+coefficients shared about sub-models; the treatment of random-effect
+terms that appear identical across sub-models as a single random effect;
+and the <code>aliases</code> argument that allows the “same” variable
+(as it appears in different sub-model formulas; e.g. a grouping variable
+in a random effect term) to actually be interpreted as “different”
+variables in the data, for the different sub-models.</p>
+<p>The above expression for the <span class="math inline">\(p_{ic}\)</span>s implies that their relative
+values depend only on the differences between the <span class="math inline">\(\eta_{ic}\)</span>s, and that adding an intercept
+in a submodel is equivalent, in terms of relative probabilities <span class="math inline">\(p_{ic}\)</span>, to removing the value of this
+intercept from all other submodels. Thus the likelihood of a model with
+<span class="math inline">\(c\)</span> non-zero intercepts <span class="math inline">\((I_1, I_2, \ldots, I_c)\)</span> is equivalent to
+that of a model with intercepts <span class="math inline">\((0, I_2-I_1,
+\ldots, I_c-I_1)\)</span>, and including distinct non-zero intercepts in
+all submodels would make the model over-parameterized. This can also be
+seen by considering a binomial model: it has a single intercept for two
+response classes. In the above formulation, the binomial model with
+linear predictor <span class="math inline">\(\eta_i\)</span> can be
+represented as the bivariate model with <span class="math inline">\(\eta_{ic}=\eta_i\)</span> for <span class="math inline">\(c=1\)</span>, and <span class="math inline">\(\eta_{ic}=0\)</span> (hence, in particular, no
+intercept) for <span class="math inline">\(c=2\)</span>.</p>
+<p>Likewise, including an identical fixed-effect intercept in all
+submodels has no effect on the likelihood of samples, and would thus
+also make the model over-parameterized in comparison with a model
+without any intercept.</p>
+</div>
+<div id="a-fixed-effect-model-and-the-x2x-argument" class="section level1">
+<h1>A fixed-effect model, and the <code>X2X</code> argument</h1>
+<div id="context-and-data" class="section level2">
+<h2>Context and data</h2>
+<p>For this first example, we consider a yogurt-marketing example from
+the econometric literature on multinomial-logit models <span class="citation">(<a href="#ref-JainVC94">Jain et al. 1994</a>; <a href="#ref-ChenK01">Chen and Kuo 2001</a>)</span>. In this example, the
+data represent purchases of four yogurt brands by a panel of 100
+households (<code>id</code>=1,…,100). A total of 2,412 purchases are
+recorded; the maximum and minimum number of purchases are 185 and 4,
+respectively <span class="citation">(<a href="#ref-ChenK01">Chen and Kuo
+2001</a>)</span>.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/Iyogurt.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) {</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">&quot;Ecdat&quot;</span>,<span class="at">quietly=</span><span class="cn">TRUE</span>)) {</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>    <span class="fu">data</span>(Yogurt,<span class="at">package=</span><span class="st">&quot;Ecdat&quot;</span>) </span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>    </span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>    Iyogurt  <span class="ot">&lt;-</span> Yogurt</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>    Iyogurt<span class="sc">$</span>Iweight <span class="ot">&lt;-</span> Iyogurt<span class="sc">$</span>choice<span class="sc">==</span><span class="st">&quot;weight&quot;</span>     </span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>    Iyogurt<span class="sc">$</span>Idannon <span class="ot">&lt;-</span> Iyogurt<span class="sc">$</span>choice<span class="sc">==</span><span class="st">&quot;dannon&quot;</span>     </span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>    Iyogurt<span class="sc">$</span>Iyoplait <span class="ot">&lt;-</span> Iyogurt<span class="sc">$</span>choice<span class="sc">==</span><span class="st">&quot;yoplait&quot;</span>    </span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>    Iyogurt<span class="sc">$</span>Ihiland <span class="ot">&lt;-</span> Iyogurt<span class="sc">$</span>choice<span class="sc">==</span><span class="st">&quot;hiland&quot;</span>  </span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>    <span class="co"># save(Iyogurt, file=&quot;Iyogurt.rda&quot;)</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>    <span class="fu">stop</span>( <span class="st">&quot;&#39;Iyogurt&#39; data not available, cannot run p4m &#39;Yogurt&#39; test.</span><span class="sc">\n</span><span class="st">&quot;</span> )</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>  }</span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a>}</span></code></pre></div>
+</div>
+<div id="fit" class="section level2">
+<h2>Fit</h2>
+<p>We first fit it by a fixed-effect model with two predictors for each
+brand :one representing the price, the the other representing the
+“marketing environment” (advertisement for the brand). We impose that
+the regression coefficients for these two predictors are identical
+across the different brands (i.e., that price and advertizing have
+identical effects on buying decisions for the four brands). This
+constraint may be specified by the following value for the
+<code>X2X</code> argument of the fitting function, which may here be
+given as</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>    (x2xfixed <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">c</span>(<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>                          <span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>                          <span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">0</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>                          <span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>                          <span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">0</span>,<span class="dv">1</span>), </span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>                        <span class="at">ncol=</span><span class="dv">5</span><span class="dt">L</span>, <span class="at">nrow=</span><span class="dv">11</span><span class="dt">L</span>))</span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt;       [,1] [,2] [,3] [,4] [,5]</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt;  [1,]    1    0    0    0    0</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt;  [2,]    0    0    0    1    0</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt;  [3,]    0    0    0    0    1</span></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt;  [4,]    0    1    0    0    0</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt;  [5,]    0    0    0    1    0</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="co">#&gt;  [6,]    0    0    0    0    1</span></span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co">#&gt;  [7,]    0    0    1    0    0</span></span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a><span class="co">#&gt;  [8,]    0    0    0    1    0</span></span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="co">#&gt;  [9,]    0    0    0    0    1</span></span>
+<span id="cb3-17"><a href="#cb3-17" tabindex="-1"></a><span class="co">#&gt; [10,]    0    0    0    1    0</span></span>
+<span id="cb3-18"><a href="#cb3-18" tabindex="-1"></a><span class="co">#&gt; [11,]    0    0    0    0    1</span></span>
+<span id="cb3-19"><a href="#cb3-19" tabindex="-1"></a>    <span class="fu">dimnames</span>(x2xfixed) <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="cn">NULL</span>, <span class="fu">c</span>(<span class="st">&quot;(Intercept)_1&quot;</span>,<span class="st">&quot;(Intercept)_2&quot;</span>,<span class="st">&quot;(Intercept)_3&quot;</span>,<span class="st">&quot;feat&quot;</span>,<span class="st">&quot;price&quot;</span>))</span></code></pre></div>
+<p>but it can also be specified using the <code>genX2X</code> function,
+which will build the same matrix when given the appropriate list of name
+matches. This avoids filling a matrix of zeroes and ones, with hard to
+catch errors.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>    x2xfixed <span class="ot">&lt;-</span> <span class="fu">genX2X</span>(<span class="fu">list</span>(<span class="st">&quot;(Intercept)_1&quot;</span><span class="ot">=</span><span class="st">&quot;(Intercept)_1&quot;</span>,</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>                        <span class="st">&quot;(Intercept)_2&quot;</span><span class="ot">=</span><span class="st">&quot;(Intercept)_2&quot;</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>                        <span class="st">&quot;(Intercept)_3&quot;</span><span class="ot">=</span><span class="st">&quot;(Intercept)_3&quot;</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>                        <span class="st">&quot;feat&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="st">&quot;feat.yoplait_1&quot;</span>,<span class="st">&quot;feat.dannon_2&quot;</span>,<span class="st">&quot;feat.weight_3&quot;</span>,<span class="st">&quot;feat.hiland_4&quot;</span>),</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>                        <span class="st">&quot;price&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="st">&quot;price.yoplait_1&quot;</span>,<span class="st">&quot;price.dannon_2&quot;</span>,<span class="st">&quot;price.weight_3&quot;</span>,<span class="st">&quot;price.hiland_4&quot;</span>)))</span></code></pre></div>
+<p>The variable names on the right-hand side of each element of the list
+would be the names of the coefficients in a fit of a model without the
+<code>X2X</code> argument; their indices
+<code>_1</code>,…,<code>_4</code> refer to the submodels to which the
+coefficients belong. Note that the <code>x2xfixed</code> object returned
+by <code>genX2X()</code> is not the matrix itself, but stores the
+information necessary for the fitting function to build the matrix. The
+matrix can be retrieved from the fit by
+<code>get_matrix(</code><em>fit</em><code>, &quot;X2X&quot;)</code>.</p>
+<p>To fit the model, we add a <code>offset(.dynoffset)</code> term to
+each submodel formula. This is used internally to represent the
+denominator the the expression for the <span class="math inline">\(p_{ic}\)</span>s.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/fefit.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) { </span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  fefit <span class="ot">&lt;-</span> <span class="fu">pois4mlogit</span>(</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>      <span class="at">submodels=</span><span class="fu">list</span>(</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>        <span class="fu">list</span>(Iyoplait<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>feat.yoplait<span class="sc">+</span>price.yoplait, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>        <span class="fu">list</span>(Idannon<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>feat.dannon<span class="sc">+</span>price.dannon, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>        <span class="fu">list</span>(Iweight<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>feat.weight<span class="sc">+</span>price.weight, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>        <span class="fu">list</span>(Ihiland<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>feat.hiland<span class="sc">+</span>price.hiland, <span class="at">family=</span><span class="fu">poisson</span>(log))),</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a>      <span class="at">data=</span>Iyogurt,</span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>      <span class="at">types=</span><span class="fu">c</span>(<span class="st">&quot;Iyoplait&quot;</span>,<span class="st">&quot;Idannon&quot;</span>,<span class="st">&quot;Iweight&quot;</span>,<span class="st">&quot;Ihiland&quot;</span>),</span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a>      <span class="at">X2X=</span> x2xfixed,</span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a>      <span class="at">progress=</span><span class="dv">1</span></span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a>  )}</span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a>fefit</span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="co">#&gt; formula_1: Iyoplait ~ offset(.dynoffset) + 1 + feat.yoplait + price.yoplait</span></span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt; formula_2: Idannon ~ offset(.dynoffset) + 1 + feat.dannon + price.dannon</span></span>
+<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="co">#&gt; formula_3: Iweight ~ offset(.dynoffset) + 1 + feat.weight + price.weight</span></span>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt; formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland</span></span>
+<span id="cb5-19"><a href="#cb5-19" tabindex="-1"></a><span class="co">#&gt; Estimation of fixed effects by ML.</span></span>
+<span id="cb5-20"><a href="#cb5-20" tabindex="-1"></a><span class="co">#&gt; Families: 1--4 : multinomial-logit</span></span>
+<span id="cb5-21"><a href="#cb5-21" tabindex="-1"></a><span class="co">#&gt;  ------------ Fixed effects (beta) ------------</span></span>
+<span id="cb5-22"><a href="#cb5-22" tabindex="-1"></a><span class="co">#&gt;               Estimate Cond. SE t-value</span></span>
+<span id="cb5-23"><a href="#cb5-23" tabindex="-1"></a><span class="co">#&gt; (Intercept)_1   4.4502  0.11187  39.782</span></span>
+<span id="cb5-24"><a href="#cb5-24" tabindex="-1"></a><span class="co">#&gt; (Intercept)_2   3.7156  0.09084  40.905</span></span>
+<span id="cb5-25"><a href="#cb5-25" tabindex="-1"></a><span class="co">#&gt; (Intercept)_3   3.0744  0.09375  32.793</span></span>
+<span id="cb5-26"><a href="#cb5-26" tabindex="-1"></a><span class="co">#&gt; feat            0.4914  0.07983   6.156</span></span>
+<span id="cb5-27"><a href="#cb5-27" tabindex="-1"></a><span class="co">#&gt; price          -0.3666  0.01057 -34.677</span></span>
+<span id="cb5-28"><a href="#cb5-28" tabindex="-1"></a><span class="co">#&gt;  ------------- Likelihood values  -------------</span></span>
+<span id="cb5-29"><a href="#cb5-29" tabindex="-1"></a><span class="co">#&gt;                         logLik</span></span>
+<span id="cb5-30"><a href="#cb5-30" tabindex="-1"></a><span class="co">#&gt; logL               : -2656.888</span></span></code></pre></div>
+<p>This result matches the fixed-effect fit in <span class="citation">Chen and Kuo (<a href="#ref-ChenK01">2001</a>)</span>,
+where the <code>price</code> variable was scaled differently.</p>
+<p>Note that as explained in the Introduction, there is no intercept
+coefficient. Otherwise, the model would be over-parameterized.</p>
+</div>
+</div>
+<div id="random-intercept-model-and-the-aliases-argument" class="section level1">
+<h1>Random-intercept model, and the <code>aliases</code> argument</h1>
+<p>For exposition, we first consider a minimal random-effect model,
+indeed the one with <em>only</em> a random intercept for each brand. We
+want the brand-specific intercept to be drawn from the same distribution
+(with a single variance), so we use a “shared” random effect term, here
+<code>(1|BRAND)</code>, across the sub-models. But then we need to be
+able to specify that the <code>BRAND</code> value is distinct for the
+different sub-models, and for this we create new variables in the data,
+and refer to them using the <code>aliases</code> argument:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>  Iyogurt<span class="sc">$</span>subd <span class="ot">&lt;-</span> <span class="st">&quot;dannon&quot;</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  Iyogurt<span class="sc">$</span>subh <span class="ot">&lt;-</span> <span class="st">&quot;hiland&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  Iyogurt<span class="sc">$</span>subw <span class="ot">&lt;-</span> <span class="st">&quot;weight&quot;</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  Iyogurt<span class="sc">$</span>suby <span class="ot">&lt;-</span> <span class="st">&quot;yoplait&quot;</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>  </span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/rdInt.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) { </span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a>  rdInt <span class="ot">&lt;-</span> <span class="fu">pois4mlogit</span>(</span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a>  <span class="at">submodels=</span><span class="fu">list</span>(</span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a>    <span class="fu">list</span>(Idannon<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>(<span class="dv">1</span><span class="sc">|</span>BRAND), <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a>    <span class="fu">list</span>(Ihiland<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>(<span class="dv">1</span><span class="sc">|</span>BRAND), <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a>    <span class="fu">list</span>(Iweight<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>(<span class="dv">1</span><span class="sc">|</span>BRAND), <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a>    <span class="fu">list</span>(Iyoplait<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>(<span class="dv">1</span><span class="sc">|</span>BRAND), <span class="at">family=</span><span class="fu">poisson</span>(log))),</span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a>  <span class="at">data=</span>Iyogurt, </span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a>  <span class="at">types=</span><span class="fu">c</span>(<span class="st">&quot;Idannon&quot;</span>,<span class="st">&quot;Ihiland&quot;</span>,<span class="st">&quot;Iweight&quot;</span>,<span class="st">&quot;Iyoplait&quot;</span>),</span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a>  <span class="at">aliases=</span><span class="fu">list</span>(<span class="at">BRAND=</span><span class="fu">c</span>(<span class="st">&quot;subd&quot;</span>,<span class="st">&quot;subh&quot;</span>,<span class="st">&quot;subw&quot;</span>,<span class="st">&quot;suby&quot;</span>))</span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a>)}</span></code></pre></div>
+<p>The <code>aliases</code> value implies that the grouping variable
+<code>BRAND</code> takes the value of the variable <code>subh</code> in
+the second submodel, i.e. the value <code>&quot;hiland&quot;</code>. By the same
+effect, it takes value <code>&quot;weight&quot;</code> in the third and
+<code>&quot;yoplait&quot;</code> in the fourth. The <code>BRAND</code> term is
+thus interpreted as a factor taking three different level for three
+submodels. <code>BRAND</code> is <strong>not</strong> a variable present
+in the <code>data</code>, and if it were present, it would be ignored by
+the fitting procedure.</p>
+<p>We can also that the syntax had the correct effect by looking at the
+incidence matrix for the random effect, which has four blocks of rows
+(one four each sub-model), four columns (one for each level), with
+<code>1</code>s (appearing in black) on the right places:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>Matrix<span class="sc">::</span><span class="fu">image</span>(<span class="fu">get_ZALMatrix</span>(rdInt),<span class="at">aspect=</span><span class="dv">5</span>)</span></code></pre></div>
+<div class="float">
+<img role="img" aria-label="plot of chunk rdIntZ" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfgAAAH4CAMAAACR9g9NAAAAmVBMVEUAAAAAADoAAGYAOmYAOpAAZrY6AAA6AGY6OpA6Zjo6ZmY6ZpA6ZrY6kJA6kNtmAABmADpmAGZmOgBmZmZmkNtmtttmtv+QOgCQOjqQOmaQZgCQkGaQkLaQ2/+2ZgC2kDq2kGa225C22/+2///bkDrbkGbbtmbbtpDb25Db2//b/9vb////tmb/25D/27b/29v//7b//9v///+RJQaIAAAACXBIWXMAAAsSAAALEgHS3X78AAANtElEQVR4nO3di3oa1wFF4cGViHMpjt0E1U1F2mjiXhhaMe//cJ0zIHu2QPUmqJU3Z/2fS2rA1DtLB3CDnaZHlZqX/gngZRC+UoSvFOErRfhKEb5ShK8U4StF+EoRvlKErxThK0X4ShG+UoSvFOErRfhKEb5ShK8U4StF+EoRvlKErxThK0X4ShG+UoSvFOErVWH4Y5OPXGfeLdUFTXERvrigKS7CFxc0xUX44oKmuAhfXNAUF+GLC5ry3zXP7KX3nCt+gOuZ68X/fYsf4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIof4CK8ih/gIryKH+AivIofUGxvmuZq3a+a2W0vlxOEV/EDiu56KL3srtaPvk3vQ3gVP+BBu2wX/f3bu+nl7pajyc8Of+4DvLTgn7oYDn277Lfv76aX0ztw4lX8gJ3V8GT/1Inf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" alt="plot of chunk rdIntZ" />
+<div class="figcaption">plot of chunk rdIntZ</div>
+</div>
+<p>In contrast to the fixed-effect model, where we would have created an
+unidentifiable model if we had included distinct intercepts in all four
+submodels, we have included the random intercept in all four submodel,
+which still makes an identifiable model. In comparison to the
+fixed-effect model, if we add the same constant to all random-effect
+values, this will not affect the relative values of the probabilities
+<span class="math inline">\(p_{ic}\)</span> <em>conditional</em> on the
+random effect values, but this will change the probabilities of the
+random-effect values as drawn from a gaussian distribution, and thus
+this will change the marginal likelihood.</p>
+<p>Including the random effect in all submodels has at least the benefit
+of avoiding the asymmetry introduced by selecting one submodel as the
+reference one without this effect. Here, a comparison with the fit of
+the model without the random effect in the first submodel would also
+show that the latter has a slightly lower likelihood.</p>
+</div>
+<div id="correlated-random-effects-across-submodels" class="section level1">
+<h1>Correlated random effects across submodels</h1>
+<p>We now consider the mixed-effect model discussed by <span class="citation">Jain et al. (<a href="#ref-JainVC94">1994</a>)</span>
+and <span class="citation">Chen and Kuo (<a href="#ref-ChenK01">2001</a>)</span>, including an household-level
+random effect. These works included this effect only in three of the
+four submodels, but as in the random-intercept-only model, it appears
+that we can include it in all four submodels.</p>
+<p>The random-effect is correlated across the three or four brands,
+which we specify as <code>(0+mv(1,2,3)|id)</code> or
+<code>(0+mv(1,2,3,4)|id)</code>. This syntax (which is meaningful for
+multivariate-response models in general, not only for multinomial ones:
+see <code>help(&quot;mv&quot;)</code>) acts a bit like the <code>aliases</code>
+usage above, as e.g. <code>(1,2,3)</code> therein means that the first
+three submodels are affected by different values of the
+household-specific random effect. But this syntax also implies that the
+submodel-specific values for each household are drawn from a correlated
+3- or 4-dimensional gaussian distributions with (by default) fully
+fitted covariance matrix (here with 6 or 10 parameters). In this respect
+it is similar to traditional random-coefficient terms, such as in
+random-slope models, also characterized by bi- or multi-dimensional
+gaussian distributions with a fitted covariance matrix.</p>
+<p>Below, the submodels are reordered to match the formulation in <span class="citation">Chen and Kuo (<a href="#ref-ChenK01">2001</a>)</span>,
+so the <code>X2X</code> argument has to be redefined:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>x2xmixed <span class="ot">&lt;-</span> <span class="fu">genX2X</span>(<span class="fu">list</span>(<span class="st">&quot;(Intercept)_1&quot;</span><span class="ot">=</span><span class="st">&quot;(Intercept)_1&quot;</span>,</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>                        <span class="st">&quot;(Intercept)_2&quot;</span><span class="ot">=</span><span class="st">&quot;(Intercept)_2&quot;</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>                        <span class="st">&quot;(Intercept)_3&quot;</span><span class="ot">=</span><span class="st">&quot;(Intercept)_3&quot;</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>                        <span class="st">&quot;feat&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="st">&quot;feat.yoplait_3&quot;</span>,<span class="st">&quot;feat.dannon_2&quot;</span>,<span class="st">&quot;feat.weight_1&quot;</span>,<span class="st">&quot;feat.hiland_4&quot;</span>),</span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>                        <span class="st">&quot;price&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="st">&quot;price.yoplait_3&quot;</span>,<span class="st">&quot;price.dannon_2&quot;</span>,<span class="st">&quot;price.weight_1&quot;</span>,<span class="st">&quot;price.hiland_4&quot;</span>)))</span></code></pre></div>
+<div id="fits-with-random-effect-term-included-in-3-submodels" class="section level2">
+<h2>Fits with random-effect term included in 3 submodels</h2>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/mmfit6var.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) { </span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>  mmfit6var <span class="ot">&lt;-</span> <span class="fu">pois4mlogit</span>(</span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>  <span class="at">submodels=</span><span class="fu">list</span>(</span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>    <span class="fu">list</span>(Iweight<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.weight<span class="sc">+</span>price.weight, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>    <span class="fu">list</span>(Idannon<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.dannon<span class="sc">+</span>price.dannon, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>    <span class="fu">list</span>(Iyoplait<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.yoplait<span class="sc">+</span>price.yoplait, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a>    <span class="fu">list</span>(Ihiland<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>feat.hiland<span class="sc">+</span>price.hiland, <span class="at">family=</span><span class="fu">poisson</span>(log))),</span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a>  <span class="at">data=</span>Iyogurt, </span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a>  <span class="at">types=</span><span class="fu">c</span>(<span class="st">&quot;Iweight&quot;</span>,<span class="st">&quot;Idannon&quot;</span>,<span class="st">&quot;Iyoplait&quot;</span>,<span class="st">&quot;Ihiland&quot;</span>),</span>
+<span id="cb9-11"><a href="#cb9-11" tabindex="-1"></a>  <span class="at">X2X=</span> x2xmixed, <span class="at">verbose=</span><span class="fu">c</span>(<span class="at">TRACE=</span><span class="cn">FALSE</span>),</span>
+<span id="cb9-12"><a href="#cb9-12" tabindex="-1"></a>  <span class="at">upper=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="dv">10</span>,<span class="fl">0.90</span>,<span class="fl">0.90</span>,<span class="dv">10</span>,<span class="fl">0.90</span>,<span class="dv">10</span>))), </span>
+<span id="cb9-13"><a href="#cb9-13" tabindex="-1"></a>  <span class="at">lower=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.90</span>,<span class="sc">-</span><span class="fl">0.90</span>,<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.90</span>,<span class="fl">1e-4</span>))), </span>
+<span id="cb9-14"><a href="#cb9-14" tabindex="-1"></a>  <span class="at">progress=</span><span class="dv">0</span>)</span>
+<span id="cb9-15"><a href="#cb9-15" tabindex="-1"></a>} </span>
+<span id="cb9-16"><a href="#cb9-16" tabindex="-1"></a>mmfit6var</span>
+<span id="cb9-17"><a href="#cb9-17" tabindex="-1"></a><span class="co">#&gt; formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.weight + </span></span>
+<span id="cb9-18"><a href="#cb9-18" tabindex="-1"></a><span class="co">#&gt;     price.weight</span></span>
+<span id="cb9-19"><a href="#cb9-19" tabindex="-1"></a><span class="co">#&gt; formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.dannon + </span></span>
+<span id="cb9-20"><a href="#cb9-20" tabindex="-1"></a><span class="co">#&gt;     price.dannon</span></span>
+<span id="cb9-21"><a href="#cb9-21" tabindex="-1"></a><span class="co">#&gt; formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + </span></span>
+<span id="cb9-22"><a href="#cb9-22" tabindex="-1"></a><span class="co">#&gt;     feat.yoplait + price.yoplait</span></span>
+<span id="cb9-23"><a href="#cb9-23" tabindex="-1"></a><span class="co">#&gt; formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland</span></span>
+<span id="cb9-24"><a href="#cb9-24" tabindex="-1"></a><span class="co">#&gt; Estimation of ranCoefs by ML (p_v approximation of logL).</span></span>
+<span id="cb9-25"><a href="#cb9-25" tabindex="-1"></a><span class="co">#&gt; Estimation of fixed effects by ML (p_v approximation of logL).</span></span>
+<span id="cb9-26"><a href="#cb9-26" tabindex="-1"></a><span class="co">#&gt; Families: 1--4 : multinomial-logit</span></span>
+<span id="cb9-27"><a href="#cb9-27" tabindex="-1"></a><span class="co">#&gt;  ------------ Fixed effects (beta) ------------</span></span>
+<span id="cb9-28"><a href="#cb9-28" tabindex="-1"></a><span class="co">#&gt;               Estimate Cond. SE t-value</span></span>
+<span id="cb9-29"><a href="#cb9-29" tabindex="-1"></a><span class="co">#&gt; (Intercept)_1   0.6957  0.42258   1.646</span></span>
+<span id="cb9-30"><a href="#cb9-30" tabindex="-1"></a><span class="co">#&gt; (Intercept)_2   3.2931  0.29866  11.026</span></span>
+<span id="cb9-31"><a href="#cb9-31" tabindex="-1"></a><span class="co">#&gt; (Intercept)_3   4.0050  0.38039  10.529</span></span>
+<span id="cb9-32"><a href="#cb9-32" tabindex="-1"></a><span class="co">#&gt; feat            0.9613  0.18001   5.340</span></span>
+<span id="cb9-33"><a href="#cb9-33" tabindex="-1"></a><span class="co">#&gt; price          -0.4399  0.03949 -11.140</span></span>
+<span id="cb9-34"><a href="#cb9-34" tabindex="-1"></a><span class="co">#&gt;  --------------- Random effects ---------------</span></span>
+<span id="cb9-35"><a href="#cb9-35" tabindex="-1"></a><span class="co">#&gt; Family: gaussian( link = identity ) </span></span>
+<span id="cb9-36"><a href="#cb9-36" tabindex="-1"></a><span class="co">#&gt;          --- Random-coefficients Cov matrices:</span></span>
+<span id="cb9-37"><a href="#cb9-37" tabindex="-1"></a><span class="co">#&gt;  Group Term  Var.   Cor.1 Cor.2</span></span>
+<span id="cb9-38"><a href="#cb9-38" tabindex="-1"></a><span class="co">#&gt;     id .mv1    10              </span></span>
+<span id="cb9-39"><a href="#cb9-39" tabindex="-1"></a><span class="co">#&gt;     id .mv2 4.931 -0.2729      </span></span>
+<span id="cb9-40"><a href="#cb9-40" tabindex="-1"></a><span class="co">#&gt;     id .mv3 6.521  0.2205  -0.9</span></span>
+<span id="cb9-41"><a href="#cb9-41" tabindex="-1"></a><span class="co">#&gt; # of obs per submodel: 2412 2412 2412 2412;</span></span>
+<span id="cb9-42"><a href="#cb9-42" tabindex="-1"></a><span class="co">#&gt; # of groups: id, 100 </span></span>
+<span id="cb9-43"><a href="#cb9-43" tabindex="-1"></a><span class="co">#&gt;  ------------- Likelihood values  -------------</span></span>
+<span id="cb9-44"><a href="#cb9-44" tabindex="-1"></a><span class="co">#&gt;                         logLik</span></span>
+<span id="cb9-45"><a href="#cb9-45" tabindex="-1"></a><span class="co">#&gt; logL       (p_v(h)): -1257.917</span></span></code></pre></div>
+<p>This takes some time to fit (4748.31s in this particular run for the
+vignette). One reason is that the Laplace approximation of the
+likelihood appears to be maximal for infinite values of some of the
+variances (as may also occur in binomial fits of binary data), and for
+extreme values of some correlation parameters, which contribute to make
+the correlation matrix near-singular and hampers the fitting algorithms.
+Indeed, it is the reason why <code>upper</code> and <code>lower</code>
+value were set in the above fit, and both one variance and a correlation
+are at bounds of the allowed ranges in the above fit. Fitting by a
+different likelihood approximation may circumvent some of problems, as
+in the following fit with <code>method=&quot;PQL/L&quot;</code> <span class="citation">(<a href="#ref-RoussetF14">Rousset and Ferdy
+2014</a>)</span>:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/mmfit6varPQL.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) { </span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>mmfit6varPQL <span class="ot">&lt;-</span> <span class="fu">pois4mlogit</span>(</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="at">submodels=</span><span class="fu">list</span>(</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>    <span class="fu">list</span>(Iweight<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.weight<span class="sc">+</span>price.weight, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>    <span class="fu">list</span>(Idannon<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.dannon<span class="sc">+</span>price.dannon, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>    <span class="fu">list</span>(Iyoplait<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.yoplait<span class="sc">+</span>price.yoplait, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>    <span class="fu">list</span>(Ihiland<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>feat.hiland<span class="sc">+</span>price.hiland, <span class="at">family=</span><span class="fu">poisson</span>(log))),</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>  <span class="at">data=</span>Iyogurt, </span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  <span class="at">types=</span><span class="fu">c</span>(<span class="st">&quot;Iweight&quot;</span>,<span class="st">&quot;Idannon&quot;</span>,<span class="st">&quot;Iyoplait&quot;</span>,<span class="st">&quot;Ihiland&quot;</span>),</span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>  <span class="at">X2X=</span> x2xmixed, <span class="at">verbose=</span><span class="fu">c</span>(<span class="at">TRACE=</span><span class="cn">FALSE</span>),</span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a>  <span class="at">upper=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="dv">20</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="dv">20</span>,<span class="fl">0.9</span>,<span class="dv">20</span>))), </span>
+<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a>  <span class="at">lower=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>))),</span>
+<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a>  <span class="at">progress=</span><span class="dv">0</span>, </span>
+<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a>  <span class="at">method=</span><span class="st">&quot;PQL/L&quot;</span>)</span>
+<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a>}</span>
+<span id="cb10-17"><a href="#cb10-17" tabindex="-1"></a>mmfit6varPQL</span>
+<span id="cb10-18"><a href="#cb10-18" tabindex="-1"></a><span class="co">#&gt; formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.weight + </span></span>
+<span id="cb10-19"><a href="#cb10-19" tabindex="-1"></a><span class="co">#&gt;     price.weight</span></span>
+<span id="cb10-20"><a href="#cb10-20" tabindex="-1"></a><span class="co">#&gt; formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.dannon + </span></span>
+<span id="cb10-21"><a href="#cb10-21" tabindex="-1"></a><span class="co">#&gt;     price.dannon</span></span>
+<span id="cb10-22"><a href="#cb10-22" tabindex="-1"></a><span class="co">#&gt; formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + </span></span>
+<span id="cb10-23"><a href="#cb10-23" tabindex="-1"></a><span class="co">#&gt;     feat.yoplait + price.yoplait</span></span>
+<span id="cb10-24"><a href="#cb10-24" tabindex="-1"></a><span class="co">#&gt; formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland</span></span>
+<span id="cb10-25"><a href="#cb10-25" tabindex="-1"></a><span class="co">#&gt; Estimation of ranCoefs by ML (p_v approximation of logL).</span></span>
+<span id="cb10-26"><a href="#cb10-26" tabindex="-1"></a><span class="co">#&gt; Estimation of fixed effects by h-likelihood approximation.</span></span>
+<span id="cb10-27"><a href="#cb10-27" tabindex="-1"></a><span class="co">#&gt; Families: 1--4 : multinomial-logit</span></span>
+<span id="cb10-28"><a href="#cb10-28" tabindex="-1"></a><span class="co">#&gt;  ------------ Fixed effects (beta) ------------</span></span>
+<span id="cb10-29"><a href="#cb10-29" tabindex="-1"></a><span class="co">#&gt;               Estimate Cond. SE t-value</span></span>
+<span id="cb10-30"><a href="#cb10-30" tabindex="-1"></a><span class="co">#&gt; (Intercept)_1   1.3923  0.42873   3.248</span></span>
+<span id="cb10-31"><a href="#cb10-31" tabindex="-1"></a><span class="co">#&gt; (Intercept)_2   3.1919  0.30306  10.532</span></span>
+<span id="cb10-32"><a href="#cb10-32" tabindex="-1"></a><span class="co">#&gt; (Intercept)_3   3.9714  0.38914  10.206</span></span>
+<span id="cb10-33"><a href="#cb10-33" tabindex="-1"></a><span class="co">#&gt; feat            0.9102  0.17954   5.070</span></span>
+<span id="cb10-34"><a href="#cb10-34" tabindex="-1"></a><span class="co">#&gt; price          -0.4172  0.03864 -10.797</span></span>
+<span id="cb10-35"><a href="#cb10-35" tabindex="-1"></a><span class="co">#&gt;  --------------- Random effects ---------------</span></span>
+<span id="cb10-36"><a href="#cb10-36" tabindex="-1"></a><span class="co">#&gt; Family: gaussian( link = identity ) </span></span>
+<span id="cb10-37"><a href="#cb10-37" tabindex="-1"></a><span class="co">#&gt;          --- Random-coefficients Cov matrices:</span></span>
+<span id="cb10-38"><a href="#cb10-38" tabindex="-1"></a><span class="co">#&gt;  Group Term  Var.   Cor.1 Cor.2</span></span>
+<span id="cb10-39"><a href="#cb10-39" tabindex="-1"></a><span class="co">#&gt;     id .mv1 11.18              </span></span>
+<span id="cb10-40"><a href="#cb10-40" tabindex="-1"></a><span class="co">#&gt;     id .mv2 5.162 -0.3592      </span></span>
+<span id="cb10-41"><a href="#cb10-41" tabindex="-1"></a><span class="co">#&gt;     id .mv3 7.263  0.3356  -0.9</span></span>
+<span id="cb10-42"><a href="#cb10-42" tabindex="-1"></a><span class="co">#&gt; # of obs per submodel: 2412 2412 2412 2412;</span></span>
+<span id="cb10-43"><a href="#cb10-43" tabindex="-1"></a><span class="co">#&gt; # of groups: id, 100 </span></span>
+<span id="cb10-44"><a href="#cb10-44" tabindex="-1"></a><span class="co">#&gt;  ------------- Likelihood values  -------------</span></span>
+<span id="cb10-45"><a href="#cb10-45" tabindex="-1"></a><span class="co">#&gt;                         logLik</span></span>
+<span id="cb10-46"><a href="#cb10-46" tabindex="-1"></a><span class="co">#&gt;        h-likelihood: -1299.611</span></span>
+<span id="cb10-47"><a href="#cb10-47" tabindex="-1"></a><span class="co">#&gt; logL       (p_v(h)): -1259.736</span></span></code></pre></div>
+<p>which still takes 2230.53s in this particular run.</p>
+</div>
+<div id="fits-with-random-effect-term-included-in-4-submodels" class="section level2">
+<h2>Fits with random-effect term included in 4 submodels</h2>
+<p>These fits appear better:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/mmfit6varPQL4.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) {</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  mmfit6varPQL4 <span class="ot">&lt;-</span> <span class="fu">pois4mlogit</span>(</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>    <span class="at">submodels=</span><span class="fu">list</span>(</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>      <span class="fu">list</span>(Iweight<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.weight<span class="sc">+</span>price.weight, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>      <span class="fu">list</span>(Idannon<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.dannon<span class="sc">+</span>price.dannon, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>      <span class="fu">list</span>(Iyoplait<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.yoplait<span class="sc">+</span>price.yoplait, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a>      <span class="fu">list</span>(Ihiland<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.hiland<span class="sc">+</span>price.hiland, <span class="at">family=</span><span class="fu">poisson</span>(log))),</span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a>    <span class="at">data=</span>Iyogurt, </span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a>    <span class="at">types=</span><span class="fu">c</span>(<span class="st">&quot;Iweight&quot;</span>,<span class="st">&quot;Idannon&quot;</span>,<span class="st">&quot;Iyoplait&quot;</span>,<span class="st">&quot;Ihiland&quot;</span>),</span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a>    <span class="at">X2X=</span> x2xmixed, <span class="at">verbose=</span><span class="fu">c</span>(<span class="at">TRACE=</span><span class="cn">FALSE</span>),</span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a>    <span class="at">upper=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="dv">10</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="dv">10</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="dv">10</span>,<span class="fl">0.9</span>,<span class="dv">10</span>))), </span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a>    <span class="at">lower=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>))),</span>
+<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a>    <span class="at">progress=</span><span class="dv">0</span>, </span>
+<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a>    <span class="at">method=</span><span class="st">&quot;PQL/L&quot;</span>)</span>
+<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a>}</span>
+<span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a>mmfit6varPQL4</span>
+<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a><span class="co">#&gt; formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb11-19"><a href="#cb11-19" tabindex="-1"></a><span class="co">#&gt;     feat.weight + price.weight</span></span>
+<span id="cb11-20"><a href="#cb11-20" tabindex="-1"></a><span class="co">#&gt; formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb11-21"><a href="#cb11-21" tabindex="-1"></a><span class="co">#&gt;     feat.dannon + price.dannon</span></span>
+<span id="cb11-22"><a href="#cb11-22" tabindex="-1"></a><span class="co">#&gt; formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb11-23"><a href="#cb11-23" tabindex="-1"></a><span class="co">#&gt;     feat.yoplait + price.yoplait</span></span>
+<span id="cb11-24"><a href="#cb11-24" tabindex="-1"></a><span class="co">#&gt; formula_4: Ihiland ~ offset(.dynoffset) + 0 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb11-25"><a href="#cb11-25" tabindex="-1"></a><span class="co">#&gt;     feat.hiland + price.hiland</span></span>
+<span id="cb11-26"><a href="#cb11-26" tabindex="-1"></a><span class="co">#&gt; Estimation of ranCoefs by ML (p_v approximation of logL).</span></span>
+<span id="cb11-27"><a href="#cb11-27" tabindex="-1"></a><span class="co">#&gt; Estimation of fixed effects by h-likelihood approximation.</span></span>
+<span id="cb11-28"><a href="#cb11-28" tabindex="-1"></a><span class="co">#&gt; Families: 1--4 : multinomial-logit</span></span>
+<span id="cb11-29"><a href="#cb11-29" tabindex="-1"></a><span class="co">#&gt;  ------------ Fixed effects (beta) ------------</span></span>
+<span id="cb11-30"><a href="#cb11-30" tabindex="-1"></a><span class="co">#&gt;               Estimate Cond. SE t-value</span></span>
+<span id="cb11-31"><a href="#cb11-31" tabindex="-1"></a><span class="co">#&gt; (Intercept)_1   1.8220  0.45243   4.027</span></span>
+<span id="cb11-32"><a href="#cb11-32" tabindex="-1"></a><span class="co">#&gt; (Intercept)_2   3.7140  0.35748  10.389</span></span>
+<span id="cb11-33"><a href="#cb11-33" tabindex="-1"></a><span class="co">#&gt; (Intercept)_3   4.5326  0.41946  10.806</span></span>
+<span id="cb11-34"><a href="#cb11-34" tabindex="-1"></a><span class="co">#&gt; feat            0.7820  0.18226   4.290</span></span>
+<span id="cb11-35"><a href="#cb11-35" tabindex="-1"></a><span class="co">#&gt; price          -0.4224  0.03893 -10.848</span></span>
+<span id="cb11-36"><a href="#cb11-36" tabindex="-1"></a><span class="co">#&gt;  --------------- Random effects ---------------</span></span>
+<span id="cb11-37"><a href="#cb11-37" tabindex="-1"></a><span class="co">#&gt; Family: gaussian( link = identity ) </span></span>
+<span id="cb11-38"><a href="#cb11-38" tabindex="-1"></a><span class="co">#&gt;          --- Random-coefficients Cov matrices:</span></span>
+<span id="cb11-39"><a href="#cb11-39" tabindex="-1"></a><span class="co">#&gt;  Group Term  Var.    Cor.1    Cor.2   Cor.3</span></span>
+<span id="cb11-40"><a href="#cb11-40" tabindex="-1"></a><span class="co">#&gt;     id .mv1    10                          </span></span>
+<span id="cb11-41"><a href="#cb11-41" tabindex="-1"></a><span class="co">#&gt;     id .mv2 3.119  -0.3632                 </span></span>
+<span id="cb11-42"><a href="#cb11-42" tabindex="-1"></a><span class="co">#&gt;     id .mv3 4.865 -0.02403     -0.9        </span></span>
+<span id="cb11-43"><a href="#cb11-43" tabindex="-1"></a><span class="co">#&gt;     id .mv4 3.083   0.1504 -0.07356 0.01671</span></span>
+<span id="cb11-44"><a href="#cb11-44" tabindex="-1"></a><span class="co">#&gt; # of obs per submodel: 2412 2412 2412 2412;</span></span>
+<span id="cb11-45"><a href="#cb11-45" tabindex="-1"></a><span class="co">#&gt; # of groups: id, 100 </span></span>
+<span id="cb11-46"><a href="#cb11-46" tabindex="-1"></a><span class="co">#&gt;  ------------- Likelihood values  -------------</span></span>
+<span id="cb11-47"><a href="#cb11-47" tabindex="-1"></a><span class="co">#&gt;                         logLik</span></span>
+<span id="cb11-48"><a href="#cb11-48" tabindex="-1"></a><span class="co">#&gt;        h-likelihood: -1357.663</span></span>
+<span id="cb11-49"><a href="#cb11-49" tabindex="-1"></a><span class="co">#&gt; logL       (p_v(h)): -1243.389</span></span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>chk <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">load</span>(<span class="st">&quot;saved-fits/mmfit6var4.rda&quot;</span>, <span class="at">envir=</span><span class="fu">globalenv</span>()),<span class="at">silent=</span><span class="cn">TRUE</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(chk,<span class="st">&quot;try-error&quot;</span>)) {</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  mmfit6var4 <span class="ot">&lt;-</span> <span class="fu">pois4mlogit</span>(</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>    <span class="at">submodels=</span><span class="fu">list</span>(</span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>      <span class="fu">list</span>(Iweight<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.weight<span class="sc">+</span>price.weight, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a>      <span class="fu">list</span>(Idannon<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.dannon<span class="sc">+</span>price.dannon, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>      <span class="fu">list</span>(Iyoplait<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">1</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.yoplait<span class="sc">+</span>price.yoplait, <span class="at">family=</span><span class="fu">poisson</span>(log)),</span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a>      <span class="fu">list</span>(Ihiland<span class="sc">~</span> <span class="fu">offset</span>(.dynoffset)<span class="sc">+</span><span class="dv">0</span><span class="sc">+</span>(<span class="dv">0</span><span class="sc">+</span><span class="fu">mv</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>)<span class="sc">|</span>id)<span class="sc">+</span>feat.hiland<span class="sc">+</span>price.hiland, <span class="at">family=</span><span class="fu">poisson</span>(log))),</span>
+<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a>    <span class="at">data=</span>Iyogurt, </span>
+<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a>    <span class="at">types=</span><span class="fu">c</span>(<span class="st">&quot;Iweight&quot;</span>,<span class="st">&quot;Idannon&quot;</span>,<span class="st">&quot;Iyoplait&quot;</span>,<span class="st">&quot;Ihiland&quot;</span>),</span>
+<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a>    <span class="at">X2X=</span> x2xmixed, <span class="at">verbose=</span><span class="fu">c</span>(<span class="at">TRACE=</span><span class="cn">FALSE</span>),</span>
+<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a>    <span class="at">upper=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="dv">15</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="dv">15</span>,<span class="fl">0.9</span>,<span class="fl">0.9</span>,<span class="dv">15</span>,<span class="fl">0.9</span>,<span class="dv">15</span>))), </span>
+<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a>    <span class="at">lower=</span><span class="fu">list</span>(<span class="at">ranCoefs=</span><span class="fu">list</span>(<span class="st">&quot;1&quot;</span><span class="ot">=</span><span class="fu">c</span>(<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>,<span class="sc">-</span><span class="fl">0.9</span>,<span class="fl">1e-4</span>))),</span>
+<span id="cb12-14"><a href="#cb12-14" tabindex="-1"></a>    <span class="at">progress=</span><span class="dv">0</span>)</span>
+<span id="cb12-15"><a href="#cb12-15" tabindex="-1"></a>}</span>
+<span id="cb12-16"><a href="#cb12-16" tabindex="-1"></a>mmfit6var4</span>
+<span id="cb12-17"><a href="#cb12-17" tabindex="-1"></a><span class="co">#&gt; formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb12-18"><a href="#cb12-18" tabindex="-1"></a><span class="co">#&gt;     feat.weight + price.weight</span></span>
+<span id="cb12-19"><a href="#cb12-19" tabindex="-1"></a><span class="co">#&gt; formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb12-20"><a href="#cb12-20" tabindex="-1"></a><span class="co">#&gt;     feat.dannon + price.dannon</span></span>
+<span id="cb12-21"><a href="#cb12-21" tabindex="-1"></a><span class="co">#&gt; formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb12-22"><a href="#cb12-22" tabindex="-1"></a><span class="co">#&gt;     feat.yoplait + price.yoplait</span></span>
+<span id="cb12-23"><a href="#cb12-23" tabindex="-1"></a><span class="co">#&gt; formula_4: Ihiland ~ offset(.dynoffset) + 0 + (0 + mv(1, 2, 3, 4) | id) + </span></span>
+<span id="cb12-24"><a href="#cb12-24" tabindex="-1"></a><span class="co">#&gt;     feat.hiland + price.hiland</span></span>
+<span id="cb12-25"><a href="#cb12-25" tabindex="-1"></a><span class="co">#&gt; Estimation of ranCoefs by ML (p_v approximation of logL).</span></span>
+<span id="cb12-26"><a href="#cb12-26" tabindex="-1"></a><span class="co">#&gt; Estimation of fixed effects by ML (p_v approximation of logL).</span></span>
+<span id="cb12-27"><a href="#cb12-27" tabindex="-1"></a><span class="co">#&gt; Families: 1--4 : multinomial-logit</span></span>
+<span id="cb12-28"><a href="#cb12-28" tabindex="-1"></a><span class="co">#&gt;  ------------ Fixed effects (beta) ------------</span></span>
+<span id="cb12-29"><a href="#cb12-29" tabindex="-1"></a><span class="co">#&gt;               Estimate Cond. SE t-value</span></span>
+<span id="cb12-30"><a href="#cb12-30" tabindex="-1"></a><span class="co">#&gt; (Intercept)_1   2.7881  0.66057   4.221</span></span>
+<span id="cb12-31"><a href="#cb12-31" tabindex="-1"></a><span class="co">#&gt; (Intercept)_2   5.2864  0.53249   9.928</span></span>
+<span id="cb12-32"><a href="#cb12-32" tabindex="-1"></a><span class="co">#&gt; (Intercept)_3   6.9131  0.59190  11.679</span></span>
+<span id="cb12-33"><a href="#cb12-33" tabindex="-1"></a><span class="co">#&gt; feat            0.7690  0.18471   4.163</span></span>
+<span id="cb12-34"><a href="#cb12-34" tabindex="-1"></a><span class="co">#&gt; price          -0.4217  0.03911 -10.781</span></span>
+<span id="cb12-35"><a href="#cb12-35" tabindex="-1"></a><span class="co">#&gt;  --------------- Random effects ---------------</span></span>
+<span id="cb12-36"><a href="#cb12-36" tabindex="-1"></a><span class="co">#&gt; Family: gaussian( link = identity ) </span></span>
+<span id="cb12-37"><a href="#cb12-37" tabindex="-1"></a><span class="co">#&gt;          --- Random-coefficients Cov matrices:</span></span>
+<span id="cb12-38"><a href="#cb12-38" tabindex="-1"></a><span class="co">#&gt;  Group Term     Var.  Cor.1  Cor.2   Cor.3</span></span>
+<span id="cb12-39"><a href="#cb12-39" tabindex="-1"></a><span class="co">#&gt;     id .mv1    12.11                      </span></span>
+<span id="cb12-40"><a href="#cb12-40" tabindex="-1"></a><span class="co">#&gt;     id .mv2       15 0.2516               </span></span>
+<span id="cb12-41"><a href="#cb12-41" tabindex="-1"></a><span class="co">#&gt;     id .mv3 0.008317   -0.9 -0.635        </span></span>
+<span id="cb12-42"><a href="#cb12-42" tabindex="-1"></a><span class="co">#&gt;     id .mv4       15 0.1677 0.5884 -0.3894</span></span>
+<span id="cb12-43"><a href="#cb12-43" tabindex="-1"></a><span class="co">#&gt; # of obs per submodel: 2412 2412 2412 2412;</span></span>
+<span id="cb12-44"><a href="#cb12-44" tabindex="-1"></a><span class="co">#&gt; # of groups: id, 100 </span></span>
+<span id="cb12-45"><a href="#cb12-45" tabindex="-1"></a><span class="co">#&gt;  ------------- Likelihood values  -------------</span></span>
+<span id="cb12-46"><a href="#cb12-46" tabindex="-1"></a><span class="co">#&gt;                         logLik</span></span>
+<span id="cb12-47"><a href="#cb12-47" tabindex="-1"></a><span class="co">#&gt; logL       (p_v(h)): -1242.368</span></span></code></pre></div>
+<p>These fits take more time ( 1924.18s and 27351.77s, respectively), in
+particular because there are 10 covariance parameters to be fitted,
+instead of 6 previously (and the Laplace ML fit again has variances and
+correlation estimates at bounds of allowed range). This is a bit
+painful, but will not be the case in all applications. With nearly
+singular covariance matrices, different runs of the same model on the
+same computer can even give different results (and take more time), due
+to instability of some floating-point computations in this case.</p>
+</div>
+</div>
+<div id="references" class="section level1 unnumbered">
+<h1 class="unnumbered">References</h1>
+<div id="refs" class="references csl-bib-body hanging-indent">
+<div id="ref-ChenK01" class="csl-entry">
+Chen, Zhen, and Lynn Kuo. 2001. <span>“A Note on the Estimation of the
+Multinomial Logit Model with Random Effects.”</span> <em>The American
+Statistician</em> 55 (2): 89–95. <a href="https://doi.org/10.1198/000313001750358545">https://doi.org/10.1198/000313001750358545</a>.
+</div>
+<div id="ref-JainVC94" class="csl-entry">
+Jain, Dipak C., Naufel J. Vilcassim, and Pradeep K. Chintagunta. 1994.
+<span>“A Random-Coefficients Logit Brand-Choice Model Applied to Panel
+Data.”</span> <em>Journal of Business &amp; Economic Statistics</em> 12
+(3): 317–28. <a href="https://doi.org/10.1080/07350015.1994.10524547">https://doi.org/10.1080/07350015.1994.10524547</a>.
+</div>
+<div id="ref-RoussetF14" class="csl-entry">
+Rousset, François, and Jean-Baptiste Ferdy. 2014. <span>“Testing
+Environmental and Genetic Effects in the Presence of Spatial
+Autocorrelation.”</span> <em>Ecography</em> 37: 781–90. <a href="https://doi.org/10.1111/ecog.00566">https://doi.org/10.1111/ecog.00566</a>.
+</div>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

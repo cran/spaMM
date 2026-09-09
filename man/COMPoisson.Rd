@@ -6,19 +6,19 @@
 Conway-Maxwell-Poisson (COM-Poisson) GLM family
 }
 \description{
-The COM-Poisson family is a generalization of the Poisson family which can describe over-dispersed as well as under-dispersed count data. It is indexed by a parameter \code{nu} that quantifies such dispersion. For \code{nu}>1, the distribution is under-dispersed relative to the Poisson distribution with same mean. It includes the Poisson, geometric and Bernoulli as special (or limit) cases (see Details). The COM-Poisson family is here implemented as a \code{\link[stats]{family}} object, so that it can be fitted by \code{\link[stats]{glm}}, and further used to model conditional responses in mixed models fitted by this package's functions (see Examples). \code{nu} is distinct from the dispersion parameter \eqn{\nu=1/\phi} considered elsewhere in this package and in the GLM literature, as \eqn{\nu} affects in a more specific way the log-likelihood. 
+The COM-Poisson family is a generalization of the Poisson family which can describe over-dispersed as well as under-dispersed count data. It is indexed by a parameter \code{nu} that quantifies such dispersion. For \code{nu}>1, the distribution is under-dispersed relative to the Poisson distribution with same mean. It includes the Poisson, geometric and Bernoulli as special (or limit) cases (see Details). Several links are allowed for this family, corresponding to different versions of the COMPoisson described in the literature (e.g., Sellers & Shmueli 2010; Huang 2017).
 
-Several links are now allowed for this family, corresponding to different versions of the COMPoisson described in the literature (e.g., Sellers & Shmueli 2010; Huang 2017).
+Following established notation, the COM-Poisson dispersion parameter is named \code{nu} or \eqn{\nu}, but it is distinct from the parameter \eqn{\nu=1/\phi} considered elsewhere in this package and in standard accounts of GLMs: the latter \eqn{\nu} is a multiplicative factor of the derivative of the log-likelihood with respect to the GLM \dQuote{canonical parameter}, while the COM-Poisson \eqn{\nu} affects the log-likelihood differently (which is why this parameter cannot be fitted by \code{glm}). 
+
+The COM-Poisson family is here implemented as a \code{\link[stats]{family}} object, so that it can be fitted by \code{\link[stats]{glm}} (but for fixed \code{nu} only, for the reason just given; see Examples), beyond its primary intended use with \pkg{spaMM}'s fitting functions.
 }
 \usage{
-COMPoisson(nu =  stop("COMPoisson's 'nu' must be specified"), 
-           link = "loglambda")
+COMPoisson(nu, link = "loglambda")
 }
-%- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{link}{GLM link function. The default is the canonical link \code{"loglambda"} (see Details), but other links are allowed (currently log, sqrt or identity links as commonly handled for the Poisson family).}
   \item{nu}{
-  Under-dispersion parameter. The \code{fitme} and \code{corrHLfit} functions called with \code{family=COMPoisson()} (no given \code{nu} value) will estimate this parameter. In other usage of this family, \code{nu} must be specified. \code{COMPoisson(nu=1)} is the Poisson family. }
+  Under-dispersion parameter. The \dQuote{outer-optimizing} functions, such as \code{fitme} (see \code{\link{inner-vs-outer}}) will estimate this parameter if called with \code{family=COMPoisson()} (no given \code{nu} value). In other usages of this family, \code{nu} must be specified. \code{COMPoisson(nu=1)} is the Poisson family. }
 }
 \value{
 A family object.

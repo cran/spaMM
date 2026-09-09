@@ -15,7 +15,7 @@
            # X.pv=processed$AUGI0_ZX$X.pv, # the X that gives eta and the weights: not perturbed in p4m
            ## supplement for ! LMM
            phi_est, 
-           ## supplement for for LevenbergM 
+           ## supplement for LevenbergM 
            w.resid=NULL, 
            ## supplement for LevenbergM
            beta_eta,
@@ -58,9 +58,12 @@
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
     Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
     weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  
-    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
-      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
-      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)[["mnsizes"]])) {
+      p4mprobs <- .calc_p4mprobs(muetablob=muetablob, multinom_info)
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
+      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
       replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
       muetablob$dz1_p4m <- replaces_etamo -(eta-off)
       constant_zAug_args$ZAL <- dcdv_p4m # "doSeeMe" # dcdv_p4m seems logical    
@@ -137,7 +140,7 @@
       pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=m_grad_v)
       low_pot <- (pot4improv < pot_tol)
       damped_WLS_blob <- 
-        damped_WLS_v_in_b_fn(
+        damped_WLS_v_in_b_fn( # performs a loop of damping_to_solve() calls until some improvement of objfn.
           sXaug=sXaug, zInfo=zInfo, ZAL=ZAL,
           old_Vscaled_beta=Vscaled_beta,
           oldAPHLs=oldAPHLs,
@@ -151,7 +154,8 @@
           processed=processed, Xscal=Xscal,
           phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, 
           which_i_llblock=which_i_llblock,
-          which_LevMar_step = "v",
+          which_LevMar_step = "v", # which implies that sXaug is not updated in each iteration of the called loop, 
+                                   # but it may be updated at its end.
           low_pot = structure(low_pot,pot_tol=pot_tol),
           stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
           outer=FALSE) 

@@ -3,9 +3,12 @@ if (FALSE) {
   source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-data_paternity.R")
   source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-paternity-interaction.R")
   source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-script-TC-20251030.R") 
-  # some of the fits are slow: (~1mn total)
+  source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-composite-antisym.R") 
+  # some of the fits are slow: (~1mn total):
   source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-paternity-3ranefs.R") 
-} else  cat(cli::bg_green(cli::col_black("\nRun private test-pois4mlogit...R once in a while.")))
+  # This one is definitely slower (2-3 mn ?):
+  if (FALSE) source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-confint.R") 
+} else  cat(cli::bg_green(cli::col_black("\nRun private test-pois4mlogit-... R files once in a while.")))
 
 
 #### Fitting a binomial(logit) model by a bivariate poisson(log) surrogate:
@@ -23,7 +26,8 @@ if (FALSE) {
   )
 }
 
-if (spaMM.getOption("example_maxtime")>60) { # cf D:/home/francois/travail/stats/spaMMplus/devel/pois4mlogit/p4m_DEBUG.R
+if (spaMM.getOption("example_maxtime")>15) { 
+  # using a small tol value allows more precise compar of numInfo's
   { # without ranCoefs
     (BbyB <- fitme(cbind(yellow,blue) ~ 0+phenotype+(1|grp), family = binomial(), 
                    data=toydata[1:5,]))
@@ -34,22 +38,66 @@ if (spaMM.getOption("example_maxtime")>60) { # cf D:/home/francois/travail/stats
     (BbyP <- pois4mlogit(submodels = list(
       list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
       list(blue ~ offset(.dynoffset) + 0, family = poisson())), 
-      control=list(p4m="oH"), progress=1L, verbose=c(TRACE=FALSE), 
-      data = toydata[1:5,], types=c("yellow","blue"), n_iter=100L, tol=1e-7, to.long=FALSE))
+      control=list(p4m="oH"), progress=1L, verbose=c(TRACE=FALSE), tol=1e-7,
+      data = toydata[1:5,], types=c("yellow","blue")))
     BbyP$v_h # 
     testthat::test_that('deparse(getCall(BbyP)[[1]])=="pois4mlogit"',
-                        expect_true(deparse(getCall(BbyP)[[1]])=="pois4mlogit"))
+                        testthat::expect_true(deparse(getCall(BbyP)[[1]])=="pois4mlogit"))
+
     (BbyP_sp <- pois4mlogit(submodels = list(
       list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
-      list(blue ~ offset(.dynoffset) + 0, family = poisson())), 
+      list(blue ~ offset(.dynoffset) + 0, family = poisson())), tol=1e-7,
       control=list(p4m="oH"), progress=1L, verbose=c(TRACE=FALSE), control.HLfit=list(algebra="spprec"),
-      data = toydata[1:5,], types=c("yellow","blue"), n_iter=100L, tol=1e-7, to.long=FALSE))
-    if (FALSE) { # 205s & logL differs at fifth decimals
+      data = toydata[1:5,], types=c("yellow","blue")))
+    
+    (BbyPlam5 <- pois4mlogit(submodels = list(
+      list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
+      list(blue ~ offset(.dynoffset) + 0, family = poisson())),  fixed=list(lambda=5),
+      control=list(p4m="oH"), progress=1L, verbose=c(TRACE=FALSE), tol=1e-7,
+      data = toydata[1:5,], types=c("yellow","blue")))
+    
+    
+    (BbyPdyndyn <- pois4mlogit(submodels = list(
+      list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
+      list(blue ~ offset(.dynoffset) + 0, family = poisson())),  fixed=list(lambda=5),
+      control=list(p4m="W"), progress=1L, verbose=c(TRACE=FALSE), tol=1e-7,
+      data = toydata[1:5,], types=c("yellow","blue"), to.long=FALSE))
+    (crit <- abs(diff(range(logLik(BbyPlam5),logLik(BbyPdyndyn)))))
+    testthat::test_that(paste0("p4m='H' works (for moderate lambda!)",signif(crit,4)," >1e-5"),
+                        testthat::expect_true(crit<1e-5) )
+    
+    
+    # see test-pois4mlogit-confint.R for tests of confint procedure
+    
+    if (FALSE) { # 112s (on "occupied" CPU), spcorr by default, & logL differs at tenth decimal from BbyP
       (BbyP_LM <- pois4mlogit(submodels = list(
         list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
         list(blue ~ offset(.dynoffset) + 0, family = poisson())), 
         control=list(p4m="oH"), progress=1L, verbose=c(TRACE=TRUE), control.HLfit=list(LevenbergM=TRUE),
-        data = toydata[1:5,], types=c("yellow","blue"), n_iter=100L, tol=1e-7, to.long=FALSE)) 
+        data = toydata[1:5,], types=c("yellow","blue"), n_iter=100L, tol=1e-7)) 
+    }
+    
+    (infoB <- numInfo(BbyB))
+    (infoP <- numInfo(BbyP)) # accurate in absolute terms, but not so much in relative ones. 
+    (crit <- max(abs((infoB-infoP)/(0.001+abs(infoB))))) # becomes relative for small values
+    testthat::test_that(paste0("Whether numInfo() gives correct result for BbyP:",signif(crit,4)," >1e-3"),
+                        testthat::expect_true(crit<1e-3) )
+    (infoP_sp <- numInfo(BbyP_sp))
+    (crit <- max(abs((infoB-infoP_sp)/(0.001+abs(infoB)))))
+    testthat::test_that(paste0("Whether numInfo() gives correct result for BbyP_sp:",signif(crit,4)," >1e-3"),
+                        testthat::expect_true(crit<1e-3) )
+    
+    simulate(BbyP, nsim=3L)
+    
+    if (FALSE) { # REML...
+      # the p4m fit matches the *outer-optimized fitme* one (expected), which is now the default:
+      (fitme(cbind(yellow,blue) ~ 0+phenotype+(1|grp), family = binomial(), 
+             data=toydata[1:5,], method="REML"))
+      (pois4mlogit(submodels = list(
+        list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
+        list(blue ~ offset(.dynoffset) + 0, family = poisson())), 
+        control=list(p4m="oH"), progress=1L, verbose=c(TRACE=FALSE), method="REML",
+        data = toydata[1:5,], types=c("yellow","blue"), n_iter=100L, tol=1e-7))
     }
     
   } 
@@ -61,13 +109,14 @@ if (spaMM.getOption("example_maxtime")>60) { # cf D:/home/francois/travail/stats
     
     (clinicp4m <- pois4mlogit(submodels = list(
       list(npos ~ offset(.dynoffset) + 1+ treatment+(treatment|clinic), family = poisson()),
-      list(nneg ~ offset(.dynoffset) + 0, family = poisson())), control=list(p4m="oH"), progress=2L, verbose=c(TRACE=FALSE),
+      list(nneg ~ offset(.dynoffset) + 0, family = poisson())), control=list(p4m="oH"), 
+      progress=1L+interactive(), verbose=c(TRACE=FALSE),
       lower=list(ranCoefs=list("1"=c(0,-0.9,0))), 
       upper=list(ranCoefs=list("1"=c(200,0.9,200))), # control.HLfit=list(LevenbergM=FALSE),
-      data = clinics, types=c("npos","nneg"), n_iter=100L, tol=c(1e-5,1e-5), to.long=FALSE))
+      data = clinics, types=c("npos","nneg"), n_iter=100L, tol=c(1e-5,1e-5)))
   }
   
-}
+} else {cat(cli::bg_green(cli::col_black("Mixed-effect models not run in 'fast' tests.")))}
 
 ## Standard binomial fit (purple flowers are ignored here)
 (byB <- fitme(cbind(yellow,blue) ~ phenotype, family = binomial(), 
@@ -95,8 +144,6 @@ if (spaMM.getOption("example_maxtime")>60) { # cf D:/home/francois/travail/stats
   vcov(byB)
   
   ## logLiks
-  # The logLiks differ between the binomial and poisson surrogate fits because the combinatorial coefficients differ.
-  # The relationship between these logLiks is simple when the long form of the data is used:
   str(long2 <- reshape2long(toydata, c("yellow","blue")))
   
   # Fits on long data:
@@ -107,12 +154,7 @@ if (spaMM.getOption("example_maxtime")>60) { # cf D:/home/francois/travail/stats
     list(blue ~ offset(.dynoffset) + phenotype, family = poisson())),
     data = toydata, to.long=TRUE, types=c("yellow","blue")))
   
-  # The logLik of the surrogate model is
-  (logL1 <- sum(byPlong$eta*byPlong$y) - sum(exp(byPlong$eta))) # = logLik(byPlong)
-  # while le logLik of the binomial one can be obtained as 
-  (logL2 <- sum(byPlong$eta*byPlong$y)) # = logLik(byBlong)
-  # the difference is 156  __= total multinomial sample size__
-  crit <- diff(range(logL1,logL2-156, logLik(byPlong)))
+  crit <- diff(range(logLik(byBlong), logLik(byPlong)))
   testthat::test_that("Consistency between to.long=FALSE and =TRUE", 
                       testthat::expect_true(crit < 1e-10))
 
@@ -124,25 +166,17 @@ if (spaMM.getOption("example_maxtime")>60) { # cf D:/home/francois/travail/stats
   
 }   
      
-{ ## NA handling
-  toydataNA <- toydata
-  toydataNA$pheno1 <- toydataNA$pheno2 <- toydataNA$pheno3 <- toydata$phenotype
-  toydataNA$yellow[1] <- NA 
-  toydataNA$pheno1[2] <- toydataNA$pheno2[2] <- NA 
-  (byP3 <- pois4mlogit(submodels = list(
-      list(yellow ~ offset(.dynoffset) + pheno1, family = poisson()),
-      list(blue ~ offset(.dynoffset) + pheno2, family = poisson()),
-      list(purple ~ offset(.dynoffset) + pheno3, family = poisson())),
-      data = toydataNA, types=c("yellow","blue","purple")))
-  length(pp1 <-predict(byP3, verbose=c(na=FALSE))) # 27 bc only second draw cannot be predicted
-  rowSums(m1 <- matrix(pp1, ncol=3))
-  length(pp2 <- predict(byP3, newdata=byP3$data,
-                      verbose=c(na=FALSE))) # 27 bc only second draw cannot be predicted
-  max(abs(range(matrix(pp2, ncol=3)-m1)))
-  plot_effects(byP3, "pheno1", submodel=1)
-}  
+## NA handling: cf test-simulate
 
-if (FALSE) { ## trying to test identifiability... but this converges immediately...
+if (FALSE) { ## trying to test identifiability... but some fits converge immediately...
+  (unident_ranef <- pois4mlogit(submodels = list(
+    list(yellow ~ offset(.dynoffset) + 0+ phenotype+(1|grp), family = poisson()),
+    list(blue ~ offset(.dynoffset) + 0+(1|grp), family = poisson())), 
+    control=list(p4m="oH"), progress=1L, verbose=c(TRACE=FALSE), 
+    data = toydata[1:5,], types=c("yellow","blue")))
+  # => low fitted variance appears typical in this unidentifiable case. 
+  # There must be a warning.
+  
   X_4to3 <- 
     matrix(c(1,0,0,
              0,1,0,
@@ -153,6 +187,23 @@ if (FALSE) { ## trying to test identifiability... but this converges immediately
   (unidentif <- pois4mlogit(submodels = list(
     list(yellow ~ offset(.dynoffset) + phenotype, family = poisson()),
     list(blue ~ offset(.dynoffset) + phenotype, family = poisson())),
-    data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=2))
+    data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L+interactive()))
+  
+  if (FALSE) {
+    # low_pot bug... but before that, .makeMatp4m() generates a rank deficient sXaug 
+    # (correct given the wrong formulas)
+    # so let's say this does not count as worth debugging.
+    (unidentif <- pois4mlogit(submodels = list(
+      list(yellow ~ offset(.dynoffset) + phenotype+(1|grp), family = poisson()),
+      list(blue ~ offset(.dynoffset) + phenotype+(1|grp), family = poisson())),
+      data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L+interactive()))
+  }
+  if (FALSE) {
+    # Ultimately same cause, different bug. But after many more iterations + diagnosis
+    (unidentif <- pois4mlogit(submodels = list(
+      list(yellow ~ offset(.dynoffset) + phenotype, family = poisson()),
+      list(blue ~ offset(.dynoffset) + phenotype+(1|grp), family = poisson())),
+      data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L+interactive()))
+  }
 }
 

@@ -1,16 +1,21 @@
 \name{residVar}
 \alias{residVar}
+\alias{sigma.HLfit}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Residual variance extractor
 }
 \description{
-Extracts from a fit object the residual variance or, depending on the \code{which} argument, a family dispersion parameter phi (which is generally not the residual variance itself except for gaussian-response models without prior weights), or a vector of values of the dispersion parameter, or further information about the residual variance model. 
+\code{residVar} extracts from a fit object the residual variance or, depending on the \code{which} argument, a family dispersion parameter phi (which is generally not the residual variance itself except for gaussian-response models without prior weights), or a vector of values of the dispersion parameter, or further information about the residual variance model. 
 
 For gaussian and Gamma response families, the return values  for \code{which = "var"} and \code{"phi"} include prior weights, if any. 
+
+Given that base R defines the generic function \code{\link[stats]{sigma}} to extract the estimated residual standard deviation, a \code{sigma.HLfit} method for fit objects produced by spaMM fitting functions is defined, effectively as\cr 
+\code{sqrt(residVar(object, which="fit", ...))} when this is numeric. 
 }
 \usage{
 residVar(object, which = "var", submodel = NULL, newdata = NULL)
+\method{sigma}{HLfit}(object, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -18,6 +23,7 @@ residVar(object, which = "var", submodel = NULL, newdata = NULL)
   \item{which}{Character: \code{"var"} for the fitted residual variances, \code{"phi"} for the fitted phi values, \code{"fam_parm"} for the dispersion parameter of \code{COMPoisson}, \code{negbin1}, \code{negbin2}, \code{beta_resp} or \code{betabin} families, \code{"fit"} for the fitted residual model (a GLM or a mixed model for residual variances, if not a simpler object),  and \code{"family"} or \code{"formula"} for such properties of the residual model.}
   \item{submodel}{integer: the index of a submodel, if \code{object} is a multivariate-response model fitted by \code{fitmv}. This argument is mandatory for all \code{which} values except \code{"var"} and \code{"phi"}.}
     \item{newdata}{\bold{Either} NULL, a matrix or data frame, or a numeric vector. See \code{\link{predict.HLfit}} for details.}
+    \item{\ldots}{Further arguments passed to \code{residVar}: for example, \code{submodel} may be needed for mutlivariate-response fits.}
 }
 \value{
 \code{which="var"} (default) and \code{"phi"} always return a vector of residual variances (or, alternatively, phi values) of length determined by the \code{newdata} and \code{submodel} arguments. \cr 

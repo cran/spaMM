@@ -5,7 +5,7 @@
   Fits a mixed model, typically a spatial GLMM.
 }
 \description{
-  This was the first function for fitting all spatial models in spaMM, and is still fully functional, but it is recommended to use \code{\link{fitme}} which has different defaults and generally selects more efficient fitting methods, and will handle all classes of models that spaMM can fit, including non-spatial ones. \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
+  This was the first function for fitting all spatial models in \pkg{spaMM}, and is still fully functional, but it is recommended to use \code{\link{fitme}} which has different defaults and generally selects more efficient fitting methods, and will handle all classes of models that \pkg{spaMM} can fit, including non-spatial ones. \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
 }
 \usage{
 corrHLfit(formula, data, init.corrHLfit = list(), init.HLfit = list(), 
@@ -58,7 +58,7 @@ of \code{HLCor}, or the \code{verbose} argument of \code{HLfit}. Arguments that 
 \details{
  For approximations of likelihood, see \code{\link{method}}.  For the possible structures of random effects, see \code{\link{random-effects}},
 
-  By default \code{corrHLfit} will estimate correlation parameters by maximizing the \code{objective} value returned by \code{HLCor} calls wherein the dispersion parameters are estimated jointly with fixed effects for given correlation parameters. If dispersion parameters are specified in \code{init.corrHLfit}, they will also be estimated by maximizing the \code{objective} value, and \code{HLCor calls} will not estimate them jointly with fixed effects. This means that in general the fixed effect estimates may vary depending on \code{init.corrHLfit} when any form of REML correction is applied. 
+  By default \code{corrHLfit} will estimate correlation parameters by maximizing the \code{objective} value returned by \code{HLCor} calls wherein the dispersion parameters are estimated jointly with fixed effects for given correlation parameters. If dispersion parameters are specified in \code{init.corrHLfit}, they will also be estimated by maximizing the \code{objective} value, and \code{HLCor calls} will not estimate them jointly with fixed effects. This means that in general the fixed effect estimates may vary depending on \code{init.corrHLfit} when any form of REML correction is applied (see \code{\link{inner-vs-outer}} for further elaboration). 
   
 Correctly using \code{corrHLfit} for likelihood ratio tests of fixed effects may then be tricky. It is safe to perform full ML fits of all parameters (using \code{method="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
   

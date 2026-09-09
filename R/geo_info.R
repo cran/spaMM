@@ -591,7 +591,8 @@
             ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
           } else if (corr_type=="corrFamily") {
             if (is.null(cov_info_mat)) { # e.g., ranGCA...
-              nc <- ncol(processed$ZAlist[[rd]])
+              ZAlist <- processed$ZAlist
+              nc <- ncol(ZAlist[[rd]]) %/% attr(ZAlist,"Xi_cols")[rd]
               sparse_Qmat <- .symDiagonal(n=nc)
               # chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
             } else if (inherits(cov_info_mat,"precision")) {
@@ -650,9 +651,13 @@
           #
           NOT_cM_cT <- (corr_type != "corrMatrix")
           if (NOT_cM_cT) corr_info$cov_info_mats[[rd]] <- "'cov_info_mat' not (yet) stored" # non-NULL to allow attributes:
-          if (NOT_cM_cT || 
+          if (
+            ! is.null(cov_info_mat) && # there is a L matrix to compute at this point
+            (
+              NOT_cM_cT || # presumably means "not a fixed corrMatrix" hence Lunique must be updated recurrently
               is.null(attr(corr_info$cov_info_mats[[rd]],"blob")$Lunique) # TRUE only the 1st time this block is reached 
-             ) {
+            ) 
+          ) {
               # it would be nice to use a delayedAssign as for spprec. But how to deal with the extra arguments?
               Lunique <- .calc_Lunique_for_correl_algos(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
                                                         cov_info_mat)
@@ -721,7 +726,7 @@
 
 # Recomputes ZA with A modified as function of L such that AL is tcrossfac of correlation matrix 
 .normalize_IMRF_ZA <- function(Z, A, L, colids=NULL) {
-  if (is.null(Z)) return(NULL) #this occurs in mv fits .calc_ZAlist_newdata_mv() -> .calc_normalized_newZAlist(Zlist ...) -> here
+  if (is.null(Z)) return(NULL) #this occurs for mv fits, .calc_normalized_newZAlist(Zlist ...) -> here
                                # where Zlist may have some NULL elements.
   # : it's no longer clear when this L is the tcross factor (with the Q_CHMfactor as attribute...) or is the Q_CHMfactor
   # Maybe it is the Q_CHMfactor post-fit.

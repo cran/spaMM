@@ -31,7 +31,10 @@ to select \code{"spcorr"} vs. \code{"decorr"} methods.\cr
 \code{>   spaMM.options(dec2spp= <FALSE|TRUE>)}\cr 
 controls whether to use algorithms suited for random effects with sparse precision matrices in many cases where the precision matrix is not particularly sparse, and where algorithms suited for random effects with dense correlation matrices would otherwise be used (as can be selected on a fit-by-fit basis by \code{algebra="spprec"}). Default is \code{FALSE}; when this is set to \code{TRUE}, other conditions (subject to future changes) are checked before using switching to sparse-precision algorithms. Practice show that sparse-precision methods are actually efficient even when the precision matrix is not sparse. This is partly due to them using Cholesky instead of QR matrix factorizations. QR is numerically more accurate, which may matter at least in challenging cases with near-singular correlation matrices, but otherwise \code{dec2spp=TRUE} is an interesting option. 
 }
-\seealso{\code{\link{pedigree}}}
+\seealso{
+\code{\link{how}} for extracting information about the selected \code{algebra} from a fit.
+\code{\link{pedigree}} for context to the Examples.
+}
 \examples{
 if (spaMM.getOption("example_maxtime")>6) {
  data("Gryphon")

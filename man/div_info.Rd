@@ -9,7 +9,7 @@ This experimental function displays information about parameter values for which
 
 Numerical problems may occur if the information matrix (for the augmented linear model used in the iteratively reweighted least-squares algorithm) is nearly singular. \pkg{spaMM} may try to check whether such singularity occurs when this algorithm has not converged. But itself may be slow so it is not performed systematically for large matrices. \code{spaMM.options(diagnose_conv=<integer>)} may be used to control the maximum size of matrices for which the check is performed.
 
-When \dQuote{outer} generic optimization is performed, information is reported about the range of parameter values for which problems occurred, (see Value). The fit object \code{divinfo} element may also contain more informative tables of parameter values. This information is currently missing for \dQuote{inner}-optimized parameters.
+When \dQuote{outer} generic optimization is performed, information is reported about the range of parameter values for which problems occurred, (see Value). The fit object \code{divinfo} element may also contain more informative tables of parameter values. This information is currently missing for \dQuote{inner}-estimated parameters (see \code{\link{inner-vs-outer}} for this concept).
 }
 \usage{
 div_info(object, ...)

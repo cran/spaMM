@@ -1,4 +1,4 @@
-cat(cli::col_yellow("\ntest computations of numerical Information matrix:")) 
+cat(cli::col_yellow("\ntest computations of numerical Information matrix:\n")) 
 
 data("wafers")
 lmmfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),data=wafers)
@@ -19,7 +19,8 @@ crit <- max(abs(sqrt(diag(solve(numInfo(lmmfit,transf=FALSE,which="beta")))) - s
 testthat::test_that("numInfo() consistent with cond.SEs (REML)",
                     testthat::expect_true(crit<1e-8))
 
-if (FALSE) { 
+if (FALSE) {  
+  
   (lm_mix <- fitme(formula=y ~ 1, family=gaussian(), 
                    resid.model= list(formula= ~  1+(1|batch)),
                    data=wafers))
@@ -35,6 +36,8 @@ if (FALSE) {
   
   # numInfo fixes beta values (indeed, these are the only ones considered here)
   # Using outer-beta estimation then exhibits an underlying issue that happens with fixed beta's (here simplified again as gaussian() and fixing other parameters): 
+  # "F I X M E" if we really want outer beta estimation to work:
+  # the following call fails bc  rcdd::rcdd fails on large values in the procedure for default initial bounds 
   (outer_lm_mix <- fitme(formula=y ~ 1, family=gaussian(), 
                    resid.model= list(formula= ~  1+(1|batch), fixed=list(lambda=VarCorr(lm_mix$resid_fit)[1,3],etaFix=list(beta=fixef(lm_mix$resid_fit)))),
                    init=list(beta=fixef(lm_mix)),

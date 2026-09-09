@@ -329,20 +329,32 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   } else list(lev_lambda=lev_lambda_z,lev_phi=lev_phi_z) # BLOB$hatval , formely hatval_ZX, for REML
 }
 
+## See comments in .calc_G_dG()
+.get_Hfac_D_Md2hdv2 <- function(BLOB) { 
+  if (is.null(BLOB$D_Md2hdv2)) {
+    BLOB$Hfac <- tmp <- drop0(BLOB$tcrossfac_Md2hdv2) ## probably not so sparse...
+    xx <- tmp@x
+    xx <- xx*xx
+    tmp@x <- xx
+    BLOB$D_Md2hdv2 <- rowSums(tmp) 
+    return(NULL)
+  }
+}
+
+# This is only for devel purposes:
 .calc_H_dH <- function(BLOB, damping) {
-  ## See comments in .calc_G_dG()
-  H_dH <- BLOB$Md2hdv2
-  nc <- ncol(H_dH)
-  diagPos <- seq.int(1L,nc^2,nc+1L)
-  dH <- H_dH[diagPos]*damping
-  H_dH[diagPos] <- H_dH[diagPos] + dH
-  return(list(H_dH=H_dH, dampDpD_2=dH))
+    H_dH <- BLOB$Md2hdv2 # cf its promise
+    nc <- ncol(H_dH)
+    diagPos <- seq.int(1L,nc^2,nc+1L)
+    dH <- H_dH[diagPos]*damping
+    H_dH[diagPos] <- H_dH[diagPos] + dH
+    return(list(H_dH=H_dH, dampDpD_2=dH))
 }
 
 .calc_G_dG <- function(BLOB, damping) {
   spprec_LevM_D <- .spaMM.data$options$spprec_LevM_D
   ################
-  as_sym <- TRUE # OK it we eval G_dG <- .dsCsum(.,.). Otherwise dsC + dsC involves e.g. forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix"))) (with generic for '+')
+  as_sym <- TRUE # OK if we eval G_dG <- .dsCsum(.,.). Otherwise dsC + dsC involves e.g. forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix"))) (with generic for '+')
   # as_sym <- FALSE => does not sum dsC may be a bit longer than .dsCsum(dsC,dsC) (tests adjacency long LevM => 101.74s vs 102.49s )
   if (spprec_LevM_D=="update") { # experimental. Effect dependent a priori on .spaMM.data$options$perm_G. OK but not faster with default permG (TRUE) 01/2020 
     BLOB$D_Md2hdv2 <- diag(chol2inv(BLOB$chol_Q))
@@ -361,11 +373,11 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         xx <- tmp@x
         xx <- xx*xx
         tmp@x <- xx
-        # def of pertubration D_Md2hdv2 affects decimals in test-adjacency-long
+        # def of perturbation D_Md2hdv2 affects decimals in test-adjacency-long
         if (spprec_LevM_D=="rowSums") { ## [as originally used for (full) LevMar_step]
           BLOB$D_Md2hdv2 <- rowSums(tmp) # the diagonal elements since *row*Sums = diag Tcrossprod(tcrossfac) (= invQ G Gt invQt)
         } else { 
-          BLOB$D_Md2hdv2 <- colSums(tmp) # colSums() seems to give good results
+          BLOB$D_Md2hdv2 <- colSums(tmp) # not afraid of trying anything.
         }
         ## convert diag perturb of Md2hdv2 into a non-diag perturb of G :
         ## since H=invL_Q G t(invL_Q),  dG= L_Q dH t(L_Q) 
@@ -450,7 +462,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     BLOB$factor_inv_Md2hdv2 %*% B # _F I X M E__ optimize for diagonal matrices? Not easy (info to be passed efficiently from get_from_MME call)
   } else {
     B <- BLOB$chol_Q %*% B # => which typically yields a dge, so [] is OK:
-    B <- B[BLOB$pMat_G@perm, ] # BLOB$pMat_G %*% B
+    B <- B[BLOB$pMat_G@perm, ] # BLOB$pMat_G %*% B # a pMatrix's @perm slot is from 1 !
     Matrix::solve(BLOB$G_CHMfactor, B, system="L")  
   }
 } # drop0() might be useful (_F I X M E__? have to wait for profiling to point it...)
@@ -517,9 +529,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 
 .eval_qrXa <- function(AUGI0_ZX, sXaug, BLOB) {
   ## used for "hatval" in case of failure of computation of BLOB$r22... and for BLOB$nonSPD
-  if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
-    X.pv <- as(AUGI0_ZX$X.pv,"dgCMatrix")#  .Rcpp_as_dgCMatrix(AUGI0_ZX$X.pv)
-  } else X.pv <- as(as(AUGI0_ZX$X.pv,"generalMatrix"),"CsparseMatrix")
+  X.pv <- as(as(AUGI0_ZX$X.pv,"generalMatrix"),"CsparseMatrix")
   ZAL <- .tcrossprod(AUGI0_ZX$ZAfix, Matrix::solve(BLOB$chol_Q, AUGI0_ZX$trDiag), 
               chk_sparse2mat = FALSE) # avoid conversion to dge in which case Xscal becomes dge 
   #        -> qrR(BLOB$qrXa, backPermute = FALSE) will fail (test is fit_REML in test-devel-predVar-AR1)
@@ -571,7 +581,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     #delayedAssign("half_logdetQ",  sum(log(diag(x=BLOB$chol_Q))), assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     #delayedAssign("half_logdetG", Matrix::determinant(BLOB$G_CHMfactor, sqrt=TRUE)$modulus[1], assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     delayedAssign("logdet_R_scaled_v", { BLOB$logdet_sqrt_d2hdv2 - sum(log(attr(sXaug,"w.ranef")))/2 }, assign.env = BLOB )
-    # more or less for speculative code:
+    # Only in .calc_H_dH() for devel purposes:
     delayedAssign("Md2hdv2", .tcrossprod(BLOB$tcrossfac_Md2hdv2), assign.env = BLOB ) ## currently not used (for H_dH)
     delayedAssign("tcrossfac_Md2hdv2",
                   Matrix::solve(BLOB$chol_Q, crossprod(BLOB$pMat_G, as(BLOB$G_CHMfactor,"CsparseMatrix"))), assign.env = BLOB )
@@ -609,7 +619,9 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       # refer to an unscaled version of X.pv. ./.
       if ( ! is.null(scale. <-  attr(AUGI0_ZX$X.pv,"scaled:scale"))) {
         unsc_r22 <- .m_Matrix_times_Dvec(BLOB$r22, scale.)      
-      } else unsc_r22 <- BLOB$r22 # .scale() is not always called in preprocessing
+      } else { # not sure it will ever happen here, but see comment in .def_off_Xb_fn()
+        unsc_r22 <- BLOB$r22 
+      }
       beta_cov <- try(solve(crossprod(unsc_r22)), silent=TRUE)
       if (inherits(beta_cov,"try-error")) {
         # this occurred for test-difficult_AR1_from_adRes 
@@ -800,10 +812,11 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   if (which=="logdet_r22") { return(BLOB$logdet_r22) }
   if (which=="logdet_R_scaled_b_v") { return(BLOB$logdet_R_scaled_b_v)} 
   if (which=="hatval") { return(BLOB$hatval) } ##  REML hatval computation (also named hatval_ZX)
-  if (which=="LevMar_step") {  ## LM with diagonal perturbation as in NocedalW p. 266
-    #
-    if (.spaMM.data$options$use_G_dG) { ## compared 01/2022 on adjacency-long with LevM=TRUE => faster than alternative. Small numerical diff too.
-      # uses rather complex code to avoid solve(dense d2hdv2,...) but cannot avoid solve(rather dense G_dG)
+  if (which=="LevMar_step") {  # "b_v"
+    ## LM with diagonal perturbation as in NocedalW p. 266
+    ## For each new damping value:
+    if (.spaMM.data$options$use_G_dG) { # default
+      # use_G_dG uses rather complex code to avoid solve(dense d2hdv2,...) but cannot avoid solve(rather dense G_dG)
       G_dG_blob <- .calc_G_dG(BLOB, damping) # list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2)
       ## sequel recomputed for each new damping value...
       grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))] 
@@ -820,49 +833,56 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         diag(XX_D) <- diag(XX_D)+dampDpD_1 ## adds D1=damping*diag(XX_D)
         # see INLA_vs_spaMM_Loaloa.R for one case where the matrix is singular.
         dbeta_eta <- tryCatch(solve(XX_D-Xt_X , dbeta_rhs)[,1],error=function(e) e)
-        if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
+        if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (.ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
         L_dv <- L_dv_term_from_grad_v - drop(solve(G_dG, BLOB$ZtWX %*% dbeta_eta)) # - dampDpD_2 %*% LM_z$v_h_beta$v_h
         dv_h <- Matrix::drop(Matrix::crossprod(BLOB$chol_Q, Matrix::drop(L_dv))) ## inner drop() to avoid signature issue with dgeMatrix dv_rhs...
       } else {
         dbeta_eta <- numeric(0)
         dv_h <- Matrix::drop(Matrix::crossprod(BLOB$chol_Q, Matrix::drop(L_dv_term_from_grad_v))) ## inner drop() to avoid signature issue with dgeMatrix dv_rhs...
       }
-    } else { ## may be faster but with useQR set to FALSE 
-      ## For each new damping value:
-      grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))]
-      grad_beta <- LM_z$scaled_grad[-seq(ncol(BLOB$chol_Q))]
-      if ((useQR <- FALSE)) {
-        if (is.null(BLOB$D_Md2hdv2)) {
-          ## t() bc .damping_to_solve implicitly uses (or used) crossprod ( as in solve(X'X)=solve(R'R) ) (or equivalently tcrossprod(solve))
-          BLOB$Hfac <- tmp <- t(drop0(BLOB$tcrossfac_Md2hdv2)) ## probably not so sparse...
-          xx <- tmp@x
-          xx <- xx*xx
-          tmp@x <- xx
-          BLOB$D_Md2hdv2 <- colSums(tmp) ## colSums bc t() above // rowSums for diag Tcrossprod(invQ G)  = invQ G Gt invQt
-        }
+      return(list(dVscaled=dv_h, dbeta_eta=dbeta_eta, dampDpD = damping*BLOB$DpD))
+    } else { ## New XD_CHM_info-based alternative compared 08/2026 on adjacency-long with LevM=TRUE => 
+      # use_G_dG is much faster than this alternative based on XD_CHM_info. 
+      # In other fits it may be the reverse. But here although XD_CHM_info results are correct, 
+      # the LevM paths are far more tortuous.
+      # The tnb1sp fit differs, but since its final Hessian is not SPD... 
+      grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))] 
+      if (useCHM <- TRUE) {
+        XD_CHM_info <- get_from_MME(sXaug, which="XD_CHM_info")
+        dampDpD_2 <- damping * XD_CHM_info$D_Md2hdv2
+        CHMupdate <- .damping_to_CHM(XD_CHM_info = XD_CHM_info, dampDpD=dampDpD_2)
+        dv_term_from_grad_v <- drop(solve(CHMupdate, grad_v, system="A"))
+      } else if (useQR <- FALSE) { # old try... correct but slow
+        .get_Hfac_D_Md2hdv2(BLOB) # provides BLOB$D_Md2hdv2 and $Hfac
         dampDpD_2 <- damping * BLOB$D_Md2hdv2
-        DS <- .damping_to_solve(X=BLOB$Hfac, dampDpD=dampDpD_2, rhs=NULL) ## potentially slow chol2inv()
+        DS <- .damping_to_solve_QR(X=BLOB$Hfac, dampDpD=dampDpD_2, rhs=NULL) ## potentially slow chol2inv()
         dv_term_from_grad_v <- drop((DS$inv %*% grad_v[DS$Rperm])[DS$RRsP]) 
-      } else {
-        H_dH_blob <- .calc_H_dH(BLOB, damping) # list(dVscaled= dv_h, dampDpD = dampDpD_2)
+      } else { # simplest code, OK for testing the others.
+        H_dH_blob <- .calc_H_dH(BLOB, damping) # list(H_dH=H_dH, dampDpD_2=dH)
         dv_term_from_grad_v <- drop(solve(H_dH_blob$H_dH,  grad_v))
+        dampDpD_2 <- H_dH_blob$dampDpD_2
       }
       if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
+        grad_beta <- LM_z$scaled_grad[-seq(ncol(BLOB$chol_Q))]
         dbeta_rhs <- grad_beta - crossprod(BLOB$LZtWX, dv_term_from_grad_v) # - dampDpD_1 * LM_z$v_h_beta$beta_eta one damps the gradient eq, not the one giving v_h_beta
-        if (useQR) {
-          thinsolve <- as((DS$inv %*% BLOB$LZtWX[DS$Rperm,])[DS$RRsP,],"matrix") ## something wrong here ?
+        if (useCHM) {
+          thinsolve <- as(solve(CHMupdate, BLOB$LZtWX, system="A"),"matrix") 
+        } else if (useQR) {
+          thinsolve <- as((DS$inv %*% BLOB$LZtWX[DS$Rperm,])[DS$RRsP,],"matrix") 
         } else thinsolve <- solve(H_dH_blob$H_dH, BLOB$LZtWX) ## thin result, needed for Xt_X
         Xt_X <- crossprod(BLOB$LZtWX, thinsolve)
         XX_D <- BLOB$XtWX
         diag(XX_D) <- diag(XX_D)*(1+damping) ## adds D1=damping*diag(XX_D)
         #
         dbeta_eta <- tryCatch(solve(XX_D-Xt_X , dbeta_rhs)[,1],error=function(e) e)
-        if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
+        if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (.ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
         dv_h <- dv_term_from_grad_v - drop(thinsolve %*% dbeta_eta) 
       } else {
         dbeta_eta <- numeric(0)
         dv_h <- dv_term_from_grad_v
       }
+      dampDpD <- c(dampDpD_2,damping*diag(x=BLOB$XtWX))
+      return(list(dVscaled=dv_h, dbeta_eta=dbeta_eta, dampDpD = dampDpD))
       #invertand <- solve(BLOB$Gmat)+ (.ZtWZwrapper(solve(BLOB$chol_Q),invdH)) ## attendion pas matrix diag en dern pos
       
       # range(BLOB$Gmat+BLOB$chol_Q %*% Diagonal(x=damping * BLOB$D_Md2hdv2) %*% t(BLOB$chol_Q)-G_dG)
@@ -887,20 +907,31 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       #         solve(G_dG))
       
     }
-    return(list(dVscaled=dv_h, dbeta_eta=dbeta_eta, dampDpD = damping*BLOB$DpD))
   }
-  if (which =="LevMar_step_v_h") {  ## LM with diagonal perturbation as in NocedalW p. 266
-    ## Here I deleted from v2.4.100 a variant using .damping_to_solve()
+  if (which =="LevMar_step_v_h") {  
+    ## See comments, on the different methods, in which =="LevMar_step" above.
     grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))]
-    if (.spaMM.data$options$use_G_dG) {
+    if (.spaMM.data$options$use_G_dG) { # default
       G_dG_blob <- .calc_G_dG(BLOB, damping) # list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2)
       rhs <- BLOB$chol_Q %*% grad_v
       rhs <- Matrix::solve(G_dG_blob$G_dG,rhs)
       dv_h <- drop(crossprod(BLOB$chol_Q,rhs))
       resu <- list(dVscaled= dv_h, dampDpD = G_dG_blob$dampDpD_2)
-    } else { ## slower... sigh. Maybe bc the code for (full) LevMar_step uses the other approach.
+    } else if (useCHM <- TRUE) {
+      XD_CHM_info <- get_from_MME(sXaug, which="XD_CHM_info")
+      dampDpD_2 <- damping * XD_CHM_info$D_Md2hdv2
+      dv_h <- .damping_to_solve_CHM(XD_CHM_info = XD_CHM_info,
+                                          dampDpD=dampDpD_2, rhs=grad_v)
+      resu <- list(dVscaled= dv_h, dampDpD = dampDpD_2)
+    } else if (useQR <- FALSE) {
+      .get_Hfac_D_Md2hdv2(BLOB)
+      dampDpD_2 <- damping * BLOB$D_Md2hdv2
+      DS <- .damping_to_solve_QR(X=BLOB$Hfac, dampDpD=dampDpD_2, rhs=NULL) ## potentially slow chol2inv() 
+      dv_h <- drop((DS$inv %*% grad_v[DS$Rperm])[DS$RRsP]) 
+      resu <- list(dVscaled= dv_h, dampDpD = dampDpD_2)
+    } else { 
       H_dH_blob <- .calc_H_dH(BLOB, damping) # list(dVscaled= dv_h, dampDpD = dampDpD_2)
-      dv_h <- Matrix::solve(H_dH_blob$H_dH,  grad_v)[,1]
+      dv_h <- Matrix::solve(H_dH_blob$H_dH,  grad_v)
       resu <- list(dVscaled= dv_h, dampDpD = H_dH_blob$dampDpD_2)
     }
     return(resu)
@@ -913,10 +944,26 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       dampDpD <- damping*diag(XX_D)
       diag(XX_D) <- diag(XX_D)+dampDpD
       dbeta_eta <- tryCatch(solve(XX_D , dbeta_rhs)[,1],error=function(e) e)
-      if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (ginv(XX_D) %*% dbeta_rhs)[,1]
+      if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (.ginv(XX_D) %*% dbeta_rhs)[,1]
       resu <- list(dbeta_eta=dbeta_eta, dampDpD =dampDpD)
       return(resu)
     } else stop("LevMar_step_beta called with 0-length rhs: pforpv=0?")
+  }
+  if (which=="XD_CHM_info") { # for non-default "LevMar_step_v_h", and "LevMar_step" (v_b)
+    if (is.null(BLOB$XD_CHM_info)) {
+      X <- tmp <- drop0(BLOB$tcrossfac_Md2hdv2) ## probably not so sparse...
+      xx <- tmp@x
+      xx <- xx*xx
+      tmp@x <- xx
+      D_Md2hdv2 <- rowSums(tmp) 
+      tcrossX <- .tcrossprod(X, chk_sparse2mat = FALSE, as_sym = TRUE)
+      BLOB$XD_CHM_info <- list(
+        D_Md2hdv2=D_Md2hdv2,
+        tcrossX = tcrossX, 
+        template_CHM = Cholesky(.dsCsum(tcrossX, .symDiagonal(n=ncol(X))), LDL=FALSE, perm=TRUE) 
+      )
+    }
+    return(BLOB$XD_CHM_info)
   }
   if (which=="beta_cov_info_from_wAugX") { ## for predVar 
     ## not called during the fit, so ideally we store the necessary info in the fit rather than use get_from_MME() 

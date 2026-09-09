@@ -49,6 +49,11 @@
         u.log <- stats::pgamma(y/(mu_U*pw_resvar), 1/pw_resvar, log.p = TRUE)
         list(norm=qnorm(u.log, log.p=TRUE)) # qres
       },
+      "tweedie" = { 
+        p <- .get_family_par(family=fam)
+        u <- fam$ptweedie(q=y, mu=mu_U, p=p, phi=pw_resvar)
+        list(norm=qnorm(u, log.p=FALSE)) # qres
+      },
       ## all other cases are presumably count families, for which randomization is used:
       {
         switch(famfam,
@@ -78,7 +83,7 @@
                  a <- stats::ppois(y - 1L, mu_U)
                  b <- stats::ppois(y, mu_U)
                },
-               "COMpoisson" = {
+               "COMPoisson" = {
                  family_env <- environment(fam$aic)
                  COMP_nu <- family_env$nu # no pw implemented yet for this family
                  lambda <- family_env$mu2lambda(mu_U)
@@ -97,7 +102,7 @@
                      aa <- aa + dbb
                    }
                    a[i] <- aa 
-                   dbb <- .dCOMP(y, mu=mu_i,# family_env,
+                   dbb <- .dCOMP(y[i], mu=mu_i,# family_env,
                                  nu=COMP_nu,
                                  lambda=lambda_i,
                                  log = FALSE, maxn=maxn_i)

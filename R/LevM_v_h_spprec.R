@@ -50,18 +50,23 @@
     ##### initial sXaug
     ZAL_scaling <- 1  ## TAG: scaling for spprec
     eta  <- off + drop(X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
-    muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
+    muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, 
+                          dyndyn=FALSE, phi_est=phi_est) 
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
     w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
     
-    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
-      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
-      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)[["mnsizes"]])) {
+      p4mprobs <- .calc_p4mprobs(muetablob=muetablob, multinom_info)
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
+      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
       replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
       muetablob$dz1_p4m <- replaces_etamo - (eta-off)
       constant_zAug_args$ZAL <- dcdv_p4m #  "doSeeMe" # see comment on other instance of this code
       AUGI0_ZX$X.pv <- dcdb_p4m
-      AUGI0_ZX$ZAfix <- .makeMatp4m(mat=ZAfix, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      AUGI0_ZX$ZAfix <- .makeMatp4m(mat=ZAfix, multinom_info=multinom_info, processed=processed, 
+                                    p4mprobs = p4mprobs)
     }
     ## needs adjMatrix and corrPars to define Qmat
     update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, cum_n_u_h=processed$cum_n_u_h) 

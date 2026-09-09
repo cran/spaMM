@@ -148,7 +148,7 @@ HLCor_body <- function(processed, ## single environment
   ########################################################################################################################
   ###
   if ( (! is.null(processed$return_only)) && processed$augZXy_cond) {
-    hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, fixed=fixed))
+    hlfit <- do.call(.spaMM.data$options$augZXy_body,list(processed=processed, fixed=fixed))
     if (FALSE) { # check consistency of aug_ZXy and non-aug_ZXy procedures
       # This code works: reused 01/2022 to check corrFamily model. 
       ## this test has previously interfered with the results (fitme3, fitme6 tests), presumably bc of the inner attribute (now added here, ignored during the test):
@@ -263,7 +263,7 @@ HLCor_body <- function(processed, ## single environment
                                    rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
-  if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation
+  if ( .has_X_off_betas(processed)) { # beta outer-optimisation
     if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
       ranefParsList$trBeta <- NULL
       HLCor.call$etaFix$beta <- .spaMM.data$options$.betaInv(trBeta)

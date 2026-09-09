@@ -130,7 +130,7 @@
 # of [discrepancies between packages on poly(cbind(age, parity), 6) fit in test-back-compat.R]
 .wrap_MakeADFun <- function(processed, init.optim, DLL) {
   y <- processed$y
-  if (is.null(scX <- environment(processed$X_off_fn)$X_off)) { # this scX is available if an init beta was given; then $AUGI0_ZX$X.pv has zero cols
+  if (is.null(scX <- environment(processed$X_off_Xb_fn)$X_fixed)) { # this scX is available if an init beta was given; then $AUGI0_ZX$X.pv has zero cols
     stop("won't work bc processed init, upper and lower do not have beta.")
     scX <- processed$AUGI0_ZX$X.pv
   }

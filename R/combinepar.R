@@ -303,7 +303,7 @@ combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL, fit_env,
   } else stop("Unhandled type of 'cluster'")
   
   if (debug. && nb_cores>1L ) debug. <- 1L 
-  assign("debug.", debug., environment(fn))
+  if ( ! environmentIsLocked(environment(fn))) assign("debug.", debug., environment(fn))
   if (is.null(dim(newresp))) newresp <- matrix(seq(newresp),ncol=newresp,nrow=1) # assuming newresp is an integer
   nsim <- ncol(newresp)
   if (nb_cores>1L) {

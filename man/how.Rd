@@ -23,8 +23,9 @@ how(object, ...)
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{
-  A list, returned invisibly, whose elements are not further described here, some being slightly cryptic or subject to future changes However, \code{how(.)$fit_time} is a clean way of getting the fit time. If \code{verbose} is \code{TRUE}, the function prints a message presenting some of these elements.
+  A list, returned invisibly, whose elements are not further described here, some being slightly cryptic or subject to future changes. However, \code{how(.)$fit_time} is a clean way of getting the fit time, and element \code{algebra} stores a value that can be used as the \code{algebra} element in the \code{control.HLfit} argument of the fitting functions. If \code{verbose} is \code{TRUE}, the function prints a message presenting some of the information stored in the returned list.
 }
+\seealso{\code{\link{algebra}}}
 \examples{
 foo <- HLfit(y~x, data=data.frame(x=runif(3), y=runif(3)), method="ML", ranFix=list(phi=1))
 how(foo)

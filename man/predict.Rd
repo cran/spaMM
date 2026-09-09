@@ -64,7 +64,7 @@ get_intervals(..., intervals="predVar")
  \item{which}{any of \code{"predVar"},\code{"respVar"},\code{"residVar"}, \code{"fixefVar"}, \code{"intervals"}, or \code{"naive"}. }
  \item{level}{Coverage of the intervals.}
  \item{binding}{
-  If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame. The predicted values column name is the given \code{binding}, or a name based on it if the \code{newdata} already include a variable with this name. 
+  If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame (except for multivariate-response fits: see Details). The predicted values column name is the given \code{binding}, or a name based on it if the \code{newdata} already include a variable with this name. 
   If \code{binding} is \code{FALSE}, The predicted values are returned as a one-column matrix and the data frame used for prediction is returned as an attribute
   (unless it was \code{NULL}). If \code{binding} is \code{NA}, a vector is returned, without the previous attributes.
  }
@@ -96,8 +96,11 @@ Possible values of this argument are some of the functions dealing with \code{NA
 \value{
   See Details in \code{\link{Tpoisson}} for questions specific to truncated distributions.
   
-  For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{mv}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any. The \code{frame} attribute includes information about any \code{na.action} effect on the new data. 
-  For multivariate response fits, the \code{mv} attribute gives the predictions as a list with elements for each submodel. 
+  \code{predict} returns a matrix or data frame (according to the \code{binding} argument), with optional attributes including \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any. 
+  
+  The \code{frame} is a data frame of predictors, and includes information about any \code{na.action} effect on the new data, except for predictions from multivariate response fits, where the \code{frame} is a list of data frames, each equivalent to the \code{frame} attribute for the univariate case. In the multivariate case, the additional \code{mv} attribute gives the predictions as a list with elements being the predictions for each submodel.
+  
+  For multivariate response fits, the additional \code{mv} attribute gives the predictions as a list with elements for each submodel, and the \code{frame} is a list of data frames, each equivalent to the \code{frame} attribute for the univariate case. 
   
   The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor. By default, \code{get_intervals} will return prediction intervals using \code{predVar}.
   \code{get_predVar} with non-default \code{which} argument has the same effect as the \code{get_}... function whose name is implied by \code{which}.
@@ -113,7 +116,9 @@ In the \bold{point prediction} of the linear predictor, the unconditional expect
 
 There are cases where prediction without a \code{newdata} argument may give results of different length than prediction with \code{newdata=}<original data>, as for \code{\link{predict}}. Notably, for multivariate-response fits, different subsets of lines of the data may be used for each submodel depending on the availability of all variables (including the response variable) for each submodel, and the resulting fitted values from each submodel will be used from prediction; while prediction with \code{newdata} does not check the availability of a response variable.
 
-\bold{Intervals} computations use the relevant variance estimates plugged in a Gaussian approximation, except for the simple linear model where it uses Student's \emph{t} distribution.   
+\bold{Intervals} computations use the relevant variance estimates plugged in a Gaussian approximation, except for the simple linear model where it uses Student's \emph{t} distribution.  
+
+\bold{Binding} the predicted values to a \bold{single} data frame of predictors is not implemented for multivariate-response fits. It would not generally be feasible in this case without various side effects, because there is a data frame of predictors for each submodels, each with possibly different predictors. Instead, binding of predictions for each submodel to their respective frames is attempted. This is an \bold{experimental} feature which may not work for all options. If this fails, the returned object when \code{binding=FALSE} can nevertheless be used to achieve suitable forms of binding: in particular, the frames are returned as the \code{"frame"} attribute (a list of data frames), and a list, over submodels, of the predictions is returned as the \code{"mv"} attribute.  
 
 }
 \seealso{

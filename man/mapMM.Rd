@@ -41,7 +41,7 @@ map_ranef(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL,
 }
 \arguments{
   \item{fitobject}{
-  The return object of a corrHLfit or fitme call.
+  A fit object of class \code{HLfit}, as returned by \code{fitme} or \code{corrHLfit}.
 %~ adjMatrix valid for mapMM ?
 }
   \item{x,y,z}{

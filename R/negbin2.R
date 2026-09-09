@@ -1,14 +1,21 @@
-.DlogLDmu_trunc_nb2 <- local({
-  function(y, mu, wt, phi, shape_it=NULL) { # dlogL/dmu
-    if ( ! is.null(shape_it)) shape <- shape_it
-    term <- shape*(y-mu)/(mu*(mu + shape))
-    term <- drop(term)
-    p0 <- .negbin2_p0(mu,shape)
-    Mdlog1mp0 <- - p0^(1+1/shape) /(1-p0)
-    term + Mdlog1mp0
-  }
-})
+# The environment of this fn (copied under another name) will be redefined by negbin2()
+# The shape argument may then be taken from the new envir if shape_it is NULL
+# cf def of family's getmu() function for use of shape_it, not needed in the local() functions below.
+# These functions are used for (trunc=0L, LLgeneric=(then default)TRUE), 
+# called through .add_Md_logcLdeta_terms() and routinely tested, eg by
+# fitme(I(1+cases)~1+(1|id),family=Tnegbin(),fixed=list(lambda=0.1),data=scotlip)
+#   
+.DlogLDmu_trunc_nb2 <- function(y, mu, wt, phi, shape_it=NULL) { # dlogL/dmu
+  if ( ! is.null(shape_it)) shape <- shape_it
+  term <- shape*(y-mu)/(mu*(mu + shape))
+  term <- drop(term)
+  p0 <- .negbin2_p0(mu,shape)
+  Mdlog1mp0 <- - p0^(1+1/shape) /(1-p0)
+  term + Mdlog1mp0
+}
 
+# The environment of this fn (copied under another name) will be redefined by negbin2()
+# so the NaN shape value won't be used: it avoid a CHECK warning.
 .D2logLDmu2_trunc_nb2 <- local({
   shape <- NaN
   function(y, mu, wt, phi) { 
@@ -80,20 +87,26 @@
   p0
 }
 
-negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link = "log", trunc=-1L, LLgeneric=TRUE) {
+negbin2 <- function (shape, link = "log", trunc=-1L, LLgeneric=TRUE) {
   mc <- match.call()
   resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
-  if (inherits(shch <- substitute(shape),"character") ||
-      (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
-      # (but testing only "name" would catch e.g. negbin(shape=shape) )
-  ) { 
-    if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
-    errmess <- paste0('It looks like negbin[2](',shch,') was called, which absurdly means negbin[2](shape=',shch,
-                      ').\n  Use named argument: negbin[2](link=',shch,') instead.')
-    stop(errmess)
+  if (missing(shape)) {
+    delayedAssign("shape", stop("negbin2's shape must be specified"))
+  } else {
+    shch <- substitute(shape)
+    if (inherits(shch,"character") ||
+        (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
+        # (but testing only "name" would catch e.g. negbin(shape=shape) )
+    ) { 
+      if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
+      errmess <- paste0('It looks like negbin[2](',shch,') was called, which absurdly means negbin[2](shape=',shch,
+                        ').\n  Use named argument: negbin[2](link=',shch,') instead.')
+      stop(errmess)
+    }
+    # When 'shape' is recognized as as call to some function, 
+    # we eval it so it is no longer recognized as a call by .is_fampar_missing()
+    if (inherits(shch,"call")) shape <- eval(shch, parent.frame()) 
   }
-  # When 'shape' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
-  if (inherits(shch,"call") && deparse(shch[[1]])!="stop") shape <- eval(shch) 
   
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
@@ -194,9 +207,8 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
   
   aic <- function(y, n, mu, wt, dev) { - 2 * sum(logl(y, mu, wt)) }
   
-  linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
+  linkfun <- function(mu,mu_truncated=FALSE, mu_U=attr(mu,"mu_U")) { ## mu_truncated gives type of I N put
     if (mu_truncated) { ## ie if input mu_T
-      mu_U <- attr(mu,"mu_U")
       return(stats$linkfun(mu_U))
     } else return(stats$linkfun(mu)) ## mu_U -> eta_U
   }
@@ -311,7 +323,7 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
 
 negbin <- negbin2
 
-Tnegbin <- function(shape = stop("Tnegbin's 'shape' must be specified"), link = "log") {
+Tnegbin <- function(shape, link = "log") {
   mc <- match.call()   # avoid evaluation of promise...
   mc[[1L]] <- get("negbin2", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc[["trunc"]] <- 0L

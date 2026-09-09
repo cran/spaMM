@@ -22,7 +22,7 @@ Another fit object. Usage with a \code{template} fit object is suitable for refi
   NULL or character: the name of the function to be used the next fit. If NULL, taken from \code{template} (if available), else from \code{from}. It is meaningful to provide a \code{to_fn} distinct from the function used to fit a \code{template}. 
 } 
 \item{inner_lambdas}{ Boolean; 
-  Whether the output should include estimates of the dispersion parameters estimated by the iterative methods implemented in \code{HLfit}.
+  Whether the output should include estimates of the dispersion parameters estimated by the iterative methods (see \code{\link{inner-vs-outer}}).
 }
 }
 \value{

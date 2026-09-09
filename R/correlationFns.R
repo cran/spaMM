@@ -86,7 +86,7 @@ CauchyCorr.dsCMatrix <- .CauchyCorr_hasSlotx
 CauchyCorr.dgCMatrix <- .CauchyCorr_hasSlotx
 
 #### demo
-if (F) {
+if (FALSE) {
  mym <- matrix(c(3,2,1,2,3,2,1,2,3),ncol=3)
  cL <- t(chol(mym))
  cL %*% t(cL)
@@ -133,7 +133,7 @@ mat_sqrt <- function(m=NULL, # coRRelation matrix
       if ( ! inherits(L,"simpleError") ) type <- "cholL_LLt" ## else type remains NULL      
     }
     if ( is.null(type) ) { ## no chol or failed chol
-      decomp <- eigen(m, symmetric=TRUE) ## such that v= t(u) without any sign issue
+      decomp <- .eigen(m, symmetric=TRUE) ## such that v= t(u) without any sign issue
       svdnames <- names(decomp)
       svdnames[svdnames=="values"] <- "d"
       svdnames[svdnames=="vectors"] <- "u"
@@ -155,6 +155,7 @@ mat_sqrt <- function(m=NULL, # coRRelation matrix
     decomp <- symSVD[c("d","u","adjd","eigrange")] # keep any $adjd  useful for SEM CAR; otherwise may be NULL 
     decomp$d[decomp$d<1e-16] <- 1e-16
     L <- .ZWZt(symSVD$u,sqrt(symSVD$d))  
+    # rownames(L) <- rownames(symSVD$u) # (names kept as decomp element by .eigen() or .svd())
     type <- "symsvd"      
   }
   attr(L,"type") <- type
@@ -215,35 +216,36 @@ regularize <- function(A, EEV=extreme_eig(A,symmetric=TRUE), maxcondnum=1e12#, m
   A
 }
 
+# Compared to older as_precision: 
+# * no systematic eigen computation
+# * correction exactly achieves condnum (as corr_sqrt)
+# default condnum 1e12 (as mat_sqrt and corr_sqrt)
+# Compared to mat_sqrt: here input in coRR matrix, output too.
+
+# (corrected) older version of diagcorr computation:
+# esys <- eigen(corrMatrix, only.values = TRUE, symmetric=TRUE)
+# evalues <- esys$values
+# min_d <- evalues[1L]/condnum ## so that corrected condition number is at most the 1e14
+# diagcorr <- max(c(0,min_d-evalues)) # SINGLE SCALAR
 as_precision <- function(corrMatrix, condnum=1e12) {
-  # Compared to older as_precision: 
-  # * no systematic eigen computation
-  # * correction exactly achieves condnum (as corr_sqrt)
-  # default condnum 1e12 (as mat_sqrt and corr_sqrt)
-  # Compared to mat_sqrt: here input in coRR matrix, output too.
   if (inherits(corrMatrix,"dist")) { corrMatrix <- proxy::as.matrix(corrMatrix, diag=1) }
   corrMatrix <- forceSymmetric(corrMatrix)
   precmat <- tryCatch(chol2inv(chol(corrMatrix)),error=function(e) e)
   if (inherits(precmat,"simpleError")) {
-    if (TRUE) {
-      EEV <- extreme_eig(corrMatrix, symmetric=TRUE, required=TRUE) # bc required=TRUE Is what the old mat_sqrt() effectively did
-      e1 <- EEV[1]
-      en <- EEV[2]
-      if (en < -1e-4) {
-        mess <- paste0("Matrix has suspiciously large negative eigenvalue(s): is it a valid correlation matrix?")
-        warning(mess)
-      }
-      diagcorr <- (e1 - condnum * en)/(-1 + condnum + e1 - condnum * en) ## so that 
-      # corrected condition number is exactly the condnum param, given the following correction.
-      # Further if the input matrix has unit diag the corrected one also has unit diagonal.
-      # For general covariance matrices here is not such result (but no straightforward rule for a corrected matrix to belong to a declared 'corr'Family )
-      diagcorr <- max(0,diagcorr) 
-    } else { # (corrected) older version
-      esys <- eigen(corrMatrix, only.values = TRUE, symmetric=TRUE)
-      evalues <- esys$values
-      min_d <- evalues[1L]/condnum ## so that corrected condition number is at most the 1e14
-      diagcorr <- max(c(0,min_d-evalues)) # SINGLE SCALAR
+    
+    EEV <- extreme_eig(corrMatrix, symmetric=TRUE, required=TRUE) # bc required=TRUE Is what the old mat_sqrt() effectively did
+    e1 <- EEV[1]
+    en <- EEV[2]
+    if (en < -1e-4) {
+      mess <- paste0("Matrix has suspiciously large negative eigenvalue(s): is it a valid correlation matrix?")
+      warning(mess)
     }
+    diagcorr <- (e1 - condnum * en)/(-1 + condnum + e1 - condnum * en) ## so that 
+    # corrected condition number is exactly the condnum param, given the following correction.
+    # Further if the input matrix has unit diag the corrected one also has unit diagonal.
+    # For general covariance matrices here is not such result (but no straightforward rule for a corrected matrix to belong to a declared 'corr'Family )
+    diagcorr <- max(0,diagcorr) 
+    
     corrMatrix <- (1-diagcorr)*corrMatrix
     diag(corrMatrix) <- diag(corrMatrix) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
     # oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # chol2inv(<dtC>) problem in Matrix v1.4.2
@@ -255,10 +257,17 @@ as_precision <- function(corrMatrix, condnum=1e12) {
   return(structure(list(matrix=drop0(precmat)),class=c("list","precision"))) # return value must be sparse, not simply Matrix. 
 }
 
-
-make_scaled_dist <- local({
+.warn_Chord_once <- local({
   Chord_warned <- FALSE
-  function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
+  function() {
+    if (! Chord_warned) {
+      warning("NB: using dist's Chord distance on a circle, not EarthChord on a sphere", immediate. = TRUE )
+      Chord_warned <<- TRUE
+    }
+  }
+})
+
+make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
                                dist.method="Euclidean",return_matrix=FALSE) {
   if (length(rho)>1L && dist.method!="Euclidean") { 
     stop("'rho' length>1 not allowed for non-Euclidean distance.")
@@ -288,10 +297,7 @@ make_scaled_dist <- local({
       }
       scaled.dist <- .dist_fn(x=uniqueScal,y=uniqueScal2, method=dist.method) 
     } else { ## not Euclidean
-      if (dist.method=="Chord" && (! Chord_warned) ) {
-        warning("NB: using dist's Chord distance on a circle, not EarthChord on a sphere", immediate. = TRUE )
-        Chord_warned <<- TRUE
-      }
+      if (dist.method=="Chord") .warn_Chord_once()
       scaled.dist <- rho * .dist_fn(uniqueGeo,y=uniqueGeo2,method=dist.method)  
     }
   } else { ## distMatrix provided
@@ -306,8 +312,7 @@ make_scaled_dist <- local({
     } else if (inherits(scaled.dist,"crossdist")) scaled.dist <- scaled.dist[] ## []: same effect as what one would expect from non-existent as.matrix.crossdist()
   }
   return(scaled.dist)
-  }
-}) 
+}
 
 getDistMat <- function(object,scaled=FALSE, which=1L) {
   if (! is.null(msd_arglist <- attr(object$strucList[[which]],"msd.arglist"))) {

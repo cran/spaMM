@@ -210,8 +210,12 @@ SEXP logit(NumericVector mu) {
   return(wrap(eta)); 
 }
 
+// To test whether something is a promise or not, substitute( <name>, <environment>) is useful
+// eg is.numeric(substitute(nu, env = environment(COMPoisson()$aic)))
+
 // [[Rcpp::export(.is_evaluated)]]
 bool is_evaluated(Symbol name, Environment env) {
+  // This is used in the SI_InfusionMS scripts so should remain
 #if R_VERSION >= R_Version(4, 6, 0)
   R_BindingType_t typ= R_GetBindingType(name,env); 
   return(typ != R_BindingTypeDelayed); // cf defs in Rinternals.h https://github.com/wch/r-source/blob/1403f68558a1e1258b0d07ed0cb2cfc1881428a7/src/include/Rinternals.h#L666

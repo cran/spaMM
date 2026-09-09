@@ -137,4 +137,37 @@
   return(optr) # use nloptr format (solution, objective) for return, but $solution is named vector
 }
 
+# As in Infusion. 
+# nloptr's default maxeval is 100 (at least in a 2-par example), which proves, here as elsewhere 
+# (eg, https://stackoverflow.com/questions/34796173/no-change-to-initial-values-using-nloptr-in-r)
+# confusingly not enough. Beyond increasing it, it may also help if the objfn provides 
+# info about its own best result as side effect, using an ad-hoc environment 
+# (as done within .confint_LRT_single_par_p4m()).
+#
+# And increasing opts$local_opts$"maxeval" also proved useful, otherwise premature terminations
+# with misleading "NLopt solver status: 3 ( NLOPT_FTOL_REACHED: Optimization stopped because ftol_rel or ftol_abs (above) was reached. )"
+.constrOptim <- function (init, objfn, lower, upper, object, neg_ineq_constrfn, 
+          template, eq_constrfn, 
+          opts=list(algorithm = "NLOPT_LN_AUGLAG", xtol_rel = 4e-6, xtol_abs=1e-8, 
+                    local_opts = list(algorithm = "NLOPT_LN_BOBYQA", 
+                                      xtol_rel = 4e-6, xtol_abs=1e-8)), # perhaps modify xtol_abs to 1e-8 * "range(parm)" ?
+          ...) {
+  if (is.null(opts$"maxeval")) {
+    maxeval <- 10L*eval(.spaMM.data$options$maxeval,envir=list(initvec=init))
+    opts$local_opts$"maxeval" <- opts$"maxeval" <-  maxeval
+  }
+  # 10L* bc the options$maxeval value is clearly not enough for constrained optim.
+  if ("template" %in% names(formals(objfn))) {
+    optr <- nloptr::nloptr(x0 = init, eval_f = objfn, eval_g_ineq = neg_ineq_constrfn, 
+                           eval_g_eq = eq_constrfn, lb = lower, ub = upper, template = template, 
+                           opts = opts)
+  } else {
+    optr <- nloptr::nloptr(x0 = init, eval_f = objfn, eval_g_ineq = neg_ineq_constrfn, 
+                           eval_g_eq = eq_constrfn, lb = lower, ub = upper, 
+                           opts = opts)
+  }
+  names(optr$solution) <- names(init)
+  optr
+}
+# = is quite similar to an nloptr::auglag call. See .../doc_code/constrOptim_auglag.R
 

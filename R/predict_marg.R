@@ -60,6 +60,7 @@
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
                                    variances=list(residVar=FALSE, cov=FALSE), 
+                                   control=control,
                                    invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) 
   newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
   newZAXlist <- new_X_ZACblob$newZACpplist

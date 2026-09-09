@@ -92,22 +92,17 @@
       }
     }      
   }
-  if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale # trBeta is never used by default (spaMM option tr_beta).... (but check ADFun experiment if modifying this)
-    sc_fixef <- .spaMM.data$options$.betaInv(trBeta)
+  if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on untransformed scale # trBeta is never used by default (spaMM option tr_beta).... (but check ADFun experiment if modifying this)
+    fixef <- .spaMM.data$options$.betaInv(trBeta)
     ranPars_in_refit$trBeta <- NULL
   } else {
-    sc_fixef <- ranPars_in_refit$beta # assuming they were scaled, as in optPars
+    fixef <- ranPars_in_refit$beta # assuming they were NOT scaled, 
     ranPars_in_refit$beta <- NULL
   }
-  if ( ! is.null(sc_fixef)) {
-    X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
-    fixef <- .unscale(X.pv, sc_fixef)
-    # always unscaled values in init.HLfit or etaFix:
-    if (identical(refit_info$beta,TRUE)) {
-      init_refit$fixef <- fixef
-    } else {
-      HLCor.args$etaFix$beta <- fixef
-    }
+  if (identical(refit_info$beta,TRUE)) {
+    init_refit$fixef <- fixef
+  } else {
+    HLCor.args$etaFix$beta <- fixef
   }
   if (length(init_refit)) HLCor.args$init.HLfit <- .modify_list(HLCor.args$init.HLfit, init_refit) 
   return(list(HLCor.args=HLCor.args, ranPars_in_refit=ranPars_in_refit))

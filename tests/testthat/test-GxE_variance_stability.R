@@ -5,7 +5,7 @@ cat(cli::col_yellow("\ntest of yield stability analysis:"))
 
 if (spaMM.getOption("example_maxtime")>1.5) {
   if (requireNamespace("agridat", quietly = TRUE)) {
-    if("package:mgcv" %in% search()) detach("mgcv") # otherwise unable to detach nlme at end of block
+    if("package:mgcv" %in% search()) detach("package:mgcv") # otherwise unable to detach nlme at end of block
     library("nlme") # more is needed than the functions imported in spaMM
     
     data("onofri.winterwheat", package="agridat")

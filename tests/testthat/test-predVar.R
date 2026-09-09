@@ -54,9 +54,13 @@ if ("dgCMatrix" %in% how(twolambda, verbose=FALSE)$MME_method) { # if QRmethod="
   testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-5)
 } else {
   crit <- diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))
-  try(testthat::test_that(paste0("singular 'twolambda' model [Failure unfortunately expected]: criterion was ",signif(crit,4)," >1e-7"),
+  if (testthat::expect_equal(crit,0.003231139)) {
+    message("Test of singular 'twolambda' model: predVar's still differ as they have always had." )
+    # crit has been 0.003231 for some time (v4.5.0...)
+  } else if (testthat::expect_true(crit<1e-7)) {
+    stop("Test of singular 'twolambda' model: numerical pbs magically solved :-).")
+  } else try(testthat::test_that(paste0("singular 'twolambda' model's criterion was poor but has changed: ",signif(crit,4)," >1e-7"),
                      testthat::expect_true(crit<1e-7)  )) ## affected by .Rcpp_backsolve()
-  # crit has been 0.003231 for some time (v4.5.0...)
 }
 
 

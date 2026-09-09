@@ -474,21 +474,71 @@
   LHS_blob
 }
 
+## not_.I. mean  NOT for "(.|.)" exp_ranef_type (which includes basic ranCoefs,
+## and have NULL raneftype)
+## { for IMRFs, the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
+##   as by .calc_Zmatrix() -> .as_factor() for IMRFs.
+##   They are both controlled by option uGeo_levels_type 
+##   (itself being by default = "data_order" as the most explicit). }
+.levels_type_not_.I. <- function(raneftype, is_time_series_s.l., corr_type, cF_levels_type,
+                              fallback_type) {
+  levels_type <- fallback_type
+  ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
+  #   matching a time concept, or user-provided names for the corrMatrix.
+  ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
+  if (raneftype %in% c("Matern","Cauchy")) { ## even in sparse case, so this must be checked here, rather than be default final case
+    # use the fallback type, currently "data_order"
+  } else if (raneftype =="IMRF") { # see comments above
+    levels_type <- .spaMM.data$options$uGeo_levels_type 
+  } else if (is_time_series_s.l. || raneftype %in% c("corrMatrix","adjacency")) {
+    levels_type <- "data_order" # otherwise in prediction, any set of levels=location indices is reduced to 1 2 3... 
+  } else if ( identical(corr_type,"corrFamily")) {
+    levels_type <- cF_levels_type # notably, "time_series"
+    # But not the previous test on assuming_spprec, which will typically catch the ARp case
+    # in which case levels_type ("data_order") remains distinct from cF_levels_type ("time_series")   
+  } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
+    # # use the fallback type, currently "data_order"; 
+    # but "seq_len" has been used in post-fit calls before major revision 
+    # so this could be tried again (____F I X M E____; permuted newdata tests important here)
+  }
+  levels_type
+}
 
+
+# I tried to change the levels_type post fit for
+# basic geostatistical terms. This ultimately created a problem for simulate, where newZAlist were computed twice
+# (which might still be the case for mv fits ?): if there are 
+# repeated geo positions in the newdata, as in
+## example(bboptim) [Matern with replicate pairs in some locations; locations are not unique in 'newuniqueGeo']
+## simulate(HLC, newdata = Loaloa[c(1:3, 1:3) + 0.1, ], sizes = HLC$BinomialDen[1:6])
+# In the second example, when levels_type is set to "seq_len", 
+# a first newZAlist was created with a 6-cols Z (ZA), with dummy colnames.
+# Later a second newZAlist was created by .calc_ZAlist_newdata() with a 3-cols Z (ZA),
+# with colnames matching the coords. And products were attempted between the second ZA and
+# correlation matrices or cholesky factors whose dimensions match those of the initial 6-cols ZA
+# and a bug can occurs, but was hidden by problematic column selection, eg of cols of a cholesky factor
+# according to colnames of the second ZA (selection of cols of a cholesky factor is 'always' wrong...
+# but the upper right block of the tcrossprod is unaffected so the user-level result could be unaffected).
+# so the cholesky factor and other matrices should always be dimensioned according to unique coords;
+# implying the levels_type should be as in the fit.
+# 
+# So anyway for simulate it was a waste of time to compute the first newZAlist
+# with levels_type set to "seq_len", since a distinct one would be computed later.
+#
+# Now, for univariate fits, the newZAlist is computed only once 
+# and it appears much safer that levels_type is as in the fit. 
+#
 .calc_Zmatrix <- function(x, # a term (element of exp_ranef_terms)
                           data, 
                           rmInt, ## remove Intercept
                           drop=TRUE, 
                           sparse_precision, 
-                          levels_type, # note that "data_order" and "seq_len" are all data-ordered, 
-                          # and other input values are not handled, but other values may be taken from cF_levels_type
-                          # but now there is also cF_levels_type
-                          
+                          For, 
                           corr_info, lit,
                           oldZA=NULL, # post_fit
                           lcrandfamfam,
                           cF_levels_type=.get_levels_type(corr_info=corr_info, 
-                                                          it=lit, default=levels_type)) {
+                                                          it=lit, default="data_order")) { # or default=fallback_type ?
   ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
   ## but fac may be any vector returned by the evaluation of x[[3]] in the envir 
   rhs <- x[[3]]
@@ -503,7 +553,7 @@
   # All code long based on attr(x,"type")... switching to corr_type would require further changes as e.g. .calc_Z_LHS_model_matrix also tests ( ! is.null(raneftype)) "## exclude (1|.) and ranCoefs! "
   # so currently we stick to attr(x,"type") and test raneftype %in% .spaMM.data$keywords$all_cF   (_F I X M E__?)
   raneftype <- attr(x,"type") 
-  #if (identical(raneftype, "(.|.)")) stop("this does not occur") # does not occurs here, as explained in calling fn, .calc_Zlist()
+  
   if ( ! is.null(raneftype)) { ## Any ranef term with a keyword (incl. corrMatrix, corrFamilies); cf comment in last case
     is_time_series_s.l. <- (raneftype=="AR1" || cF_levels_type=="time_series" )
     ## In the mv case, .calc_Zlist() is called 
@@ -516,42 +566,26 @@
     ## Next, the levels_type from fitmv call's covStruct argument will be tested, 
     ## and then RHS_info will be needed. => To force its generation, I implemented the private hack 
     ## corrFamily(., levels_type="time_series")
-    ## [not, doc'ed, but the doc correctly say that corrFamily() may not work in fitmv()]
+    ## [not, doc'ed, but the doc correctly say that corrFamily() may not work in fitmv()] # ______F I X M E_____ obsolete?
     #
-    old_levels_type <- attr(oldZA,"Z_levels_type")
-    if (is.null(old_levels_type)) { # pre-fit; or post-fit fitted with old version of spaMM before 'old_levels_type' info has been introduced
+    if (is.null(old_levels_type <- attr(oldZA,"Z_levels_type"))) { 
+      # pre-fit (For=="fit); or post-fit fitted with old version of spaMM before 'old_levels_type' info has been introduced
       ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume spprec: 
       ## this block however does not correctly sets post-fit 'levels_type' to "data_order" for some composite nested ranefs,
       ## which is why old_levels_type is now used.
       if (is.null(assuming_spprec <- sparse_precision)) assuming_spprec <- is_time_series_s.l.
-      ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
-      #   matching a time concept, or user-provided names for the corrMatrix.
-      ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
-      if (raneftype %in% c("Matern","Cauchy")) { ## even in sparse case, so this must be checked here, rather than be default final case
-        # Do notchange the current .calc_Zlist()'s levels_type, typically "data_order" at this point.
-      } else if (raneftype =="IMRF") {
-        # for IMRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
-        levels_type <- .spaMM.data$options$uGeo_levels_type # $uGeo_levels_type used to make sure 
-        #                                               that same type is used in .calc_AMatrix_IMRF() -> .as_factor()
-      } else if (is_time_series_s.l. || raneftype %in% c("corrMatrix","adjacency")) {
-        levels_type <- "data_order" # otherwise in prediction, any set of levels=location indices is reduced to 1 2 3... 
-      } else if ( identical(corr_info$corr_types[[lit]],"corrFamily")) {
-        levels_type <- cF_levels_type # notably, "time_series"
-        # But not the previous test on assuming_spprec, which will typically catch the ARp case
-        # in which case levels_type ("data_order") remains distinct from cF_levels_type ("time_series")   
-      } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
-        # uses .calc_Zlist()'s default levels_type: "data_order"; or "seq_len" in post-fit calls (permuted newdata tests important here)
-      }
-    } else { # post-fit:
-      if (raneftype %in% c("Matern","Cauchy") && ! has_.in.) {
-        ## old comment below. But with  newdata, simulate.HLfit() -> 
-        #  .calc_ZAlist_newdata() -> .calc_Zlist() with implicit default levels_type="data_order" 
-        # so with newdata, this is "data_order" here. Test code: simulate(HLC, newdata=Loaloa[c(1:3,1:3)+0.1,])
-        #
-        ### OLD comment
-        # keep the default post-fit levels_type, i.e. seq_len, as fast shortcut sufficient in that case
-        # (permuted newdata tests important here)
-      } else levels_type <- old_levels_type
+      levels_type <- .levels_type_not_.I.(raneftype, is_time_series_s.l., 
+                                          corr_type=corr_info$corr_types[[lit]], cF_levels_type,
+                                          fallback_type="data_order")
+    } else if (For=="simulate") {
+      levels_type <- old_levels_type
+    } else if (For=="predict") {
+      # levels_type <- .levels_type_not_.I.(raneftype, is_time_series_s.l., 
+      #                                     corr_type=corr_info$corr_types[[lit]], cF_levels_type,
+      #                                     fallback_type="data_order") # test-blackbox does not work with "seq_len"; 
+      # (unsurprising given repeated positions, but change compared to 'levels_type' argument used before major revision)
+      # But with "data_order", it becomes equivalent to 
+      levels_type <- old_levels_type
     }
     
     RHS_info <- .as_factor(term=rhs,mf=data,type=levels_type,has_.in.=has_.in.) # levelstype not further needed below
@@ -579,8 +613,8 @@
       #   for composite ranefs, old_ZA has repeated colnames, whose order is
       #   determined by the permutation in .A_ZA_update(), where the cols for the ranCoefs blocks
       #   are completely scrambled).
-      ##  presumptive____F I X M E____: Next line presumably fails if a non-trivial (permutation) A matrix was declared by the user... 
-      ## But I have no test for this odd case.
+      ##  presumptive-____F I X M E____: Next line presumably fails if a non-trivial (permutation) A matrix was declared by the user... 
+      ## But I have no test for this odd case. (... hmmm but see when I fixed mv fits for user-provided A...)
       if (is.null(RHS_levels)) RHS_levels <- colnames(corr_info$kron_Y_Qmats[[lit]]) # composite post-fit
       # Next line should be clean for remaining case
       if (is.null(RHS_levels)) RHS_levels <- levels(attr(oldZA,"RHS_info")$factor) # of the original Z, as should be kept in ZA
@@ -613,6 +647,13 @@
     if (has_.in.) rhs <- .replaceTerm(rhs, quote(`%in%`), quote(`%i%`)) 
     ff <- .rhs2factor(data, rhs) # standard ( | ), including ranCoefs case
     is_time_series_s.l. <- has_fn_in_RHS <- FALSE
+    if (For=="fit") {
+      levels_type <- "data_order"
+    } else if (For=="simulate") {
+      levels_type <- "data_order" # maybe seq_len would work ? _____F I X M E____
+    } else if (For=="predict") {
+      levels_type <- "seq_len" 
+    } # no other case expected.
   }
   
   ## model matrix for LHS in [...](LHS|rhs) (Intercept if ...(1|.)) 
@@ -706,8 +747,7 @@
 
 .calc_Zlist <- function (exp_ranef_terms, data, rmInt, 
                          sparse_precision=.spaMM.data$options$sparse_precision,
-                         levels_type="data_order", # cf comment for Matern case in .calc_ZMatrix(); there is one non-default use in post-fit code
-                         # two alternative ways to provide info about levels in .calc_ZMatrix():
+                         For,
                          corr_info=NULL, # Only pre-fit until corrFamily was introduced
                          rd_in_mv=NULL, # for .calc_ZAlist_newdata_mv()
                          sub_oldZAlist=NULL, # post-fit: (subset by newinold of) object$ZAlist
@@ -737,7 +777,7 @@
   for (rd in seq_along(ids_in_mv)) {
     Zlist[[rd]] <- .calc_Zmatrix(exp_ranef_terms[[rd]], data=data, rmInt=rmInt,
                                   sparse_precision=sparse_precision, 
-                                  levels_type=levels_type, 
+                                  For=For, 
                                   corr_info=corr_info, lit=ids_in_mv[[rd]],
                                   oldZA=sub_oldZAlist[[rd]], 
                                   lcrandfamfam=lcrandfamfam)

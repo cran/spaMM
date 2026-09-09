@@ -52,7 +52,7 @@
     #
     invLLt <- tryCatch(chol2inv(Rmatrix),error=function(e) e)
     if (inherits(invLLt,"simpleError") || max(abs(range(invLLt)))> 1e12) {
-      invLLt <- ginv(crossprod(Rmatrix))
+      invLLt <- .ginv(crossprod(Rmatrix))
     }
     invlmatrix <- .crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
   }
@@ -209,6 +209,12 @@ fitted.HLfit <- function(object,...) {
   } else return(object$BinomialDen)
 }
 
+get_drawSizes <- function(object, p4m="P") {
+  if (inherits(object,"pois4mlogit") && p4m=="M") {
+    return(object$p4m_info[["mnsizes"]])
+  } else .get_BinomialDen(object)
+}
+
 .residuals_bare <- function(type, y, mu, family, wts) {
   if (type=="deviance") {
     res <- sign(y-mu)*sqrt(pmax((family$dev.resids)(y, mu, wts), 0))
@@ -221,7 +227,7 @@ fitted.HLfit <- function(object,...) {
   function(object) {
     if ( ! warned) {
       warning(cli::format_warning("(One-time warning): default residuals are 'deviance', not 'response' residuals. See {.topic [residuals](spaMM::residuals)}."),
-              immediate. = TRUE)
+              immediate. = TRUE, call. = FALSE)
       warned <<- TRUE
     }
   }
@@ -366,31 +372,33 @@ coef.HLfit <- function(object, ...) {
   summary(object, details=c(p_value=TRUE), verbose=FALSE)$beta_table
 }
 
+# Logic for phiGLM is: get an "HLfit" object when there is one in object$resid_fit[s]
+# else produce a ~"glm" object. Cf .get_glm_phi(): it may be stored in two different places
+# and may also need to be produced ex-tempo.
+# The is no phi_model="" case bc switch() does not handle such a string...
 .get_phi_fit <- function(object, mv_it=NULL) {
   phi_model <- object$models[["phi"]]
   if (is.null(mv_it)) {
     phi_fit <- switch(phi_model,
                       "phiGLM" = {
-                         fit <- object$resid_fit ## hlfit
-                         if (is.null(fit)) fit <- object$phi.object[["glm_phi"]] ## glm
+                         fit <- object$resid_fit ## "HLfit" object
+                         if (is.null(fit)) fit <- .get_glm_phi(object) ## "glm"
                          fit
                       },
-                      "phiHGLM" = object$resid_fit, ## hlfit
+                      "phiHGLM" = object$resid_fit, ## "HLfit"
                       "phiScal" = object$phi, ## scalar
-                      # "" = object$phi, ## scalar for the count families, or user-given phi  # but switch does not handle ""
-                      # stop('Unhandled object$models[["phi"]]')
                       object$phi ## scalar for the count families, or user-given phi
     )  
   } else {
     phi_fit <- switch(phi_model[[mv_it]],
                       "phiGLM" = {
-                        fit <- object$resid_fits[[mv_it]] ## hlfit
-                        if (is.null(fit)) fit <- object$phi.object[[mv_it]]$glm_phi ## glm
+                        fit <- object$resid_fits[[mv_it]] 
+                        if (is.null(fit)) fit <- .get_glm_phi(object, mv_it=mv_it) 
                         fit
                       },
-                      "phiHGLM" = object$resid_fits[[mv_it]], ## hlfit        
-                      "phiScal" = object$phi[[mv_it]], ## scalar 
-                      object$phi[[mv_it]] ## scalar for the count families, or user-given phi...
+                      "phiHGLM" = object$resid_fits[[mv_it]], 
+                      "phiScal" = object$phi[[mv_it]], 
+                      object$phi[[mv_it]] 
     )  
   }
   return(phi_fit)
@@ -505,13 +513,35 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
   } else stop("Unknown 'which' type")
 } 
 
-# _F I X M E__: from R v3.3.0: New S3 generic function sigma() with methods for extracting the estimated standard deviation aka “residual standard deviation” from a fitted model. 
-
+sigma.HLfit <- function(object, ...) {
+  sig2 <- residVar(object, which="fit", ...)
+  if (is.numeric(sig2)) {
+     sqrt(sig2) # with prior.weights having the same effect as for (sigma(lm(., weights=...)))
+  } else {
+    warning("sigma() returns NULL for structured dispersion models.")
+    NULL
+  }
+}
 
 # Default newframes_info value reproduces .get_new_X_ZAC_blob() call from residVar(object, newdata=newdata, variances=list(residVar=TRUE))
+#
+# Residual simulation of a resid.model is a dubious concept.
+# Now, when simulate() is called by .get_phiW() on a phiHGLM 
+# its 'phi_type' is set to "phi=0" so that ultimately 
+# .r_resid_var() is called with famfam="phi=0"
+# for which it does not simulate (but random effects in the linear predictor of the 
+# phiHGLM can still be simulated, depending on the user-level 'phi_type',
+# that became the phiHGLM's 'type'). 
+#
+# simulate(phi_fit, phi_type="phi_0") still calls 
+#  .get_phiW('phimodel.' necessarily "phiScal") which is not useful,
+# but I did not try to completely bypass this step.
+#
+# A non NULL attr(phi_type,"non0phi_phi") provides access to dubious things.
+#
 .get_phiW <- function(
     object, newdata=NULL,
-    newframes_info=
+    newframes_info= # default (but value provided as new_X_ZAC_bloc in simulate.HLfit() )
       .get_new_X_ZAC_blob(object, newdata=newdata, re.form=NULL,  
                           variances=.process_variances(list(residVar=TRUE), object), 
                           control=list(keep_ranef_covs_for_simulate=FALSE, simulate=FALSE),
@@ -572,10 +602,17 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     phi_fit <- .get_phi_fit(object, mv_it=mv_it) # diverse object; for phiGLM, may be hlfit or glm or NULL
     # the NULL case seems to refer to cases were an outer algo is used to fit a phiGLM. Quite obscure.
     if (phimodel.=="phiGLM" && is.null(phi_fit)) phi_fit <- .get_glm_phi(object, mv_it=mv_it) # construct a glm object if needed
-    if (phi_type=="predict") {
+    
+    if (phi_type =="predict" || ## phi_type="predict" is the default of the parent simulate()
+        phimodel.=="phiScal" || ## there really no alternative in this case
+        ( # "marginal" simulation from a phiGLM reduces to predict() .../...
+          (phi_phi_0 <- is.null(attr(phi_type,"non0phi_phi")))  # ...UNLESS phi_phi_0 is not TRUE 
+          && phimodel. !="phiHGLM" ) 
+      ) { 
       newphiVec <- switch(phimodel.,
-                          "phiGLM" = drop(predict(phi_fit, newdata=locdata, type="response")), ## vector (drop needed when phi_fit is hlfit object)
-                          "phiHGLM" = predict(phi_fit, newdata=locdata, type="response")[ ,1L],
+                          "phiGLM" = drop(predict(phi_fit, newdata=locdata, type="response")), 
+                          ## vector (drop needed when phi_fit is hlfit object; it can also be of class 'glm')
+                          "phiHGLM" = drop(predict(phi_fit, newdata=locdata, type="response")),
                           "phiScal" = rep(phi_fit, dims[1]),
                           stop('Unhandled object$models[["phi"]]')
       ) ## VECTOR in all cases, becomes matrix later
@@ -584,22 +621,33 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
         if (phimodel. %in% c("phiScal","phiGLM")) is_phiW_fix_btwn_sims <- TRUE
       } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
       phiW <- matrix(phiW,nrow=length(phiW), ncol=dims[2])  # vector -> matrix
-    } else { # any other phi_type 
-      newphiMat <- switch(phimodel.,
-                          "phiGLM" = {
-                            if (inherits(phi_fit,"HLfit")) {
-                              simulate(phi_fit, newdata=locdata, type=phi_type, nsim=nsim)
-                            } else as.matrix(simulate(phi_fit, newdata=locdata, nsim=nsim))
-                          }, ## data frame -> matrix
-                          "phiHGLM" = simulate(phi_fit, newdata=locdata, type=phi_type, nsim=nsim),
-                          "phiScal" = matrix(phi_fit,nrow=dims[1],ncol=dims[2]),
-                          stop('Unhandled object$models[["phi"]]')
-      ) ## already MATRIX in all cases
+    } else { # parent phi_type is not "predict", but "marginal" or a similar simulation type.
+      # below used as type=phi_type: inner simulate()' type is parent simulate()'s phi_type.
+      
+      # One API case with phi_type="phi=0"; and two { non API cases 
+      # simulating with residual variation itself using the predict phi 
+      # (hence inner phi_type="predict": is default but explicit here for clarity) }
+      
+      newphiMat <- switch(
+        phimodel.,
+        "phiGLM" = { # only non API, statistically dubious case
+          if (inherits(phi_fit,"HLfit")) {
+            simulate(phi_fit, newdata=locdata, type=phi_type, 
+                     phi_type="predict", nsim=nsim)
+          } else as.matrix(simulate(phi_fit, newdata=locdata, nsim=nsim))
+        }, ## data frame -> matrix
+        "phiHGLM" = { 
+          if ( ! phi_phi_0) { # non API
+            simulate(phi_fit, newdata=locdata, type=phi_type, 
+                     phi_type="predict", nsim=nsim)
+          } else simulate(phi_fit, newdata=locdata, type=phi_type, 
+                          phi_type="phi=0", nsim=nsim) # standard API case
+        },
+        stop('Unhandled object$models[["phi"]]') # phiScal always in 'newphiVec' above.
+      )
       if (identical(attr(prior.weights,"unique"),TRUE)) {
         phiW <- newphiMat/prior.weights[1L]
-        if (phimodel.=="phiScal") is_phiW_fix_btwn_sims <- TRUE
       } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
-      # F I X M E add diagnostics ?
     } # phiW is always a matrix
   }
   attr(phiW,"is_phiW_fix_btwn_sims") <- is_phiW_fix_btwn_sims
@@ -726,10 +774,10 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
     }
     return(loctable)
   }
-  if (family$family %in% c("gaussian","Gamma")) {
+  if (family$family %in% c("gaussian","Gamma","tweedie")) {
     if ( ! is.null(phi_outer <- phi.object$phi_outer)) { 
       phi_line <- data.frame(Group="Residual",Term="(Intercept)",Variance=phi_outer, "Std.Dev."=sqrt(phi_outer))
-      if ("Corr." %in% colnames(loctable)) phi_line <- cbind(phi_line,corrFill, row.names=NULL)
+      if ( ! is.null(corrFill)) phi_line <- cbind(phi_line,corrFill, row.names=NULL)
       loctable <- rbind(loctable,phi_line)
     } else {
       if (phimodel=="phiHGLM") { 
@@ -750,7 +798,7 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
           grptxt <- "Residual"
         } else grptxt <- paste0("Residual_",mv_it)
         phi_line <- data.frame(Group=grptxt,Term="(Intercept)",Variance=phi_est, "Std.Dev."=sqrt(phi_est))
-        if ("Corr." %in% colnames(loctable)) phi_line <- cbind(phi_line, corrFill, row.names=NULL)
+        if ( ! is.null(corrFill)) phi_line <- cbind(phi_line, corrFill, row.names=NULL)
         loctable <- rbind(loctable,phi_line)
       }                                                 
     }
@@ -759,13 +807,13 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
 }
 
 .VarCorr_df_lmelike <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
-  loctable <- NULL
+  loctable <- corrFill <- NULL
   if ( ! is.null(lambda.object <- x$lambda.object)) {
     #.legend_lambda(object, type = "family")
     namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
     linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
     lamtable <- .lambda_table_fn(namesTerms, x, lambda.object,linklam_coeff_list)
-    nonunique_colnames <- colnames(lamtable)
+    nonunique_colnames <- colnames(lamtable) # now unique ?
     loctable <- lamtable[,seq_len(ncol(lamtable))] # subsetting automatically generates unique names for the Corr. columns, but attributes are dropped
     for (it in seq_len(nrow(loctable))) {
       # That's not good bc the two lines for Group 'gridcode' are filled with the Intercept ($lambda_list never contains the adjd...)
@@ -777,12 +825,14 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
       }
     }
     loctable <- data.frame(Group=loctable[,"Group"],Term=loctable[,"Term"],Variance=loctable[,"Var."],"Std.Dev."=sqrt(loctable[,"Var."]))
-    if ("Corr." %in% colnames(lamtable)) {
-      corrFill <- lamtable[, nonunique_colnames=="Corr.", drop=FALSE]
+    Corcols <- setdiff(grep("Cor\\.[0-9]",nonunique_colnames),1:3)
+    if ( ! length(Corcols)) Corcols <- which(nonunique_colnames=="Corr.") # check for old format
+    if (length(Corcols)) {
+      corrFill <- lamtable[, Corcols, drop=FALSE]
       loctable <- cbind(loctable, corrFill, row.names=NULL)
       corrFill <- corrFill[1, , drop=FALSE]
       corrFill[] <- NA
-    }
+    } 
   } 
   if (add_residVars) loctable <- .add_varCorr_phi_lines(x, loctable, corrFill)
   rownames(loctable) <- NULL
@@ -840,8 +890,8 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
   resu
 }
 
-VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, format="lmelike", ...) {
-  if (format=="lmelike") {
+VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, format="data.frame", ...) {
+  if (format %in% c("data.frame", "lmelike")) { # lmelike for back-compat
     .VarCorr_df_lmelike(x=x, sigma=sigma, add_residVars=add_residVars, verbose=verbose, ...)
   } else if (format=="merMod") {
     .VarCorr_as_lmer(x=x, sigma=sigma, ...)
@@ -882,7 +932,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, format="
       mu <- attr(fv,"mu_U") # mu of untruncated latent variable if it exists 
       if (is.null(mu)) mu <- fv # otherwise expectation of response
       if (is.null(family$resid.model)) { # standard GLM family
-        if (scaling_pw && family$family %in% c("gaussian","Gamma")) {
+        if (scaling_pw && family$family %in% c("gaussian","Gamma","tweedie")) {
           if ( ! is.null(phi_est) ) stop("programming error") # phi_est is used to obtain std_dev_res below; in that case 'scaling_pw' should be FALSE 
           dev_res <- family$dev.resids(y,mu=fv,wt=pw) 
         } else dev_res <- family$dev.resids(y,mu=fv,wt=rep(1,length(fv))) 
@@ -1037,20 +1087,30 @@ get_rankinfo <- function(object) return(attr(model.matrix(object),"rankinfo"))
 }
 
 .get_ranPars_notPhi <- function(object, 
-                         wo_fixed=TRUE # whether to exclude fixed ones or not. Fn 1st dvl for wo_fixed=TRUE, the FALSE case may not always work. 
+                         wo_fixed=TRUE, # whether to exclude fixed ones or not. Fn 1st dvl for wo_fixed=TRUE, the FALSE case may not always work. 
+                         external_fix_in_out_info=object$ranef_info$external_fix_in_out_info
                          ) { # phi not handled by this fn
   CorrEst_and_RanFix <- object$CorrEst_and_RanFix
+  if (is.null(CorrEst_and_RanFix_type <- 
+              attr(external_fix_in_out_info$CorrEst_and_RanFix,
+                   "type"))) CorrEst_and_RanFix_type <- attr(CorrEst_and_RanFix,"type")  
+  
+  # remove fixed corrPars (lambda is treated later, using lambda.object)
   if (wo_fixed) {
     if (length(resu <- CorrEst_and_RanFix$corrPars)) {
-      resu <- .remove_from_cP(resu, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$corrPars)=="fix")))
+      resu <- .remove_from_cP(resu, 
+                              u_names=names(which(unlist(CorrEst_and_RanFix_type$corrPars)=="fix")))
       resu <- list(corrPars=resu)
     } else resu <- list()
   } else resu <- CorrEst_and_RanFix
   
   # Overwrite any fixed lambda in all cases:
-  if (length(lambda_list <- object$lambda.object$lambda_list)) {
+  lambda.object <- object$lambda.object
+  if (length(lambda_list <- lambda.object$lambda_list)) {
+    if (is.null(lambdatypes <- external_fix_in_out_info$lambda.object$type)) lambdatypes <- lambda.object$type
+    
     which_fitted_simple_lam <- which(sapply(lambda_list, length)==1L &  # removes (most) ranCoefs params [separate component of return value]
-                                       object$lambda.object$type!="fixed") 
+                                       lambdatypes!="fixed") 
     
     if (length(hyper <- CorrEst_and_RanFix$hyper)) {
       ranges <- object$ranef_info$hyper_info$ranges
@@ -1060,7 +1120,9 @@ get_rankinfo <- function(object) return(attr(model.matrix(object),"rankinfo"))
         #if (hy_lam_fixed) 
           which_fitted_simple_lam <- setdiff(which_fitted_simple_lam, ranges[[char_hyper_it]])
       }
-      if (wo_fixed) hyper <- .remove_from_cP(hyper, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$hyper)=="fix")))
+      if (wo_fixed) hyper <- 
+          .remove_from_cP(hyper, 
+                          u_names=names(which(unlist(CorrEst_and_RanFix_type$hyper)=="fix")))
     }
     
     lambda <- .unlist(lambda_list[which_fitted_simple_lam]) 
@@ -1141,6 +1203,7 @@ get_rankinfo <- function(object) return(attr(model.matrix(object),"rankinfo"))
 
 ..get_fittedPars <- function(object, 
                             which=c("lambda","phi","beta", "beta_prec", "NB_shape", "COMP_nu",
+                                    "Tw_index","Tw_link",
                                     "corrPars","hyper", "ranCoefs", "rdisPars"),
                             # Setting any of the booleans to FALSE overrides the default which:
                             fixef=TRUE, # include beta
@@ -1309,7 +1372,7 @@ get_ranPars <- function(object, which=NULL,
 # older version of formula.HLfit removed from  [v2.6.59
 formula.HLfit <- function(x, which="hyper", ...) {
   ## stats:::formula.default looks for x$formula then x$call$formula. 
-  # So formula(object) should be enough, EXCEPT that if it finds neither (no explicitly named formula in the call), 
+  # So formula.default(object) should be enough, EXCEPT that if it finds neither (no explicitly named formula in the call), 
   # it evaluates the call, in which case print(formula(<HLfit>)) leads to an infinite recursion
   # since form is then an HLfit object so print(form...) will call summary.HLfit()...
   form <- NULL
@@ -1605,11 +1668,18 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
          "fixef_left_ginv"= .get_fixef_WLS_ginv(object, ...), ## X^- = (X' W X)^{-1} X' W    # use the dots to pass an alternative X.pv
          "beta_v_cov"= .get_beta_v_cov(object), 
          "v_condcov"= .get_v_condcov(object),
+         "X2X"= object$X2X,
          stop("Unhandled 'which' value in get_matrix()")
   )
 }
 
-model.matrix.HLfit <- function(object, ...) object$X.pv
+model.matrix.HLfit <- function(object, ...) {
+  if (object$spaMM.version<"4.6.80") {
+    X <- object$X.pv
+    rownames(X) <- names(object$fv)
+    X
+  } else object$X.pv
+}
 
 .prettify_method <- function(MME_method, by_y_augm) {
   if (by_y_augm) {

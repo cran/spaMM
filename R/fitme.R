@@ -40,7 +40,7 @@
                              lower=list(),upper=list(),
                              resid.model=~1,
                              init.HLfit=list(),
-                             control=list(), ## optim.scale (private), nloptr, refit
+                             control=list(), ## nloptr, refit; (private:) ppc_reactvt_warn, optim.scale 
                              control.dist=list(),
                              method="ML", 
                              HLmethod=method, ## LRT fns assume HLmethod when they are called and when calling
@@ -66,6 +66,7 @@
     preprocess_args$predictor <- mc$formula ## because preprocess still expects $predictor 
     preprocess_args$ranFix <- fixed ## because preprocess expects ranFix
     preprocess_args$HLmethod <- HLmethod ## forces evaluation
+    preprocess_args$CONTROL <- control
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)

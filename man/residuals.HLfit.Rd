@@ -28,20 +28,37 @@ The first four types \code{"deviance"} (default), \code{"pearson"}, \code{"respo
 
 The default type is \code{"deviance"} as for \code{\link[stats]{residuals.glm}}, but since this may be confusing to some users, a gentle one-time warning will be issued when the \code{object} is a GLMM.
 
-\code{"deviance"} residuals are the signed square root of those returned by \code{\link{dev_resids}} when there are no prior weights. Note that there is a similar discrepancy in base R, as e.g. \code{gaussian()$dev.resids} returns the square of the \code{"deviance"} residuals. A similar discrepancy also affects the \code{"std_dev_res"} type.  Lee et al. (2006, p.52) defined the standardized deviance residuals as the deviance residuals divided by \eqn{\sqrt{\phi (1-q)}}, where \eqn{\phi} is the dispersion parameter of the distribution family (a vector of values, for heteroscedastic cases), and \eqn{q} is a vector of leverages given by \code{hatvalues(., type="std")} (see \code{\link{hatvalues}} for details about these specific standardizing leverages). \code{residuals(.type="std_dev_res")} returns the signed \bold{squares} of such standardized residuals. Use \code{residuals(.type="std_dev_rt")} to obtain the signed root values. 
+GLMs may be formulated as exponential dispersion models, i.e., models where the probability or probability density of each observation \eqn{y} can be written in the form
+\eqn{f(y)=b(y, \phi) \exp[-d(y, \mu)/(2\phi)]} where \eqn{d(y, \mu)} is the \emph{unit deviance} for the observation, independent of the dispersion parameter \eqn{\phi} (e.g., Dunn & Smyth, 2018). The sum over observations, \eqn{\sum_i d(y_i,\mu_i)} is called the \emph{deviance}, and \eqn{\sum_i d(y_i,\mu_i)/\phi} is called the \emph{scaled deviance}, by McCullagh & Nelder (1989, pp. 33-34). In the \pkg{spaMM} documentation the former deviance is called the \emph{unscaled} deviance to emphasize this distinction. 
 
-The \code{"RQR"} type specifies the randomized quantile residuals (Dunn & Smyth, 1996), used by \code{\link{gof}}. \code{"std_RQR"} specifies the RQR residuals divided by \eqn{\sqrt{1-q}}, following the same logic as for standardized deviance residuals.
+Prior weights \eqn{w} may be included in \dQuote{unscaled} quantities even though \eqn{\phi} is not.
+This is consistent with what base R does: unscaled quantities returned by \code{stats::residuals(<glm>)} and \code{stats::deviance(<glm>)} will be different for equivalent fits with different prior weights (as produced by \code{glm(., family=gaussian, weights=rep(2,nrow<data>))} versus the \code{glm} call without weights). 
 
-In the presence of prior weights, what the standard extractors do is often a matter of confusion and \pkg{spaMM} has not always been consistent with them. For a gaussian-response GLM (see Examples) \code{stats::deviance.lm} calls \code{\link{weighted.residuals}()} which returns \emph{unscaled} deviance residuals weighted by prior weights. Unscaled deviance residuals are defined in McCullagh and Nelder 1989, p. 34 and depend on the response values and fitted values but not on the canonical \eqn{\phi} parameter, and prior weights are not considered. \code{weighted.residuals()} still ignores \eqn{\phi} but accounts for prior weights. This means that different \code{residuals(<glm>)} and \code{deviance(<glm>)} will be returned for equivalent fits with different parametrizations of the residual variance (as produced by \code{glm(., family=gaussian, weights=rep(2,nrow<data>))} versus the \code{glm} call without weights). \code{residuals(<HLfit object>,"deviance")} and \code{deviance(<HLfit object>)} are consistent with this behavior. By contrast, \code{dev_resids(<HLfit object>)} always return the unscaled deviance residuals by default.   
-Prior weights have an effect on the returned standardized deviance residuals in the same way as it has an effect on the deviance residuals.
-  
-  Some definitions must be extended for non-GLM response families. In the latter case, the deviance residuals are as defined in Details of \code{\link{llm.fit}} (there is no conceptual distinction between scaled and  unscaled residuals here, since the residual dispersion parameter is not generally a scale factor, but the returned deviance residuals for non-GLMs are analogous to the scaled ones for GLMs as they depend on residual dispersion). \code{"std_dev_res"} and \code{"std_dev_rt"} residuals are defined from them as detailed above for GLM response families, with the additional convention that \eqn{\phi=1} (since the family's own residual dispersion parameter already enters in the definition of deviance residuals for non-GLM families).  Pearson residuals and response residuals are defined as in \code{stats:::residuals.glm}.  The \code{"working"} residuals are defined for each response as \eqn{- [d \log(clik)/d \eta]/[d^2 \log(clik)/d \eta^2]} where clik is the conditional likelihood.
+\code{residuals(., type="deviance")} returns the vector of deviance residuals for the different observations (as \code{\link[stats]{residuals.glm}}) does. The deviance residual for an observation is the signed square root of the (prior-weighted) unit deviance for this observation, sign\eqn{(y-\mu)\sqrt{w d(y,\mu)}}. 
+
+The extractor \code{\link{dev_resids}} is equivalent to the \code{family} object's \code{dev.resids} function. Hence, it does not really returns residuals but rather their squares, i.e. the (prior-weighted) unit deviances, because this is already so for families defined in base R. 
+
+The \code{\link{deviance}} extractor returns the sum of these prior-weighted unit deviances, i.e., the unscaled, prior-weighted deviance. This is consistent with what \code{stats::deviance(<glm>)} does.
+
+\code{residuals(., type="std_dev_rt")} returns the (prior-weighted) \dQuote{standardized deviance residuals} as defined by Lee et al. (2006, p.52), i.e. the deviance residuals divided by \eqn{\sqrt{\phi (1-q)}}, where \eqn{\phi} is the dispersion parameter of the distribution family (a vector of values, for heteroscedastic cases), and \eqn{q} is a vector of leverages given by \code{hatvalues(., type="std")} (see \code{\link{hatvalues}} for details about these specific standardizing leverages). They are thus scaled by \eqn{\phi}, and signed.
+
+\code{residuals(.type="std_dev_res")} returns the signed \bold{squares} of such standardized residuals.
+
+  Some definitions must be extended for non-GLM response families. as in the latter case, there may not be a concept of unit deviance, and there is no conceptual distinction between scaled and unscaled residuals since the residual dispersion parameter (if any) is not generally a scale factor \eqn{\phi}. This amounts to the convention that  \eqn{\phi=1}. The deviance residuals for non-GLMs are as defined in Details of \code{\link{llm.fit}}. They are analogous to the scaled ones for GLMs as they depend on any dispersion parameter. \code{"std_dev_res"} and \code{"std_dev_rt"} residuals are defined from them as detailed above for GLM response families, and from the additional convention that \eqn{\phi=1}. Pearson residuals and response residuals are defined as in \code{stats:::residuals.glm}.  
+The \code{"working"} residuals are defined for each observation as \eqn{- [d \log(}clik\eqn{)/d \eta]/[d^2 \log(}clik\eqn{)/d \eta^2]} where \sQuote{clik} is the conditional likelihood.
+
+\code{residuals(.type="RQR")} returns the randomized quantile residuals (Dunn & Smyth, 1996), used by \code{\link{gof}}. \code{type="std_RQR"} returns the RQR residuals divided by \eqn{\sqrt{1-q}}, following the same logic as for standardized deviance residuals.
+
 }
 \value{ A vector of residuals}
 \references{
-  Lee, Y., Nelder, J. A. and  Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via h-likelihood. Chapman & Hall: London.
-  
 Dunn, K. P., and Smyth, G. K. (1996). Randomized quantile residuals. Journal of Computational and Graphical Statistics 5, 1-10.  
+
+Dunn, P. K., & Smyth, G. K. (2018). Generalized Linear Models With Examples in R. Springer.
+
+Lee, Y., Nelder, J. A. and  Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via h-likelihood. Chapman & Hall: London.
+
+McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.
 }
 \examples{
 data("wafers")

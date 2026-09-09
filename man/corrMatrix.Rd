@@ -67,8 +67,11 @@ fitme(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
                     data=blackcap, corrMatrix=MLcorMat))
       
 #### Case with several samples in each location: ####
+if (spaMM.getOption("example_maxtime")>0.7 &&
+    requireNamespace("IsoriX", quietly = TRUE)) {
+# [the fits are quite fast, but requireNamespace("IsoriX"...)
+#  is too slow on CRAN servers].
 
-if (requireNamespace("IsoriX", quietly = TRUE)) {
 data("GNIPDataDE", package = "IsoriX")
 
 ## Fit to be reproduced by the different syntaxes:

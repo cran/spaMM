@@ -16,12 +16,50 @@ getCall.HLfit <- function(x, NbThreads=1L, ...) { ## FIXME ? getCall()$resid.mod
   }
 }
 
-# Compare to get_HLCorcall() which has specific code for extra arguments.
-# .get_processed_call() is used in a limited context (pois4mlogit)
+# This one has been conceived for .confint_LRT_single_par()
+.get_HLCorcall_W_init <- function(object, llc=getCall(object), 
+                                fittingFunction=.get_bare_fnname.HLfit(object), 
+                                control.HLfit) {
+  if (fittingFunction %in% c("HLfit","HLCor")) { # no specific init here
+    lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
+  } else if (fittingFunction == "pois4mlogit") { 
+    # should not occur since .confint_LRT_single_par_p4m() should be called instead of this fn.
+    stop("code does not work for p4m objects.")
+    # This does not work & may not be realistically fixed:
+    # in the end we would like a call to .p4m_by_outer_optim() including a $processed argument
+    # except that .p4m_by_outer_optim() also expect a fit result from .p4m_by_iters().
+    # So it seems more useful to define alternative approach for .confint_LRT_single_par()
+    llc[[1L]] <- get("fitmv", asNamespace("spaMM"), inherits=FALSE) 
+    llc[["verbose"]]["getCall"] <- TRUE # This avoids the fit (since we want $processed)
+    lc <- eval(llc,parent.frame()) 
+    lc[["verbose"]]["getCall"] <- FALSE
+    lc[["processed"]]$"verbose"[["getCall"]] <- FALSE
+    lc[[1L]] <- get("pois4mlogit", asNamespace("spaMM"), inherits=FALSE) 
+  } else { # cases with get_HLCorcall(, nontrivial <init>)
+    init <- .get_fittedPars(object, partial_rC="keep", # "keep" important: tested by test-confint's block with partially fixed ranCoefs
+                            phifits=TRUE, # not sure they are used, but they are not harmuful 
+                            phiPars=FALSE, verbose=FALSE) 
+    init$etaFix <- NULL
+    # ?__F I X M E___? potential interference with prior etaFix...
+    # old obscure comment: "For fitmv, .makeLowerUpper() is called several times."
+    if (fittingFunction == "corrHLfit") {
+      lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit, init.corrHLfit=init) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
+    } else lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit, init=init) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
+  }
+  lc
+}
+
+
+
+# Compare to get_HLCorcall():
+# get_HLCorcall did not work the last time it was applied on pois4mlogit objects.
+# get_HLCorcall has slightly different handling of extra arguments,
 # where the extra args are the user-level data, 
 # not the mv-processed data that are in the fit object 
-# get_HLCorcall has more general syntax handling arguments not in the original call.
-.get_processed_call <- function(mc, # from match.call() in a fitting function
+# "get_HLCorcall() has more general syntax handling arguments not in the original call."
+# .get_HLCorcall_4_p4m() is used in a limited context, not yet operational 
+# (pois4mlogit -> .p4m_by_iters() with update_fitmv_body, which does not work generally)
+.get_HLCorcall_4_p4m <- function(mc, # input is *fitmv* call
                                 ... # anything we want to replace in call 'mc'
                                 ) {
   dotlist <- list(...)
@@ -37,9 +75,8 @@ getCall.HLfit <- function(x, NbThreads=1L, ...) { ## FIXME ? getCall()$resid.mod
   # This should be avoided! (argh). So
   mc[["call"]] <- NULL
   #
-  mc[["verbose"]]["getCall"] <- FALSE
   mc[["processed"]]$"verbose"[["getCall"]] <- FALSE
-  mc
+  mc # HLCor_body() or HLfit_body() call 
 }
 
 ##### OLD comment before I use fixed <- .modify_list(.)
@@ -49,7 +86,7 @@ getCall.HLfit <- function(x, NbThreads=1L, ...) { ## FIXME ? getCall()$resid.mod
 ## Parameters not in ranFix are set to the initial value of of the optimization call.
 ##   
 ## NB to get the $processed, it suffices to call a fitting function 
-## with verbose=c(getCall=TRUE)>. This is wrapped in .get_processed_call()
+## with verbose=c(getCall=TRUE)>. This is wrapped in .get_HLCorcall_4_p4m()
 #
 get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list of call arguments
                           fixed, ## see comments above
@@ -169,6 +206,12 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
     }
     updated
   } else call
+}
+
+update.pois4mlogit <- function(object, formula., ..., data, evaluate = TRUE) {
+  if (missing(data)) {
+    update.HLfit(object=object, formula.=formula., ..., data=object$data, evaluate = evaluate)
+  } else NextMethod()
 }
 
 .update_data <- function(object, re_data=object$data, mf=model.frame(object), newresp, respName=object$respName) {

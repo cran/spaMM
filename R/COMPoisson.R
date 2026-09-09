@@ -824,24 +824,26 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 }
 
 
-
-COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"), 
-                       link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
-) { 
+# link is as usual the # eta <-> mu link, not the eta <-> lambda log link
+COMPoisson <- function(nu, link = "loglambda") { 
   .spaMM.data$options$COMP_maxn_warned <- FALSE # much better here than in .preprocess(); works with glm()
   .spaMM.data$options$COMP_geom_approx_warned <- FALSE
   resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
-  if (inherits(nuch <- substitute(nu),"character") ||
-      (inherits(nuch,"name") && inherits(nu, "function")) # "name" is for e.g. COMPoisson(log)
-      # (but testing only "name" would catch e.g. COMPoisson(nu=nu) )
-     ) { 
-    if (inherits(nuch,"character")) nuch <- paste0('"',nuch,'"')
-    errmess <- paste0('It looks like COMPoisson(',nuch,') was called, which absurdly means COMPoisson(nu=',nuch,
-                      ').\n  Use named argument: COMPoisson(link=',nuch,') instead.')
-    stop(errmess)
+  if (missing(nu)) {
+    delayedAssign("nu", stop("COMPoisson's 'nu' must be specified"))
+  } else {
+    if (inherits(nuch <- substitute(nu),"character") ||
+        (inherits(nuch,"name") && inherits(nu, "function")) # "name" is for e.g. COMPoisson(log)
+        # (but testing only "name" would catch e.g. COMPoisson(nu=nu) )
+    ) { 
+      if (inherits(nuch,"character")) nuch <- paste0('"',nuch,'"')
+      errmess <- paste0('It looks like COMPoisson(',nuch,') was called, which absurdly means COMPoisson(nu=',nuch,
+                        ').\n  Use named argument: COMPoisson(link=',nuch,') instead.')
+      stop(errmess)
+    }
+    # When 'nu' is recognized as as call, we eval it so it is no longer recognized as a call by .calc_optim_args()
+    if (inherits(nuch,"call")) nu <- eval(nuch, parent.frame()) 
   }
-  # When 'nu' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
-  if (inherits(nuch,"call") && deparse(nuch[[1]])!="stop") nu <- eval(nuch) 
   
   linktemp <- substitute(link) # if link was char LHS is char ; else deparse will create a char from a language object 
   if (!is.character(linktemp)) linktemp <- deparse(linktemp)
@@ -1123,9 +1125,10 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     muetaenv$mu <- family$linkinv(eta, muetaenv=muetaenv) # calls muetaenv$EX hence must be after its definition
     delayedAssign("dmudeta", {family$mu.eta(sane_eta, muetaenv=this)}, assign.env = muetaenv, eval.env = muetaenv)
   } else {
-    muetaenv$mu <- family$linkinv(eta)
-    delayedAssign("lambdas", { family$mu2lambda(mu) }, assign.env = muetaenv, eval.env = muetaenv)
-    delayedAssign("uniqlambdas", {unique(lambdas)}, assign.env = muetaenv, eval.env = muetaenv) #TEMPO
+    muetaenv$uniqmu <- uniqmu <- family$linkinv(uniqeta)
+    muetaenv$mu <- uniqmu[muetaenv$etamatch]
+    delayedAssign("uniqlambdas", {family$mu2lambda(uniqmu)}, assign.env = muetaenv, eval.env = muetaenv) 
+    delayedAssign("lambdas", { uniqlambdas[etamatch] }, assign.env = muetaenv, eval.env = muetaenv)
     delayedAssign("dmudeta", {family$mu.eta(sane_eta)}, assign.env = muetaenv, eval.env = muetaenv)
   }
   

@@ -1,7 +1,9 @@
 fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=list(),
                   control=list(), # needed to avoid partial matching of explicit 'control' argument with 'control.dist' one (bug when the latter is used) 
                   control.dist = list(), method="ML", init.HLfit=list(), 
-                  X2X=NULL, aliases=NULL, ...) { # explicit arguments or dots depending on what requires specific documentation.
+                  X2X=NULL, aliases=NULL, 
+                  # multinom_info can be passed in the \dots
+                  ...) { # \dots being arguments not requiring specific documentation.
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
@@ -40,9 +42,9 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_["adjMatrix"] <- NULL # not strictly necess ... same comment...
     call_["covStruct"] <- NULL # => important to remove it since ranefs cannot be matched in .preprocess().
     #
-    call_["init.HLfit"] <- NULL # We could leave it, that would be useless. 
-    # OTOH, .merge_processed() will use the oricall one
-    # and the fitmv_body() call receives its init.HLfit$ from merged$"init_HLfit" 
+    call_["init.HLfit"] <- NULL # useless for submodel .preprocess()ing IF .merge_processed() 
+    # calls .check_init.HLfit(init.HLfit) using the oricall's init.HLfit, and if
+    # the fitmv_body() call receives its init.HLfit$ from merged$"init_HLfit" 
     ## *** ***  
     matched_args_it <- 
       match.call(fitme, 
@@ -89,18 +91,11 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   #
   ##### merge and finalize preprocessing
   mc <- oricall 
-  mc["aliases"] <- NULL # so that it remains in call_ the arguments others than mv.
-  mc["submodels"] <- NULL
-  mc["formula."] <- NULL 
+  mc[c("aliases","submodels","formula.")] <- NULL # so that it remains in call_ the arguments others than mv.
   mc[["what_checked"]] <- "fitmv() call" 
   mc[[1L]] <- get(".check_args_fitme", asNamespace("spaMM"), inherits=FALSE) 
   eval(mc,parent.frame()) # -> abyss 
-  mc["what_checked"] <- NULL 
-  mc["fixed"] <- NULL
-  mc["upper"] <- NULL # to be used only in fitmv_body()
-  mc["lower"] <- NULL
-  mc["control"] <- NULL
-  mc["multinom_info"] <- NULL
+  mc[c("what_checked", "fixed","upper","lower","control", "multinom_info")] <- NULL # but user, lower in fitme_body call
   mc[["calls_W_processed"]] <- calls_W_processed
   # the fact that promises are evaluated within a call-execution is "local": they will appear not evaluated
   # when we reuse a call (here mc). E.g. corrMatrix=as_precision(.) would be evaluated twice 
@@ -108,15 +103,11 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   # Next line ad-hoc for corrMatrix (_F I X M E__?: What about other arguments ? Which would benefit from some preprocessing?)
   if ("corrMatrix" %in% ...names()) mc["corrMatrix"] <- list(eval(mc[["corrMatrix"]])) 
   mc[[1L]] <-  get(".merge_processed", asNamespace("spaMM"), inherits=FALSE)
-  
-  # if (identical(X2X,"coef_names")) {
-  #   colnames_merged_X <- .getFromTheDepths(eval(mc,parent.frame()), what="coef_names") 
-  #   return(colnames_merged_X) # hummm. What if the user-level call is pois4mlogit() ?
-  # } else 
-    merged <- eval(mc, parent.frame()) # means that arguments of *.merge_processed()* must have default values as mc does not contains defaults of fitmv()
+  merged <- eval(mc, parent.frame()) # means that arguments of *.merge_processed()* must have default values as mc does not contains defaults of fitmv()
   
   # In p4m code: multinom_info with/out $mnsizes argument provided to fitmv() depending on p4m='H'/'o'.
-  # so, here: either no input multinom_info() or two types of multinom_info, w/o $mnsizes. There is always an output $multinom_info:
+  # so, here fitmv code: either no input multinom_info() or two types of input multinom_info, w/o $mnsizes. 
+  # There is *always* an *output* $multinom_info:
   if (is.null(merged$multinom_info <- eval(oricall$multinom_info))) merged$multinom_info <- 
       list(has_dynoffset=rep(FALSE, n_models))
   #  
@@ -125,7 +116,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   fixedS <- .merge_mv_parlist(fixedS, merged) # now fixedS is a single parlist from the  sub-models specifications
   fixedS <- .modify_list(fixedS,fixed) # now fixedS is a single parlist from both sub-model and global specifications
   fixedS <- .preprocess_fixed(fixedS)
-  #fixed <- .canonizeRanPars(ranPars=fixed,corr_info=merged$corr_info, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)
+  
   # These infos are ultimately used by summary() to distinguish "fix" from outer "var":
   merged[["lambda.Fix"]] <- .reformat_lambda(.getPar(fixed,"lambda"), processed=merged, full_lambda=TRUE)
   # HLfit_body() expects merged[["phi.Fix]] to be a full-length list, possibly with explicit NULLs.
@@ -136,33 +127,29 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   merged$ranCoefs_blob <- .process_ranCoefs(merged, ranCoefs, use_tri_CORREL=TRUE) 
   merged$AUGI0_ZX$envir$finertypes[merged$ranCoefs_blob$isRandomSlope] <- "ranCoefs" 
   #
-  ##   mc["fixed"] <- oricall["fixed"] # Not used AFAICS
   mc["upper"] <- oricall["upper"]
   mc["lower"] <- oricall["lower"]
   mc["control"] <- oricall["control"]
-  mc["calls_W_processed"] <- NULL
   mc[["fixedS"]] <- fixedS # to build and merge the inits
   mc$processed <- merged
-  mc[["init.HLfit"]] <- merged$"init_HLfit" 
-  pnames <- c("data","family",# "formula",
-              "prior.weights", "weights.form", # mwouairf. They should have been elements of submodels...
+  not_in_fitmv_body <- c("init.HLfit", # fitmv_body directly use the processed$init_HLfit version; 
+              # it would be confusing to suggest otherwise by keeping the arg.
+              "calls_W_processed","data","family","prior.weights", "weights.form", 
               "HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct","X2X") 
-  # c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
-  #   "resid.model", "REMLformula")
-  for (st in pnames) mc[st] <- NULL 
-  # removand <- intersect(names(mc), pnames)
-  # for (st in removand) mc[[st]] <- NULL 
+  mc[not_in_fitmv_body] <- NULL 
   mc[[1L]] <-  get("fitmv_body", asNamespace("spaMM"), inherits=FALSE)
   hlcor <- eval(mc,parent.frame()) 
   # if (.safe_true(processed[["verbose"]]["get_LUarglist"][[1L]])) return(hlcor)
   oricall$"control.dist" <- merged[["control_dist"]] 
   hlcor$call <- oricall ## this is a call to fitmv()
   lsv <- c("lsv",ls())
-  if ( ! inherits(hlcor,"HLfitlist") && ! is.call(hlcor) ) {
+  if (is.call(hlcor)) {
+    # ...
+  } else if ( ! inherits(hlcor,"HLfitlist")) {
     X2X <- eval(oricall[["X2X"]], parent.frame())
     if (inherits(X2X,"call")) { # genX2X call
-      if (deparse(X2X[[1]])=="genX2X") {
+      if (deparse(X2X[[1]])=="genX2X") { # ____F I X M E____ allow user-def'd function ?
         X2X[["names_ori"]] <- attr(hlcor$X.pv,"cols_lhs_X2X")
         X2X <- eval(X2X) 
       } else warning("Fit object's 'X2X' element remains a call: this may be a problem in post-fit operations such as predict().")
@@ -174,9 +161,9 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
     if ( ! is.null(mc$control.HLfit$NbThreads)) .setNbThreads(thr=.spaMM.data$options$NbThreads)
+    class(hlcor) <- c("fitmv", class(hlcor))
   }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
-  class(hlcor) <- c("fitmv", class(hlcor))
   return(hlcor)
 }
 

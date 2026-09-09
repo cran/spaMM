@@ -1,0 +1,417 @@
+---
+title: "Multinomial-logit models in spaMM"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    citation_package: biblatex
+bibliography: "multinomial-logit.bib"
+biblio-style: "apalike"
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Multinomial-logit models in spaMM}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+<!-- cf comments about vignette creation and cache management in knit4package.R -->
+
+Although this vignette is compiled with the version of `spaMM` shown below, the included fit results may have been obtained with a previous version.
+
+``` r
+library(spaMM)
+```
+
+
+# Introduction
+This vignette presents an informal tour of using the `pois4mlogit` function to fit multinomial-logit models. 
+In these models, the probabilities $p_{ic}$ of the different response categories  $c=1,...,C$ for the $i$th multinomial draw $(n_{i1},...,n_{iC})$ are of the form 
+$$p_{ic}=\frac{e^{\eta_{ic}}}{\sum_{c=1}^C e^{\eta_{ic}}}$$ 
+where each $\eta_{ic}$ takes the usual form of linear predictors for GL(M)Ms, including fixed and random effects. 
+
+This type of models can in principle be fitted as Poisson non-linear models [@ChenK01], as the denominator makes $\log(p_{ic})$ non-linear, in comparison to each $\eta_{ic}$. `spaMM` does not have procedures for non-linear models, but the `pois4mlogit` function uses surrogate Poisson multivariate-response GLMMs (with some further adjustments) to fit the multinomial model, from which it owes its name.  
+
+Each response category $c$ may depend on distinct effects, so there is one sub-model for each $c$.  
+To allow flexible specification of the full statistical model, the `pois4mlogit` function inherits the features of the `fitmv` function for multivariate-response models (which it calls), including in particular several features that are illustrated below: the `X2X` argument to declare fixed-effect coefficients shared about sub-models; the treatment of random-effect terms that appear identical across sub-models as a single random effect; and the `aliases` argument that allows the "same" variable (as it appears in different sub-model formulas; e.g. a grouping variable in a random effect term) to actually be interpreted as "different" variables in the data, for the different sub-models.
+
+The above expression for the $p_{ic}$s implies that their relative values depend only on the differences between the $\eta_{ic}$s, and that adding an intercept in a submodel is equivalent, in terms of relative probabilities $p_{ic}$, to removing the value of this intercept from all other submodels. Thus the likelihood of a model with $c$ non-zero intercepts $(I_1, I_2, \ldots, I_c)$ is equivalent to that of a model with intercepts $(0, I_2-I_1, \ldots, I_c-I_1)$, and including distinct non-zero intercepts in all submodels would make the model over-parameterized. This can also be seen by considering a binomial model: it has a single intercept for two response classes. In the above formulation, the binomial model with linear predictor $\eta_i$ can be represented as the bivariate model with $\eta_{ic}=\eta_i$ for $c=1$, and $\eta_{ic}=0$ (hence, in particular, no intercept) for $c=2$. 
+
+Likewise, including an identical fixed-effect intercept in all submodels has no effect on the likelihood of samples, and would thus also make the model over-parameterized in comparison with a model without any intercept.
+
+
+# A fixed-effect model, and the `X2X` argument
+
+## Context and data
+
+For this first example, we consider a yogurt-marketing example from the econometric literature on multinomial-logit models [@JainVC94; @ChenK01].
+In this example, the data represent purchases of four yogurt brands by a panel of 100 households (`id`=1,...,100). A total of 2,412 purchases are recorded; the maximum and minimum number of purchases are 185 and 4, respectively [@ChenK01]. 
+
+``` r
+chk <- try(load("saved-fits/Iyogurt.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) {
+  if (requireNamespace("Ecdat",quietly=TRUE)) {
+    data(Yogurt,package="Ecdat") 
+    
+    Iyogurt  <- Yogurt
+    Iyogurt$Iweight <- Iyogurt$choice=="weight"     
+    Iyogurt$Idannon <- Iyogurt$choice=="dannon"     
+    Iyogurt$Iyoplait <- Iyogurt$choice=="yoplait"    
+    Iyogurt$Ihiland <- Iyogurt$choice=="hiland"  
+    # save(Iyogurt, file="Iyogurt.rda")
+  } else {
+    stop( "'Iyogurt' data not available, cannot run p4m 'Yogurt' test.\n" )
+  }
+}
+```
+ 
+## Fit 
+We first fit it by a fixed-effect model with two predictors for each brand :one representing the price, the the other representing the "marketing environment" (advertisement for the brand). We impose that the regression coefficients for these two predictors are identical across the different brands (i.e., that price and advertizing have identical effects on buying decisions for the four brands). This constraint may be specified by the following value for the `X2X` argument of the fitting function, which may here be given as
+
+``` r
+    (x2xfixed <- matrix(c(1,0,0,0,0,0,0,0,0,0,0,
+                          0,0,0,1,0,0,0,0,0,0,0,
+                          0,0,0,0,0,0,1,0,0,0,0,
+                          0,1,0,0,1,0,0,1,0,1,0,
+                          0,0,1,0,0,1,0,0,1,0,1), 
+                        ncol=5L, nrow=11L))
+#>       [,1] [,2] [,3] [,4] [,5]
+#>  [1,]    1    0    0    0    0
+#>  [2,]    0    0    0    1    0
+#>  [3,]    0    0    0    0    1
+#>  [4,]    0    1    0    0    0
+#>  [5,]    0    0    0    1    0
+#>  [6,]    0    0    0    0    1
+#>  [7,]    0    0    1    0    0
+#>  [8,]    0    0    0    1    0
+#>  [9,]    0    0    0    0    1
+#> [10,]    0    0    0    1    0
+#> [11,]    0    0    0    0    1
+    dimnames(x2xfixed) <- list(NULL, c("(Intercept)_1","(Intercept)_2","(Intercept)_3","feat","price"))
+
+```
+but it can also be specified using the `genX2X` function, which will build the same matrix when given the appropriate list of name matches. This avoids filling a matrix of zeroes and ones, with hard to catch errors. 
+
+
+``` r
+    x2xfixed <- genX2X(list("(Intercept)_1"="(Intercept)_1",
+                        "(Intercept)_2"="(Intercept)_2",
+                        "(Intercept)_3"="(Intercept)_3",
+                        "feat"=c("feat.yoplait_1","feat.dannon_2","feat.weight_3","feat.hiland_4"),
+                        "price"=c("price.yoplait_1","price.dannon_2","price.weight_3","price.hiland_4")))
+```
+The variable names on the right-hand side of each element of the list would be the names of the coefficients in a fit of a model without the `X2X` argument; their indices `_1`,...,`_4` refer to the submodels to which the coefficients belong. 
+Note that the `x2xfixed` object returned by `genX2X()` is not the matrix itself, but stores the information necessary for the fitting function to build the matrix. The matrix can be retrieved from the fit by `get_matrix(`_fit_`, "X2X")`.  
+
+To fit the model, we add a `offset(.dynoffset)` term to each submodel formula. This is used internally to represent the denominator the the expression for the $p_{ic}$s.
+
+
+``` r
+chk <- try(load("saved-fits/fefit.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) { 
+  fefit <- pois4mlogit(
+      submodels=list(
+        list(Iyoplait~ offset(.dynoffset)+1+feat.yoplait+price.yoplait, family=poisson(log)),
+        list(Idannon~ offset(.dynoffset)+1+feat.dannon+price.dannon, family=poisson(log)),
+        list(Iweight~ offset(.dynoffset)+1+feat.weight+price.weight, family=poisson(log)),
+        list(Ihiland~ offset(.dynoffset)+0+feat.hiland+price.hiland, family=poisson(log))),
+      data=Iyogurt,
+      types=c("Iyoplait","Idannon","Iweight","Ihiland"),
+      X2X= x2xfixed,
+      progress=1
+  )}
+fefit
+#> formula_1: Iyoplait ~ offset(.dynoffset) + 1 + feat.yoplait + price.yoplait
+#> formula_2: Idannon ~ offset(.dynoffset) + 1 + feat.dannon + price.dannon
+#> formula_3: Iweight ~ offset(.dynoffset) + 1 + feat.weight + price.weight
+#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland
+#> Estimation of fixed effects by ML.
+#> Families: 1--4 : multinomial-logit
+#>  ------------ Fixed effects (beta) ------------
+#>               Estimate Cond. SE t-value
+#> (Intercept)_1   4.4502  0.11187  39.782
+#> (Intercept)_2   3.7156  0.09084  40.905
+#> (Intercept)_3   3.0744  0.09375  32.793
+#> feat            0.4914  0.07983   6.156
+#> price          -0.3666  0.01057 -34.677
+#>  ------------- Likelihood values  -------------
+#>                         logLik
+#> logL               : -2656.888
+```
+This result matches the fixed-effect fit in @ChenK01, where the `price` variable was scaled differently. 
+
+Note that as explained in the Introduction, there is no intercept coefficient. Otherwise, the model would be over-parameterized.
+
+# Random-intercept model, and the `aliases` argument
+
+For exposition, we first consider a minimal random-effect model, indeed the one with _only_ a random intercept for each brand. We want the brand-specific intercept to be drawn from the same distribution (with a single variance), so we use a "shared" random effect term, here `(1|BRAND)`, across the sub-models. But then we need to be able to specify that the `BRAND` value is distinct for the different sub-models, and for this we create new variables in the data, and refer to them using the `aliases` argument:
+
+``` r
+  Iyogurt$subd <- "dannon"
+  Iyogurt$subh <- "hiland"
+  Iyogurt$subw <- "weight"
+  Iyogurt$suby <- "yoplait"
+  
+chk <- try(load("saved-fits/rdInt.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) { 
+  rdInt <- pois4mlogit(
+  submodels=list(
+    list(Idannon~ offset(.dynoffset)+0+(1|BRAND), family=poisson(log)),
+    list(Ihiland~ offset(.dynoffset)+0+(1|BRAND), family=poisson(log)),
+    list(Iweight~ offset(.dynoffset)+0+(1|BRAND), family=poisson(log)),
+    list(Iyoplait~ offset(.dynoffset)+0+(1|BRAND), family=poisson(log))),
+  data=Iyogurt, 
+  types=c("Idannon","Ihiland","Iweight","Iyoplait"),
+  aliases=list(BRAND=c("subd","subh","subw","suby"))
+)}
+```
+The `aliases` value implies that the grouping variable `BRAND` takes the value of the variable `subh` in the second submodel, i.e. the value `"hiland"`. By the same effect, it takes value `"weight"` in the third and `"yoplait"` in the fourth. The `BRAND` term is thus interpreted as a factor taking three different level for three submodels. `BRAND` is **not** a variable present in the `data`,
+and if it were present, it would be ignored by the fitting procedure.
+
+We can also that the syntax had the correct effect by looking at the incidence matrix for the random effect, which has four blocks of rows (one four each sub-model), four columns (one for each level), with `1`s (appearing in black) on the right places:
+
+
+``` r
+Matrix::image(get_ZALMatrix(rdInt),aspect=5)
+```
+
+![plot of chunk rdIntZ](./rdIntZ-1.png)
+
+In contrast to the fixed-effect model, where we would have created an unidentifiable model if we had included distinct intercepts in all four submodels, we have included the random intercept in all four submodel, which still makes an identifiable model. In comparison to the fixed-effect model, if we add the same constant to all random-effect values, this will not affect the relative values of the probabilities $p_{ic}$ _conditional_ on the random effect values, but this will change the probabilities of the random-effect values as drawn from a gaussian distribution, and thus this will change the marginal likelihood. 
+
+Including the random effect in all submodels has at least the benefit of avoiding the asymmetry introduced by selecting one submodel as the reference one without this effect. Here, a comparison with the fit of the model without the random effect in the first submodel would also show that the latter has a slightly lower likelihood.
+
+
+# Correlated random effects across submodels
+
+We now consider the mixed-effect model discussed by @JainVC94 and @ChenK01, including an household-level random effect. These works included this effect only in three of the four submodels, but as in the random-intercept-only model, it appears that we can include it in all four submodels. 
+
+The random-effect is correlated across the three or four brands, which we specify as `(0+mv(1,2,3)|id)` or `(0+mv(1,2,3,4)|id)`. This syntax (which is meaningful for multivariate-response models in general, not only for multinomial ones: see `help("mv")`) acts a bit like the `aliases` usage above, as e.g. `(1,2,3)` therein means that the first three submodels are affected by different values of the household-specific random effect. But this syntax also implies that the submodel-specific values for each household are drawn from a correlated 3- or 4-dimensional gaussian distributions with (by default) fully fitted covariance matrix (here with 6 or 10 parameters). In this respect it is similar to traditional random-coefficient terms, such as in random-slope models, also characterized by bi- or multi-dimensional gaussian distributions with a fitted covariance matrix. 
+
+Below, the submodels are reordered to match the formulation in  @ChenK01,
+so the `X2X` argument has to be redefined:
+
+``` r
+x2xmixed <- genX2X(list("(Intercept)_1"="(Intercept)_1",
+                        "(Intercept)_2"="(Intercept)_2",
+                        "(Intercept)_3"="(Intercept)_3",
+                        "feat"=c("feat.yoplait_3","feat.dannon_2","feat.weight_1","feat.hiland_4"),
+                        "price"=c("price.yoplait_3","price.dannon_2","price.weight_1","price.hiland_4")))
+```
+
+## Fits with random-effect term included in 3 submodels
+
+
+``` r
+chk <- try(load("saved-fits/mmfit6var.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) { 
+  mmfit6var <- pois4mlogit(
+  submodels=list(
+    list(Iweight~ offset(.dynoffset)+1+(0+mv(1,2,3)|id)+feat.weight+price.weight, family=poisson(log)),
+    list(Idannon~ offset(.dynoffset)+1+(0+mv(1,2,3)|id)+feat.dannon+price.dannon, family=poisson(log)),
+    list(Iyoplait~ offset(.dynoffset)+1+(0+mv(1,2,3)|id)+feat.yoplait+price.yoplait, family=poisson(log)),
+    list(Ihiland~ offset(.dynoffset)+0+feat.hiland+price.hiland, family=poisson(log))),
+  data=Iyogurt, 
+  types=c("Iweight","Idannon","Iyoplait","Ihiland"),
+  X2X= x2xmixed, verbose=c(TRACE=FALSE),
+  upper=list(ranCoefs=list("1"=c(10,0.90,0.90,10,0.90,10))), 
+  lower=list(ranCoefs=list("1"=c(1e-4,-0.90,-0.90,1e-4,-0.90,1e-4))), 
+  progress=0)
+} 
+mmfit6var
+#> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.weight + 
+#>     price.weight
+#> formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.dannon + 
+#>     price.dannon
+#> formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + 
+#>     feat.yoplait + price.yoplait
+#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland
+#> Estimation of ranCoefs by ML (p_v approximation of logL).
+#> Estimation of fixed effects by ML (p_v approximation of logL).
+#> Families: 1--4 : multinomial-logit
+#>  ------------ Fixed effects (beta) ------------
+#>               Estimate Cond. SE t-value
+#> (Intercept)_1   0.6957  0.42258   1.646
+#> (Intercept)_2   3.2931  0.29866  11.026
+#> (Intercept)_3   4.0050  0.38039  10.529
+#> feat            0.9613  0.18001   5.340
+#> price          -0.4399  0.03949 -11.140
+#>  --------------- Random effects ---------------
+#> Family: gaussian( link = identity ) 
+#>          --- Random-coefficients Cov matrices:
+#>  Group Term  Var.   Cor.1 Cor.2
+#>     id .mv1    10              
+#>     id .mv2 4.931 -0.2729      
+#>     id .mv3 6.521  0.2205  -0.9
+#> # of obs per submodel: 2412 2412 2412 2412;
+#> # of groups: id, 100 
+#>  ------------- Likelihood values  -------------
+#>                         logLik
+#> logL       (p_v(h)): -1257.917
+```
+
+This takes some time to fit  (4748.31s in this particular run for the vignette). One reason is that the Laplace approximation of the likelihood appears to be maximal for infinite values of some of the variances (as may also occur in binomial fits of binary data), and for extreme values of some correlation parameters, which contribute to make the correlation matrix near-singular and hampers the fitting algorithms. Indeed, it is the reason why `upper` and `lower` value were set in the above fit, and both one variance and a correlation are at bounds of the allowed ranges in the above fit. Fitting by a different likelihood approximation may circumvent some of problems, as in the following fit with `method="PQL/L"` [@RoussetF14]: 
+
+``` r
+chk <- try(load("saved-fits/mmfit6varPQL.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) { 
+mmfit6varPQL <- pois4mlogit(
+  submodels=list(
+    list(Iweight~ offset(.dynoffset)+1+(0+mv(1,2,3)|id)+feat.weight+price.weight, family=poisson(log)),
+    list(Idannon~ offset(.dynoffset)+1+(0+mv(1,2,3)|id)+feat.dannon+price.dannon, family=poisson(log)),
+    list(Iyoplait~ offset(.dynoffset)+1+(0+mv(1,2,3)|id)+feat.yoplait+price.yoplait, family=poisson(log)),
+    list(Ihiland~ offset(.dynoffset)+0+feat.hiland+price.hiland, family=poisson(log))),
+  data=Iyogurt, 
+  types=c("Iweight","Idannon","Iyoplait","Ihiland"),
+  X2X= x2xmixed, verbose=c(TRACE=FALSE),
+  upper=list(ranCoefs=list("1"=c(20,0.9,0.9,20,0.9,20))), 
+  lower=list(ranCoefs=list("1"=c(1e-4,-0.9,-0.9,1e-4,-0.9,1e-4))),
+  progress=0, 
+  method="PQL/L")
+}
+mmfit6varPQL
+#> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.weight + 
+#>     price.weight
+#> formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.dannon + 
+#>     price.dannon
+#> formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + 
+#>     feat.yoplait + price.yoplait
+#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland
+#> Estimation of ranCoefs by ML (p_v approximation of logL).
+#> Estimation of fixed effects by h-likelihood approximation.
+#> Families: 1--4 : multinomial-logit
+#>  ------------ Fixed effects (beta) ------------
+#>               Estimate Cond. SE t-value
+#> (Intercept)_1   1.3923  0.42873   3.248
+#> (Intercept)_2   3.1919  0.30306  10.532
+#> (Intercept)_3   3.9714  0.38914  10.206
+#> feat            0.9102  0.17954   5.070
+#> price          -0.4172  0.03864 -10.797
+#>  --------------- Random effects ---------------
+#> Family: gaussian( link = identity ) 
+#>          --- Random-coefficients Cov matrices:
+#>  Group Term  Var.   Cor.1 Cor.2
+#>     id .mv1 11.18              
+#>     id .mv2 5.162 -0.3592      
+#>     id .mv3 7.263  0.3356  -0.9
+#> # of obs per submodel: 2412 2412 2412 2412;
+#> # of groups: id, 100 
+#>  ------------- Likelihood values  -------------
+#>                         logLik
+#>        h-likelihood: -1299.611
+#> logL       (p_v(h)): -1259.736
+```
+
+
+which still takes 2230.53s in this particular run.
+
+## Fits with random-effect term included in 4 submodels
+These fits appear better:
+
+
+``` r
+chk <- try(load("saved-fits/mmfit6varPQL4.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) {
+  mmfit6varPQL4 <- pois4mlogit(
+    submodels=list(
+      list(Iweight~ offset(.dynoffset)+1+(0+mv(1,2,3,4)|id)+feat.weight+price.weight, family=poisson(log)),
+      list(Idannon~ offset(.dynoffset)+1+(0+mv(1,2,3,4)|id)+feat.dannon+price.dannon, family=poisson(log)),
+      list(Iyoplait~ offset(.dynoffset)+1+(0+mv(1,2,3,4)|id)+feat.yoplait+price.yoplait, family=poisson(log)),
+      list(Ihiland~ offset(.dynoffset)+0+(0+mv(1,2,3,4)|id)+feat.hiland+price.hiland, family=poisson(log))),
+    data=Iyogurt, 
+    types=c("Iweight","Idannon","Iyoplait","Ihiland"),
+    X2X= x2xmixed, verbose=c(TRACE=FALSE),
+    upper=list(ranCoefs=list("1"=c(10,0.9,0.9,0.9,10,0.9,0.9,10,0.9,10))), 
+    lower=list(ranCoefs=list("1"=c(1e-4,-0.9,-0.9,-0.9,1e-4,-0.9,-0.9,1e-4,-0.9,1e-4))),
+    progress=0, 
+    method="PQL/L")
+}
+mmfit6varPQL4
+#> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.weight + price.weight
+#> formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.dannon + price.dannon
+#> formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.yoplait + price.yoplait
+#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.hiland + price.hiland
+#> Estimation of ranCoefs by ML (p_v approximation of logL).
+#> Estimation of fixed effects by h-likelihood approximation.
+#> Families: 1--4 : multinomial-logit
+#>  ------------ Fixed effects (beta) ------------
+#>               Estimate Cond. SE t-value
+#> (Intercept)_1   1.8220  0.45243   4.027
+#> (Intercept)_2   3.7140  0.35748  10.389
+#> (Intercept)_3   4.5326  0.41946  10.806
+#> feat            0.7820  0.18226   4.290
+#> price          -0.4224  0.03893 -10.848
+#>  --------------- Random effects ---------------
+#> Family: gaussian( link = identity ) 
+#>          --- Random-coefficients Cov matrices:
+#>  Group Term  Var.    Cor.1    Cor.2   Cor.3
+#>     id .mv1    10                          
+#>     id .mv2 3.119  -0.3632                 
+#>     id .mv3 4.865 -0.02403     -0.9        
+#>     id .mv4 3.083   0.1504 -0.07356 0.01671
+#> # of obs per submodel: 2412 2412 2412 2412;
+#> # of groups: id, 100 
+#>  ------------- Likelihood values  -------------
+#>                         logLik
+#>        h-likelihood: -1357.663
+#> logL       (p_v(h)): -1243.389
+```
+
+``` r
+chk <- try(load("saved-fits/mmfit6var4.rda", envir=globalenv()),silent=TRUE)
+if (inherits(chk,"try-error")) {
+  mmfit6var4 <- pois4mlogit(
+    submodels=list(
+      list(Iweight~ offset(.dynoffset)+1+(0+mv(1,2,3,4)|id)+feat.weight+price.weight, family=poisson(log)),
+      list(Idannon~ offset(.dynoffset)+1+(0+mv(1,2,3,4)|id)+feat.dannon+price.dannon, family=poisson(log)),
+      list(Iyoplait~ offset(.dynoffset)+1+(0+mv(1,2,3,4)|id)+feat.yoplait+price.yoplait, family=poisson(log)),
+      list(Ihiland~ offset(.dynoffset)+0+(0+mv(1,2,3,4)|id)+feat.hiland+price.hiland, family=poisson(log))),
+    data=Iyogurt, 
+    types=c("Iweight","Idannon","Iyoplait","Ihiland"),
+    X2X= x2xmixed, verbose=c(TRACE=FALSE),
+    upper=list(ranCoefs=list("1"=c(15,0.9,0.9,0.9,15,0.9,0.9,15,0.9,15))), 
+    lower=list(ranCoefs=list("1"=c(1e-4,-0.9,-0.9,-0.9,1e-4,-0.9,-0.9,1e-4,-0.9,1e-4))),
+    progress=0)
+}
+mmfit6var4
+#> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.weight + price.weight
+#> formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.dannon + price.dannon
+#> formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.yoplait + price.yoplait
+#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + (0 + mv(1, 2, 3, 4) | id) + 
+#>     feat.hiland + price.hiland
+#> Estimation of ranCoefs by ML (p_v approximation of logL).
+#> Estimation of fixed effects by ML (p_v approximation of logL).
+#> Families: 1--4 : multinomial-logit
+#>  ------------ Fixed effects (beta) ------------
+#>               Estimate Cond. SE t-value
+#> (Intercept)_1   2.7881  0.66057   4.221
+#> (Intercept)_2   5.2864  0.53249   9.928
+#> (Intercept)_3   6.9131  0.59190  11.679
+#> feat            0.7690  0.18471   4.163
+#> price          -0.4217  0.03911 -10.781
+#>  --------------- Random effects ---------------
+#> Family: gaussian( link = identity ) 
+#>          --- Random-coefficients Cov matrices:
+#>  Group Term     Var.  Cor.1  Cor.2   Cor.3
+#>     id .mv1    12.11                      
+#>     id .mv2       15 0.2516               
+#>     id .mv3 0.008317   -0.9 -0.635        
+#>     id .mv4       15 0.1677 0.5884 -0.3894
+#> # of obs per submodel: 2412 2412 2412 2412;
+#> # of groups: id, 100 
+#>  ------------- Likelihood values  -------------
+#>                         logLik
+#> logL       (p_v(h)): -1242.368
+```
+
+
+These fits take more time (
+1924.18s and 27351.77s, respectively), in particular because there are 10 covariance parameters to be fitted, instead of 6 previously (and the Laplace ML fit again has variances and correlation estimates at bounds of allowed range). This is a bit painful, but will not be the case in all applications. With nearly singular covariance matrices, different runs of the same model on the same computer can even give different results (and take more time), due to instability of some floating-point computations in this case.
+
+# References {-}
+

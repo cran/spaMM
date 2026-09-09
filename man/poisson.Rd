@@ -29,7 +29,7 @@ Tpoisson(link="log")
 
 }
 \value{
-A \code{family} object suitable for use with \code{glm}, as \code{stats::} family objects.
+A \code{family} object suitable for use with \code{glm}, as \code{stats::}\code{\link[stats]{family}} objects.
 }
 \details{
 Molas & Lesaffre (2010) developed expressions for deviance residuals for the truncated Poisson distribution, which were the ones implemented in \pkg{spaMM} until version 3.12.0. Later versions implement the (non-equivalent) definition as \dQuote{2*(saturated_logLik - logLik)}.   

@@ -88,9 +88,8 @@ Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
   
   aic <- function(y, n, mu, wt, dev) -2 * sum(logl(y, mu)) 
   
-  linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
-    if (mu_truncated) { ## ie if input mu_T
-      mu_U <- attr(mu,"mu_U")
+  linkfun <- function(mu,mu_truncated=FALSE, mu_U=attr(mu,"mu_U")) { ## mu_truncated gives type of I N put
+    if (mu_truncated) {
       return(stats$linkfun(mu_U))
     } else return(stats$linkfun(mu)) ## mu_U -> eta_U
   }

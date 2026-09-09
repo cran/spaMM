@@ -152,7 +152,7 @@ gridIMRF <- function(..., fixed=NULL) {  # internal family constructor, not desc
   #
   initialize <- function(Zmatrix, ...) { 
     
-    Zlevels <- colnames(Zmatrix)
+    Zlevels <- unique(colnames(Zmatrix))
     uniqueScal <- strsplit(Zlevels,":") 
     uniqueScal <- do.call(rbind,uniqueScal)
     class(uniqueScal) <- "numeric"

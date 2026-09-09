@@ -51,7 +51,7 @@
   GLGLLM_const_w <- attr(processed$models,"GLGLLM_const_w")
   # AUGI0_ZX <- update_sXaug_constant_arglist$AUGI0_ZX # 
   AUGI0_ZX <- processed$AUGI0_ZX # environment
-  is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)
+  is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)[["mnsizes"]])
   # Seek the original matrices, even when is_p4m_H is TRUE:
   if ( is.null(ZAfix <- AUGI0_ZX$ZAfix_ori)) {
     ZAfix <- AUGI0_ZX$ZAfix
@@ -129,7 +129,8 @@
     # using local copies of model matrices, which are the original ones in p4m case:
     eta <- off + drop(X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% v_h) ## length nobs 
     
-    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
+    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, 
+                             dyndyn=FALSE, phi_est=phi_est) 
     neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
     newH_w.resid <- .calc_H_w.resid(neww.resid, muetablob=newmuetablob, processed=processed) # for LLF w.resid is not generally defined.
 
@@ -138,11 +139,15 @@
                                #weight_X=newweight_X,
                                H_w.resid=newH_w.resid))
     if (is_p4m_H) {
-      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
+      p4mprobs <- .calc_p4mprobs(muetablob=newmuetablob, multinom_info)
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
       # sXaug_arglist then contains (misnomed) update_sXaug_constant_arglist which contains AUGI0_ZX environment,
       # updated by the next two lines.
-      AUGI0_ZX$X.pv <- dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
-      AUGI0_ZX$ZAfix <- .makeMatp4m(mat=ZAfix, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
+      AUGI0_ZX$X.pv <- dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, 
+                                               p4mprobs=p4mprobs)
+      AUGI0_ZX$ZAfix <- .makeMatp4m(mat=ZAfix, multinom_info=multinom_info, processed=processed, 
+                                    p4mprobs=p4mprobs)
     } else if ( ! GLMMbool) {newZAL_scaling <- 1}  ## TAG: scaling for spprec
     ####
     APHLs_args$dvdu <- newwranefblob$dvdu
@@ -453,19 +458,23 @@
   ## varies within loop if ! LMM since at least the GLMweights in w.resid change
   if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
   ## needs adjMatrix and corrPars to define Qmat
-  if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+  if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)[["mnsizes"]])) {
     # In the case which works, there is a pair of .makeMatp4m() calls each time this function is called,
     # which is once for any HLfit_body() call. The dynoffset is updated at the pois4mlogit() level, 
     # HLfit_body is called in each .p4m_by_iter() iteration.
-    dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
-    dcdb_p4m <- .makeMatp4m(mat=AUGI0_ZX$X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    p4mprobs <- .calc_p4mprobs(muetablob=muetablob, multinom_info)
+    dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, 
+                            p4mprobs=p4mprobs)
+    dcdb_p4m <- .makeMatp4m(mat=AUGI0_ZX$X.pv, multinom_info=multinom_info, processed=processed, 
+                            p4mprobs=p4mprobs)
     replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
-    muetablob$dz1_p4m <- replaces_etamo - drop(.get_bind_ZAXlist(ZAL) %*% v_h +AUGI0_ZX$X.pv %*% beta_eta)
+    muetablob$dz1_p4m <- replaces_etamo - drop(.get_force_bind_ZAXlist(ZAL) %*% v_h +AUGI0_ZX$X.pv %*% beta_eta)
     constant_zAug_args$ZAL <- dcdv_p4m #  "doSeeMe" # see comment on other instance of this code
     AUGI0_ZX$ZAfix_ori <- AUGI0_ZX$ZAfix
     AUGI0_ZX$X.pv_ori <- AUGI0_ZX$X.pv
     AUGI0_ZX$X.pv <- dcdb_p4m
-    AUGI0_ZX$ZAfix <- .makeMatp4m(mat=AUGI0_ZX$ZAfix, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+    AUGI0_ZX$ZAfix <- .makeMatp4m(mat=AUGI0_ZX$ZAfix, multinom_info=multinom_info, processed=processed, 
+                                  p4mprobs = p4mprobs)
     damped_WLS_v_in_b_fn <- .do_damped_WLS_v_in_b_spprec # _p4m # is .do_damped_WLS_spprec_p4m()
     damped_WLS_fn <- .do_damped_WLS_outer_spprec # _p4m #  is ALSO .do_damped_WLS_spprec_p4m()
   } else { 
@@ -521,7 +530,11 @@
   best_HL1_lik <- -Inf
   pot4improv <- NULL
   ################ L O O P ##############
-  for (innerj in 1:maxit.mean) {
+  for (innerj in 1L:maxit.mean) {
+    if ( ! is.null(processed$next_dynoffset)) {
+      processed$off <- off <- processed$next_dynoffset
+      processed$next_dynoffset <- NULL
+    }
     # if (sanitize <- FALSE) {        
     #   w_sane_etamo <- (sXaug$BLOB$WLS_mat_weights)*(muetablob$sane_eta-off)
     #   rhs_sanitized_v_b <- c(v_h*attr(sXaug,"w.ranef") + .crossprod(ZAL, w_sane_etamo),

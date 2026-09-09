@@ -429,7 +429,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     }
     residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
   } else {
-    if ( family$family %in% c("gaussian","Gamma")) {
+    if ( family$family %in% c("gaussian","Gamma","tweedie")) {
       phi_fit <- .get_phi_fit(object, mv_it=mv_it) # diverse object; may be hlfit or glm or scalar or NULL
       # the NULL case seems to refer to cases were an outer algo is used to fit a phiGLM. Quite obscure.
       if (phimodel.=="phiGLM" && is.null(phi_fit)) {
@@ -614,7 +614,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                                        "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
   }
   if (which_mats$nn[new_rd]) {
-    if (Lnn_not_Cnn) { # seems to depend on $keep_ranef_covs_for_simulate <- ( ! is.null(newdata)) in simulate.HLfit()
+    if (Lnn_not_Cnn) { # depend on newdata through which_mats$Lnn=(keep_ranef_covs_for_simulate <- ( ! is.null(newdata))) in simulate.HLfit()
       compactL <- latentL_blob$design_u
       if (is.null(compactL)) compactL <- # on chkfx and HLfit3 examples, the latter with a singularity
           .wrap_solve_warn(X=t(as.matrix(latentL_blob$compactchol_Q_w)),
@@ -712,23 +712,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if ( is.data.frame(locdata)) {
       geonames <- colnames(olduniqueGeo) 
       newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
+      newuniqueGeo <- unique(newuniqueGeo)
       
-      if (for_mv) { # ...but for mv fits this will be a problem in .compute_ZAXlist() as locnr>locnc
-        newuniqueGeo <- unique(newuniqueGeo)
-        rownames(newuniqueGeo) <- .pasteCols(t(newuniqueGeo)) 
-      } else if (attr(newZAlist[[new_rd]],"Z_levels_type") != "seq_len") {
-        ## The location in newuniqueGeo may not be unique despite the name. 
-        ## The costs of reducing to unique values may outweight the benefits. 
-        ## The 'decision' has been made when creating the new ZA, through its levels type.
-        ## Simple test case where levels_type is seq_len: 
-        ## example(bboptim) [Matern with replicate pairs in some locations; locations are not unique in 'newuniqueGeo']
-        ## conversely the  predVar computations in block 
-        ##   'verif .calc_Evar() with ranCoefs...' in test-devel-predVar-ranCoefs
-        ## stop if unique() is not applied (for the AR1 ranef). 
-        ## The Z_levels_type attr should have been used more to secure the code...
-        newuniqueGeo <- unique(newuniqueGeo)
-      }
-      
+      if (for_mv) rownames(newuniqueGeo) <- .pasteCols(t(newuniqueGeo)) 
+
     } else { ## locdata is 'preprocessed' list of arrays (tested by get_predCov_var_fix() tests)
       newuniqueGeo <- locdata[[as.character(old_rd)]] ## preprocessed, [,geonames,drop=FALSE] not necess ## includes nesting factor 
       geonames <- colnames(newuniqueGeo)
@@ -892,7 +879,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           } else { ## else the list elements remained NULL... until .calc_Var_given_fixef() needed them
             if (which_mats$nn[new_rd]) {
               if (Lnn_not_Cnn) {
-                newLv_env$L_newLv_newLv_list[[new_rd]] <- .symDiagonal(n=ncol(newZAlist[[new_rd]])) 
+                lmat <- .symDiagonal(n=ncol(newZAlist[[new_rd]])) 
+                # dimnames(lmat) <- list(NULL, colnames(newZAlist[[new_rd]])) 
+                # : ? might be useful for .wrap_compute_ZALlist4simulate() -> .compute_ZAXlist()? Not currently.
+                newLv_env$L_newLv_newLv_list[[new_rd]] <- lmat 
               } else newLv_env$cov_newLv_newLv_list[[new_rd]] <- 1 ## just 1 must suffice except if we subsetted (slice...) in which case we would need the names as in:
               # zut <- .symDiagonal(n=ncol(newZAlist[[old_rd]])) 
               # dimnames(zut) <- list(colnames(newZAlist[[old_rd]]),colnames(newZAlist[[old_rd]])) 
@@ -1022,13 +1012,25 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
 }
 
-.eta_linkfun <- function(mu_T, # must be vector, even in mv case 
+# family$linkfun needs mu_U when the family is zero truncated,
+# but its first arg is always mu_T.
+# $linkfun then *by default* uses an attr(mu_T,"mu_U") attribute,
+# but in mv case we pass mu_U as optional argument:
+# without this optional arg, the attr would have to be specially added to mu_T.
+# So in mv case we use the optional arg, 
+# and in non-mv case its default value attr(mu_T,"mu_U").
+.eta_linkfun <- function(mu_T, # m;ust be vector, even in mv case 
                          family, families=NULL, cum_nobs) { 
   if (! is.null(families)) {
     eta <- vector("list", length(cum_nobs)-1L)
     for (mv_it in seq_along(eta)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-      eta[[mv_it]] <- .eta_linkfun(mu_T[resp_range], family=families[[mv_it]]) 
+      mu_T_it <- mu_T[resp_range]
+      fam_it <- families[[mv_it]]
+      if ( ! is.null(zero_truncated <- fam_it$zero_truncated)) {
+        eta[[mv_it]] <- fam_it$linkfun(mu_T_it, mu_truncated=zero_truncated, 
+                                       mu_U=attr(mu_T,"mu_U")[[mv_it]]) 
+      } else eta[[mv_it]] <- fam_it$linkfun(mu_T_it) 
     }
     return(unlist(eta, recursive = FALSE, use.names = TRUE))
     # : a redundant object with a list 'mv' of sub-muetablob's added to a synthetic muetablob with itself a list of sub-GLMweights'
@@ -1122,7 +1124,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 .point_predict <- function(object, newdata, new_X_ZACblob, variances, re.form, type, 
                            eta_fix=new_X_ZACblob$eta_fix ## may be NULL. addition of random-effect terms in the function
                            ) {
-  if (.noRanef(re.form)) {
+  if (.noRanef(re.form)) { # typical case for marginal simulation.
     if (type=="link") { # in those cases, we return eta but no useful $fv 
       fv <- NULL 
     } else {
@@ -1157,7 +1159,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         object$envir$w_h_coeffs <- w_h_coeffs <- .calc_invL_coeffs(object,object$v_h)
       }
       augm_w_h_coeffs <- vector("list", newnrand)
-      for (new_rd in seq_len(newnrand)) {
+      for (new_rd in seq_len(newnrand)) { # this provides augm_w_h_coeffs only for ranefs in re.form
         augm_w_h_coeffs[[new_rd]] <- .match_old_new_levels(new_rd, new_X_ZACblob,
                                                            old_cum_n_u_h=attr(object$lambda,"cum_n_u_h"), 
                                                            w_h_coeffs=w_h_coeffs, 
@@ -1360,6 +1362,26 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                             na.action=na.action, verbose=verbose)
 }
 
+.bind_preds <- function(resu, locdata, binding, mu_U, p0) {
+  binding <- .makenewname(base=binding,varnames=colnames(locdata)) 
+  resu <- structure(data.frame(resu), mu_U=mu_U,p0=p0)
+  colnames(resu) <- binding
+  resu <- cbind(locdata,resu) 
+  attr(resu,"fittedName") <- binding
+  resu
+}
+
+.bind_preds_mv <- function(resu, locdata, binding) {
+  p0 <- attr(resu,"p0")
+  mu_U <- attr(resu,"mu_U")
+  mv <- attr(resu,"mv")
+  resu_mv <- vector("list", length(mv))
+  for (mv_it in seq_along(mv)) {
+    resu_mv[[mv_it]] <- .bind_preds(mv[[mv_it]], locdata[[mv_it]], binding, 
+                                    mu_U=mu_U[[mv_it]], p0=p0[[mv_it]]) 
+  }
+  resu_mv
+}
 
 .predict_body <- function(object, newdata, re.form, type,
                           variances, binding, intervals, level, blockSize, control, 
@@ -1383,7 +1405,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   if ( ! is.na(binding)){ ## suitable for objective function of optim() etc                ## ambiguous comment (about NA or !NA ?)    
     resu <- structure(as.matrix(resu),mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"),
                       mv=attr(resu,"mv") ## matrix ! maybe more suitable than data frame as objective function
-    ) 
+    ) # ***** this converts to 1-col matrix *****
+    # simulate() typically uses predict(., binding=NA)
   }
   # if (identical(object$family$zero_truncated,TRUE)) {
   #   attr(resu,"p0") <- attr(ppblob$fv,"p0")
@@ -1393,18 +1416,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   #rownames(resu) <- make.names(rownames(resu),unique = TRUE)
   if ( ! is.logical(binding) ) { ## expecting a string
     if (inherits(locdata,"list")) { # mv case
-      stop("'binding' operation not yet defined for multivariate-response models. Ask the maintainer.") 
-      # wait for real-life example. (___FIXME___) and beware of code for intervals below
+      resu <- .bind_preds_mv(resu, locdata, binding) 
+      # stop("'binding' not implemented for multivariate-response models (see Details of {.help [{.fun LRT}](spaMM::predict.HLfit)}).") 
+      # for reason explained in the doc. I wrote 'Beware also of code for intervals below.'
     } else {
-      binding <- .makenewname(base=binding,varnames=colnames(locdata)) 
-      resu <- structure(data.frame(resu), mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"))
-      colnames(resu) <- binding
-      resu <- cbind(locdata,resu) 
-      attr(resu,"fittedName") <- binding
+      resu <- .bind_preds(resu, locdata, binding, mu_U=attr(resu,"mu_U"), p0=attr(resu,"p0")) 
     }
   } else { ## alternative expecting binding= FALSE (but also handling binding = NA by doing nothing)
     if (! is.na(binding))  attr(resu,"frame") <- locdata 
-  }
+  } # note that binding=TRUE has same effect as FALSE.
   # if (inherits(locdata,"list")) attr(resu,"respnames") <- .get_from_terms_info(object=object, which="respnames") # not used through API ./.
   # Has only been used in some devel test code in test-mv-extra (in (FALSE) block).
   ##### (2) predVar
@@ -1446,7 +1466,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   if ( is.list(predVar)) {
     attr(resu,"predVar") <- predVar 
   } else {
-    if (variances$cov) predVar <- (predVar+t(predVar))/2 ## if numerically asym, rand_eta <- mvrnorm(.,Sigma=attr(point_pred_eta,"predVar")) fails
+    if (variances$cov) predVar <- (predVar+t(predVar))/2 ## if predVar numerically asym, .mvrnorm(.,Sigma=attr(point_pred_eta,"predVar")) fails
     attr(resu,"predVar") <- predVar ## vector or matrix
   }
   # For interval computations we always use the predVar on the linear predictor scale, already stored as a an attribute of 'resu'.
@@ -1597,9 +1617,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 # }
 
 # Derived from  internal stats:::naresid.exclude()  (which does not 'exclude': rather, it uses the result of na.exclude())
-.naresid.exclude <- function(omit, x, ...) { 
-  if (length(omit) == 0 || !is.numeric(omit)) 
-    stop("invalid argument 'omit'")
+.naresid.exclude <- function(na.action, x, ...) { 
+  if (length(na.action) == 0L || !is.numeric(na.action)) 
+    stop("invalid argument 'na.action'")
   if (is.null(x)) 
     return(x)
   
@@ -1608,13 +1628,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   attrs <- attrs[which2keep]
 
   n <- NROW(x)
-  keep <- rep.int(NA, n + length(omit))
-  keep[-omit] <- 1L:n
+  keep <- rep.int(NA, n + length(na.action))
+  keep[-na.action] <- 1L:n
   if (is.matrix(x)) {
     x <- x[keep, , drop = FALSE] # this line messes the optional predVar attribute (why???)
     temp <- rownames(x)
     if (length(temp)) {
-      temp[omit] <- names(omit)
+      temp[na.action] <- names(na.action)
       rownames(x) <- temp
     }
   }
@@ -1622,7 +1642,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     x <- x[keep, , , drop = FALSE]
     temp <- (dn <- dimnames(x))[[1L]]
     if (!is.null(temp)) {
-      temp[omit] <- names(omit)
+      temp[na.action] <- names(na.action)
       dimnames(x)[[1L]] <- temp
     }
   }
@@ -1630,7 +1650,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     x <- x[keep]
     temp <- names(x)
     if (length(temp)) {
-      temp[omit] <- names(omit)
+      temp[na.action] <- names(na.action)
       names(x) <- temp
     }
   }
@@ -1656,8 +1676,8 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   verbose <- .modify_list(
     list(showpbar=eval(spaMM.getOption("barstyle")),
          na=TRUE, # whether to output a *message* when there are NA in newdata 
-         na_once=FALSE), # whether to reset NA_in_newdata_NOT_warned to TRUE 
-    # when run if this function concludes. na_once=TRUE is useful for repetitive internal calls  
+         na_once=FALSE), # if FALSE, NA_in_newdata_NOT_warned is reset to TRUE 
+    # when this function concludes. na_once=TRUE is useful for repetitive internal calls  
     # to predict() as in pdep_effects() (which must then reset NA_in_newdata_NOT_warned when concluding). Hence:
     verbose # The latter 'verbose' will typically include na_once=TRUE when predict() called by pdep_effect.
   )
@@ -1843,6 +1863,33 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
   } # Use unlist() to remove attributes from the return value
 }) 
 
+.show_str_attrs <- function(a) {
+  # shows structure of attributes as in utils:::str.default
+  cat("\n")
+  nam <- names(a)
+  nest.lev <- 0L
+  indent.str <- " "
+  `%w/o%` <- function(x, y) x[is.na(match(x, y))]
+  nfS <- names(fStr <- formals())
+  ## this scans the substructure of each attribute
+  strSub <- function(obj, ...) {
+    nf <- nfS %w/o% c("object", "give.length", "comp.str", 
+                      "no.list", names(match.call())[-(1:2)], "...")
+    aList <- as.list(fStr)[nf]
+    aList[] <- lapply(nf, function(n) eval(as.name(n)))
+    strObj <- function(...) str(obj, ...)
+    do.call(strObj, c(aList, list(...)), quote = TRUE)
+  }
+  std.attr <- c("names","dim","dimnames","class") ## attributes not to be shown
+  for (i in seq_along(a)) if (all(nam[i] != std.attr)) {
+    cat(indent.str, paste0("- attr(*, \"", nam[i], "\")="), 
+        sep = "")
+    strSub(a[[i]], give.length = TRUE, 
+           indent.str = paste(indent.str, ".."), nest.lev = nest.lev + 1L)
+  }
+}
+
+
 print.spaMM_predictions <- function (x, expanded=FALSE, ...) {
   asvec <- as.vector(x) ## important to remove names and keep them separately
   rnames <- rownames(x)
@@ -1853,34 +1900,13 @@ print.spaMM_predictions <- function (x, expanded=FALSE, ...) {
   cat("Point predictions:\n")
   print(asvec)
   cat("*stored as* 1-col matrix with attributes:")
-  std.attr <- c("names","dim","dimnames","class") ## attributes not to be shown
-  a <- attributes(x)
-  nam <- names(a)
   if (expanded) { # shows structure of attributes as in utils:::str.default
-    cat("\n")
-    nest.lev <- 0
-    indent.str <- paste(rep.int(" ", max(0, nest.lev + 1)), collapse = "..")
-    strO <- getOption("str")
-    strO <- modifyList(strOptions(), strO) ## seems to provide a format.fun function
-    `%w/o%` <- function(x, y) x[is.na(match(x, y))]
-    nfS <- names(fStr <- formals())
-    ## this scans the substructure of each attribute
-    strSub <- function(obj, ...) {
-      nf <- nfS %w/o% c("object", "give.length", "comp.str", 
-                        "no.list", names(match.call())[-(1:2)], "...")
-      aList <- as.list(fStr)[nf]
-      aList[] <- lapply(nf, function(n) eval(as.name(n)))
-      strObj <- function(...) str(obj, ...)
-      do.call(strObj, c(aList, list(...)), quote = TRUE)
-    }
-    for (i in seq_along(a)) if (all(nam[i] != std.attr)) {
-      cat(indent.str, paste0("- attr(*, \"", nam[i], "\")="), 
-          sep = "")
-      strSub(a[[i]], give.length = TRUE, indent.str = paste(indent.str, 
-                                                            ".."), nest.lev = nest.lev + 1)
-    }
+    .show_str_attrs(attributes(x))
   } else {
     cat(" ")
+    std.attr <- c("names","dim","dimnames","class") ## attributes not to be shown
+    a <- attributes(x)
+    nam <- names(a)
     nam <- setdiff(nam,std.attr)
     cat(paste(nam,collapse=", "))  
     cat("\n")

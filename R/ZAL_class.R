@@ -306,11 +306,19 @@ if (FALSE) {
   } else ncol(x)
 }
 
+# wrapper that saves result of .ad_hoc_cbind for possible reuse, and use @as_matrix
 .get_bind_ZAXlist <- function(zaxlist) {
-  if (is.null(mMat <- zaxlist@envir[["mMat"]]))
-    zaxlist@envir[["mMat"]] <- mMat <- .ad_hoc_cbind(zaxlist@LIST, as_matrix=zaxlist@as_matrix )
-  mMat
+    if (is.null(mMat <- zaxlist@envir[["mMat"]]))
+      zaxlist@envir[["mMat"]] <- mMat <- .ad_hoc_cbind(zaxlist@LIST, as_matrix=zaxlist@as_matrix )
+    mMat
 }
+
+.get_force_bind_ZAXlist <- function(zaxlist) {
+  if (is.null(mMatF <- zaxlist@envir[["mMatF"]]))
+    zaxlist@envir[["mMatF"]] <- mMatF <- .ad_hoc_cbind(zaxlist@LIST, as_matrix=zaxlist@as_matrix, force=TRUE )
+  mMatF
+}
+
 
 # That might be useful inline but no case yet:
 # .get_bind <- function(ZAL_info) {

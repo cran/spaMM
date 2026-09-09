@@ -66,7 +66,6 @@
 \alias{getPar}
 \alias{HLCor_body}
 \alias{HLfit_body}
-\alias{HLfit_body_old}
 \alias{makeTicks} % used by probitgem and Infusion but not spaMM itself. Either I define it in each of the two other packages or I keep it here
 \alias{Matern.corr} % back compat, should be deleted later
 \alias{niceLabels} % used by blackbox

@@ -63,7 +63,10 @@ The functions return corrFamily descriptors whose general format is described in
 \references{
 Lynch, M., Walsh, B. (1998) Genetics and analysis of quantitative traits. Sinauer, Sunderland, Mass.
 }
-\seealso{\code{\link{mmfn}} for asymmetric multi-membership models.}
+\seealso{
+\code{\link{X.GCA}} for similar constructs for fixed effects;
+\code{\link{mmfn}} for asymmetric multi-membership models.
+}
 \examples{
 
 #### Simulate dyadic data

@@ -31,6 +31,7 @@
 \alias{df.residual.HLfit}
 \alias{weights}
 \alias{weights.HLfit}
+\alias{get_drawSizes}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Functions to extract various components of a fit.
@@ -38,21 +39,24 @@ Functions to extract various components of a fit.
 \description{
  Most extractors are methods of generic functions defined in base R (see Usage), for which the base documentation may be useful.
  
-\code{formula} extracts the model formula.\cr
-\code{family} extracts the assumed distribution family for the response variable.\cr
-\code{terms} extracts the formula, with attributes describing the \bold{fixed-effect} terms.\cr 
-\code{nobs} returns the length of the response vector.\cr
-\code{logLik} extracts the log-likelihood (exact or approximated).\cr
-\code{dev_resids} returns a vector of squared (unscaled) deviance residuals. For GLM families, this refers to the summands defined for GLMs in McCullagh and Nelder 1989, p. 34 for other response families. For other response families, see Details of \code{\link{LL-family}}. \cr
-\code{deviance} returns the sum of squares of these deviance residuals, possibly weighted by prior weights (consistently with \code{stats::deviance}. See \code{\link{residuals.HLfit}} for details and comparison with related extractors.\cr
-\code{fitted} extracts fitted values.\cr
-\code{response} extracts the response (as a vector).\cr
-\code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.\cr
-\code{coef} may not do anything useful yet.\cr
-\code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or optionally \bold{u} (see \code{\link{random-effects}} for definitions). \code{print.ranef} controls their printing. \cr
-\code{getDistMat} returns a distance matrix for a geostatistical (Matérn etc.) random effect.\cr
-\code{df.residual} extracts residual degrees-of-freedom for fitted models (here number of observations minus number of parameters of the model except residual dispersion parameters).
-\code{wweights} extracts prior weights (as defined by the fitting functions's \code{prior.weights} argument).
+\eqn{\bullet}\code{ formula} extracts the model formula.\cr
+\eqn{\bullet}\code{ family} extracts the assumed distribution family for the response variable.\cr
+\eqn{\bullet}\code{ terms} extracts the formula, with attributes describing the \bold{fixed-effect} terms.\cr 
+\eqn{\bullet}\code{ nobs} returns the length of the response vector.\cr
+\eqn{\bullet}\code{ logLik} extracts the log-likelihood (exact or approximated).\cr
+\eqn{\bullet}\code{ fitted} extracts fitted values.\cr
+\eqn{\bullet}\code{ response} extracts the response (as a vector).\cr
+\eqn{\bullet}\code{ fixef} extracts the fixed effects coefficients, \eqn{\beta}.\cr
+\eqn{\bullet}\code{ coef} may not do anything useful yet.\cr
+\eqn{\bullet}\code{ ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or optionally \bold{u} (see \code{\link{random-effects}} for definitions). \code{print.ranef} controls their printing. \cr
+\eqn{\bullet}\code{ getDistMat} returns a distance matrix for a geostatistical (Matérn etc.) random effect.\cr
+\eqn{\bullet}\code{ df.residual} extracts residual degrees-of-freedom for fitted models (here number of observations minus number of parameters of the model except residual dispersion parameters).\cr
+\eqn{\bullet}\code{ weights} extracts prior weights (as defined by the fitting functions's \code{prior.weights} argument).\cr
+\eqn{\bullet}\code{ get_drawSizes} extracts binomial or multinomial draw sizes.
+
+\eqn{\bullet}\code{ dev_resids} returns a vector of squared (unscaled) deviance residuals, prior-weights if the model had prior weights; and \cr
+\eqn{\bullet}\code{ deviance} returns the sum of squares of these deviance residuals. See \code{\link{residuals.HLfit}} for details about these concepts, and their relation with the different possible residuals extracted by the latter function.\cr
+
 }
 \usage{
 \method{formula}{HLfit}(x, which="hyper", ...)
@@ -72,6 +76,7 @@ Functions to extract various components of a fit.
 getDistMat(object, scaled=FALSE, which = 1L)
 response(object,...)
 dev_resids(object,...)
+get_drawSizes(object,p4m="P")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -87,6 +92,7 @@ dev_resids(object,...)
   \item{x}{For \code{print.ranef}: the return value of \code{ranef.HLfit}.}
   \item{max.print}{Controls \code{options("max.print")} locally.}
   \item{submodel}{Integer: to extract the family for a given submodel in a multivariate-response fit.}
+  \item{p4m}{Character: for fit objects of class \code{pois4mlogit}, this controls whether to return the multinomial draw size (when \code{p4m="M"}) or a vector of 1 as for Poisson fits ((when \code{p4m="P"}). Note that the default value may change in a later version, so an explicit value should be provided to ensure portability of code.}
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \details{For rank-deficient model matrices, base R procedures \code{lm} and \code{glm} estimate coefficients for a rank-trimmed matrix and \code{coefficient()} returns a full-length vector completed with NA values for coefficients not estimated, while the \pkg{lme4} \code{fixef} method returns a trimmed vector. \pkg{spaMM} has long followed the base R convention for all models but this may impede use of some post-fit procedures initially conceived for \pkg{lme4} objects (such as \pkg{lmerTest} procedures for LMMs). So now \code{fixef.HLfit} trims the vector by default for mixed-effect models only. The default is thus to maximize consistency/compatibility with preexisting procedures despite their inconsistencies with each other.}

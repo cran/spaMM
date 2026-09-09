@@ -5,9 +5,11 @@
 # But if I implement 'dynamic offsets for LMMs' (non-linear mixed models?, 
 # I should either prevent .HLfit_body_augZXy() calls, or add code here.
 
-# This raises Q for other procedures that use etaFix and $X_off_fn, such as numInfo(). 
-# But numInfo() appears to imply processed$models[["phi"]]=="" (whether 'which' is defaut or ="beta")
-# and then augZXy_cond is FALSE.
+# Procedures that use etaFix and $X_off_Xb_fn, such as numInfo(), won't use the y-augmented method. 
+# X_off_Xb_fn is specifically tested for augZXy cond.
+# There is no risk of hidden bug bc the _body fn does not have an etaFix argument.
+# Beyond that, numInfo() appears to imply processed$models[["phi"]]=="" (whether 'which' is defaut or ="beta")
+# and then augZXy_cond is FALSE. 
 
 .HLfit_body_augZXy <- function(processed, fixed=list()) { 
   trace <- processed$verbose["TRACE"]

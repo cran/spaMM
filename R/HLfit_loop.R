@@ -14,8 +14,7 @@
                              LMatrices=loopout_blob$LMatrices,
                              lambda_est=loopout_blob$lambda_est,
                              phi_est=loopout_blob$phi_est,
-                             phiBLOB=loopout_blob$phiBLOB, # something strange: this line has been missing yet 
-                                                          # neither the tests (&long &extras...) nor R CMD check saw a problem
+                             PHIblob=loopout_blob$PHIblob, 
                              ZAL=loopout_blob$ZAL,
                              #
                              mu=muetablob$mu,
@@ -79,7 +78,8 @@
                                   list(rho=adj_rho)
                                 })
     if ( ! is.null(auglinmodblob)) { # may be NULL if formula was ~ 0 (or ~ offset, presumably)
-      if ( is.null(processed$X_off_fn)) beta_eta <- auglinmodblob$beta_eta
+      beta_eta <- auglinmodblob$beta_eta # removed test 'if (is.null(processed$X_off_fn))' on this line. ->v4.6.157
+                                           # at best it was nit-picking inspired, OK in initial outer beta attempts where full beta is fixed
       muetablob <- auglinmodblob$muetablob 
       mu <- muetablob$mu ## necess dans test COMPoisson HLfit...
       w.resid <- auglinmodblob$w.resid 
@@ -95,19 +95,24 @@
     
     ########## LEVERAGES
     if (std_dev_res_needed_4_inner_estim) {
-      leverages <- .calc_std_leverages(models=models, need_ranefPars_estim=need_ranefPars_estim, phi.Fix=phi.Fix, auglinmodblob=auglinmodblob, 
-                                       n_u_h=n_u_h, nobs=length(y), processed=processed, 
-                                       # w.resid=w.resid, u_h=u_h, 
-                                       need_simple_lambda=need_simple_lambda, 
-                                       #muetablob=muetablob, wranefblob=wranefblob, 
+      leverages <- .calc_std_leverages(models=models, need_ranefPars_estim=need_ranefPars_estim, phi.Fix=phi.Fix, 
+                                       auglinmodblob=auglinmodblob, n_u_h=n_u_h, nobs=length(y), 
+                                       processed=processed, need_simple_lambda=need_simple_lambda, 
                                        ZAL=ZAL, lambda_est=lambda_est, cum_n_u_h=cum_n_u_h, phi_est=phi_est)
     }
     ######### Dispersion Estimates for phi #####################
     if (.anyNULL(phi.Fix)) { ## if phi is estimated (vs phi.Fix set to 1 for Poisson, Binomial); implies std_dev_res_needed_4_inner_estim
-      leverages$resid[leverages$resid>1-1e-8] <- 1-1e-8
+      # leverages$resid[leverages$resid>1-1e-8] <- 1-1e-8 # replaced by levgr1 correction in .calcPHIs()
+      dev_res_info <- list(lev_phi=leverages$resid,
+                           dlogLdphi=leverages$dlogLdphi,
+                           phi_est=phi_est)
+      # dev_res_info carries 
+      # 'lev_phi' always needed in .calcPHIs()
+      # 'phi_est', possibly needed for levgr1 correction in .calcPHIs()
+      # for tweedie, 'dlogLdphi' which may be needed in ..calcPHI() (with 'phi_est' again).
       PHIblob <- .calcPHIs(processed=processed, 
                            y=y,mu=mu, wt= eval(prior.weights), 
-                           lev_phi=leverages$resid, phimodels=models[["phi"]], verbose=verbose, 
+                           dev_res_info=dev_res_info, phimodels=models[["phi"]], verbose=verbose, 
                            control.HLfit=control.HLfit, phi.Fix=phi.Fix,
                            iter=iter, prev_PHIblob=PHIblob)
       
@@ -256,7 +261,7 @@
     if (verbose["trace"]) {
       print(paste("iteration ",iter,
                   #"; convergence criteria for phi, lambda, corr pars , conv_lambda_vs_u, conv_rel_lambda: ",
-                  "; convergence criteria for phi, lambda, corr pars: ",
+                  "; convergence criteria for \u03D5, \u03BB, \u03C1: ",
                   paste0(c( conv.phi , conv.lambda, conv.corr), #,conv_lambda_vs_u, conv_rel_lambda),
                          collapse = " "),
                   "; logL & conv_logL:", next_lik, conv_logL))
@@ -291,15 +296,21 @@
   
 }
 
-
-.add_unscaled_X.pv_fixef <- function(res, processed, beta_eta, etaFix, X.pv=processed$AUGI0_ZX$X.pv) {
+# a (never git-pushed) bug that led to ignore the .unscale() result introduced a diff between predVar(adjfit/sp)
+# cf if (FALSE) tests in test-augZXy.R if this code is modified.
+.add_unscaled_X.pv_fixef <- function(
+    res, processed, beta_eta, etaFix, # assumed resp. scaled (from loopout.blob) and unscaled ones.
+                                     X.pv=processed$AUGI0_ZX$X.pv) {
   if ( ! is.null(scale <- attr(X.pv,"scaled:scale"))) {
     beta_eta <- .unscale(beta=beta_eta, X=X.pv, scale=scale)
-    res$X.pv <- .unscale(X.pv, scale=scale) ## lvalue usefully not in an environment
-  } else {
-    res$X.pv <- X.pv
-  }
-  res$fixef <- .calc_full_fixef(processed, beta_eta, etaFix) # results with possible NA's
+    X.pv <- .unscale(X.pv, scale=scale) 
+  } # ELSE there is the case of 0-col X but then beta_eta is numeric(0)
+  rownames(X.pv) <- names(res$fv)
+  res$X.pv <- X.pv ## lvalue usefully not in an environment
+  res$fixef <- .calc_full_fixef(processed, 
+                                beta_eta, # fitted values now locally unscaled
+                                etaFix # fixed values also assumed unscaled
+                                ) # results with possible NA's
   res
 }
 
@@ -337,9 +348,10 @@
   ##
 }
 
-.maxit.mean <- function(nrand, pforpv, etaFix, LMMbool, intervalInfo, inner_est_disp_pars, processed, models, phi.Fix) {
+.maxit.mean <- function(nrand, pforpv, etaFix_v_h=etaFix_v_h, LMMbool, intervalInfo, 
+                        inner_est_disp_pars, processed, models, phi.Fix) {
   if (nrand) { # (models[["eta"]]=="etaHGLM") {
-    if (pforpv==0L && !is.null(etaFix$v_h)) {
+    if (pforpv==0L && !is.null(etaFix_v_h)) {
       maxit.mean <- 0L ## used in test near the end...
     } else if ( LMMbool && is.null(intervalInfo) ) {
       maxit.mean <- 1L ## 1 is sufficient for LMM as Hessian does not vary with beta_eta  => quadratic function;

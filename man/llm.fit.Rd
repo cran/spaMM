@@ -9,7 +9,7 @@ Some \dQuote{family} objects in \pkg{spaMM} describe models with non-GLM distrib
 
 These family objects are conceived for use with \pkg{spaMM}'s fitting functions. They cannot generally be used as argument to the \code{glm} function, except when this function is highjacked by use of the \code{method="llm.fit"} argument, where llm stands for Link-Linear (as in \dQuote{log-linear}, say) regression Model. 
 
-Mixed-effect models fitted by such methods cannot use expected-Hessian approximations, in contrast to GLM distribution families. \code{\link{negbin2}} is a family object for a GLM distribution family (strictly speaking, only for fixed shape and untruncated version) but implemented as an \code{LL-family}, in particular using only the observed Hessian matrix.    
+Mixed-effect models fitted by such methods cannot use approximations based on the expected information matrix, in contrast to GLM distribution families. 
 }
 \usage{
 # glm(..., method="llm.fit")
@@ -18,7 +18,9 @@ Mixed-effect models fitted by such methods cannot use expected-Hessian approxima
 \details{
 These family objects are lists, formally of class \code{c("LLF", "family")}. Compared to a \code{\link[stats]{family}} object, they have additional elements, not documented here. 
 
-As \code{stats::} GLM family objects do, they provide deviance residuals through the \code{dev.resids} member function. There are various definitions of deviance residuals for non-GLM families in the literature. Here they are defined as \dQuote{2*(saturated_logLik - logLik)}, where the likelihood for the saturated model is the likelihood maximized wrt to the mean parameter \eqn{\mu} for each observation \code{y} independently. The maximizing  \eqn{\mu} is not equal to the observation, in contrast to the standard result for GLMs.   
+As \code{stats::} GLM family objects do, they provide deviance residuals through the \code{dev.resids} member function. There are various definitions of deviance residuals for non-GLM families in the literature. Here they are defined from the unit deviances \dQuote{2*(saturated_logLik - logLik)\eqn{_i}} for each observation \eqn{i} (provided by the \code{dev.resids} function defined by the family), where the likelihood for the saturated model is the likelihood maximized wrt to the mean parameter \eqn{\mu_i} for each observation \eqn{y_i} independently. The maximizing  \eqn{\mu_i} is not equal to the observation \eqn{y_i}, in contrast to the standard result for GLMs.   
+
+\code{llm.fit} provides the deviance (the sum of the above unit deviances), but not the null deviance provided by \code{stats::glm.fit}. The latter is the deviance of an intercept-only (or offset only) model. There, the intercept estimate is the mean response value for GLMs, so that the null deviance is immediately obtained; but this is not generally so for other families. 
 }
 \examples{
 data(scotlip)

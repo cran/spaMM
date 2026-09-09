@@ -6,20 +6,25 @@
 
 
 
-negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link = "log", trunc=-1L) {
+negbin1 <- function (shape, link = "log", trunc=-1L) {
   mc <- match.call()
   resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
-  if (inherits(shch <- substitute(shape),"character") ||
-      (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
-      # (but testing only "name" would catch e.g. negbin(shape=shape) )
-  ) { 
-    if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
-    errmess <- paste0('It looks like negbin1(',shch,') was called, which absurdly means negbin1(shape=',shch,
-                      ').\n  Use named argument: negbin1(link=',shch,') instead.')
-    stop(errmess)
+  if (missing(shape)) {
+    delayedAssign("shape", stop("negbin1's shape must be specified"))
+  } else {
+    if (inherits(shch <- substitute(shape),"character") ||
+        (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
+        # (but testing only "name" would catch e.g. negbin(shape=shape) )
+    ) { 
+      if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
+      errmess <- paste0('It looks like negbin1(',shch,') was called, which absurdly means negbin1(shape=',shch,
+                        ').\n  Use named argument: negbin1(link=',shch,') instead.')
+      stop(errmess)
+    }
+    # When 'shape' is recognized as as call to some function, 
+    # we eval it so it is no longer recognized as a call by .is_fampar_missing()
+    if (inherits(shch,"call")) shape <- eval(shch, parent.frame()) 
   }
-  # When 'shape' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
-  if (inherits(shch,"call") && deparse(shch[[1]])!="stop") shape <- eval(shch) 
   
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
@@ -254,9 +259,8 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
   aic <- function(y, mu, wt, ...) {
     - 2 * sum(logl(y, mu, wt))
   }
-  linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
+  linkfun <- function(mu,mu_truncated=FALSE, mu_U=attr(mu,"mu_U")) { ## mu_truncated gives type of I N put
     if (mu_truncated) { ## ie if input mu_T
-      mu_U <- attr(mu,"mu_U")
       return(stats$linkfun(mu_U))
     } else return(stats$linkfun(mu)) ## mu_U -> eta_U
   }

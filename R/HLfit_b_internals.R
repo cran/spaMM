@@ -2,7 +2,7 @@
   if ( ! is.null(disp_env$scaled_X)) {
     dispvals <- drop(disp_env$scaled_X %*% disp_env$scaled_beta + disp_env$off)
   } else dispvals <- drop(disp_env$X %*% disp_env$beta + disp_env$off)
-  dispvals <- exp(unname(dispvals))
+  dispvals <- disp_env$linkinv(unname(dispvals)) # typically exp(...)
   dispvals <- pmin(up, pmax(lo, dispvals))
   dispvals
 }
@@ -10,6 +10,7 @@
 .post_process_family_it <- function(family, ranFix, char_mv_it) {
   if (family$family=="COMPoisson") {
     if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars 
+      # ____F I X M E______ resid.model for the nu of the COMPoisson: not API, not tried?. Should try and tidy.
       disp_env <- family$resid.model
       if (is.null(disp_env$scaled_X)) {
         disp_env$beta <- rdisPars # fixed rdisPars
@@ -24,10 +25,7 @@
       assign("nu",unname(COMP_nu),envir=environment(family$aic))
       ranFix$COMP_nu[char_mv_it] <- NA
       ranFix$COMP_nu <- na.omit(ranFix$COMP_nu)
-    } else {
-      checknu <- substitute(nu, env=environment(family$aic)) 
-      if (inherits(checknu,"call")) eval(checknu)
-    }
+    } # else .force_fampar_stop(family=family, fampar= "nu") # force any stop()
   } else if (family$family %in% c("beta_resp","betabin")) {
     if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars
       disp_env <- family$resid.model
@@ -48,10 +46,7 @@
       assign("prec",.beta_precInv(unname(trbeta_prec)),envir=environment(family$aic))
       ranFix$trbeta_prec[char_mv_it] <- NA
       ranFix$trbeta_prec <- na.omit(ranFix$trbeta_prec)
-    } else {
-      checkprec <- substitute(prec, env=environment(family$aic)) 
-      if (inherits(checkprec,"call")) eval(checkprec)
-    }
+    } # else .force_fampar_stop(family=family, fampar= "prec") # force any stop()
   } else if (family$family %in% c("negbin1","negbin2")) {
     if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars
       disp_env <- family$resid.model
@@ -70,15 +65,27 @@
       assign("shape",.NB_shapeInv(trNB_shape),envir=environment(family$aic))
       ranFix$trNB_shape[char_mv_it] <- NA
       ranFix$trNB_shape <- na.omit(ranFix$trNB_shape)
-    } else {
-      checktheta <- substitute(shape, env=environment(family$aic)) 
-      if (inherits(checktheta,"call")) eval(checktheta)
-    }
+    } # else .force_fampar_stop(family=family, fampar= "shape") # force any stop()
+  } else if (family$family=="tweedie") {
+    if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars 
+      stop("A resid.model should instead affect the canonical GLM dispersion parameter")
+    } else if ( ! is.null(ranFix$Tw_index) && ! is.na(Tw_index <- ranFix$Tw_index[char_mv_it])) { ## outer optim scalar Tw_index
+      assign("p",unname(Tw_index),envir=environment(family$aic))
+      ranFix$Tw_index[char_mv_it] <- NA
+      ranFix$Tw_index <- na.omit(ranFix$Tw_index)
+    } # else .force_fampar_stop(family=family, fampar= "p") # force any stop()
+    if ( ! is.null(ranFix$Tw_link) && ! is.na(Tw_link <- ranFix$Tw_link[char_mv_it])) { ## outer optim scalar Tw_link (may fail)
+      assign("q",unname(Tw_link),envir=environment(family$aic)) 
+      ranFix$Tw_link[char_mv_it] <- NA
+      ranFix$Tw_link <- na.omit(ranFix$Tw_link)
+    } # else .force_fampar_stop(family=family, fampar= "q") # force any stop()
   }
   return(ranFix)
 }
 
-# Called at the beginning of HLfit_body to update dispersion values from locally-fixed values
+# Called at the beginning of HLfit_body to update dispersion values from locally-fixed values.
+# The .force_fampar_stop() calls have been commented out 
+# bc it does not seem worth running them in each HLfit_body() call.
 .post_process_respfamilies <- function(family, ranFix, families=NULL) {
   if ( ! is.null(families)) {
     for (mv_it in seq_along(families)) {
@@ -100,10 +107,7 @@
     } else if ( ! is.null(ranFix$COMP_nu)) { ## optimisation call
       assign("nu",ranFix$COMP_nu,envir=environment(family$aic))
       ranFix$COMP_nu <- attr(ranFix,"type")$COMP_nu <- NULL
-    } else {
-      checknu <- substitute(nu, env=environment(family$aic)) 
-      if (inherits(checknu,"call")) eval(checknu)
-    }
+    } # else .force_fampar_stop(family=family, fampar= "nu") # force any stop()
   } else if (family$family %in% c("beta_resp","betabin")) {
     if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## optimisation call
       disp_env <- family$resid.model
@@ -120,10 +124,7 @@
     } else if ( ! is.null(ranFix$trbeta_prec)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
       assign("prec",.beta_precInv(ranFix$trbeta_prec),envir=environment(family$aic))
       ranFix$trbeta_prec <- attr(ranFix,"type")$trbeta_prec <- NULL
-    } else {
-      checkprec <- substitute(prec, env=environment(family$aic)) 
-      if (inherits(checkprec,"call")) eval(checkprec)
-    }
+    } # else .force_fampar_stop(family=family, fampar= "prec") # force any stop()
   } else if (family$family  %in% c("negbin1","negbin2")) {
     if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## resid.model, fixed or optimized rdisPars 
       disp_env <- family$resid.model
@@ -140,10 +141,20 @@
     } else if ( ! is.null(ranFix$trNB_shape)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
       assign("shape",.NB_shapeInv(ranFix$trNB_shape),envir=environment(family$aic))
       ranFix$trNB_shape <- attr(ranFix,"type")$trNB_shape <- NULL
-    } else {
-      checktheta <- substitute(shape, env=environment(family$aic)) 
-      if (inherits(checktheta,"call")) eval(checktheta)
-    }
+    } # else .force_fampar_stop(family=family, fampar= "shape") # force any stop()
+  } else if (family$family=="tweedie") {
+    if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## resid.model, fixed or optimized rdisPars 
+      stop("A resid.model should instead affect the canonical GLM dispersion parameter")
+    } else if ( ! is.null(ranFix$Tw_index) && ! is.na(Tw_index <- ranFix$Tw_index)) { 
+      assign("p",unname(Tw_index),envir=environment(family$aic)) 
+      ranFix$Tw_index <- NA
+      ranFix$Tw_index <- na.omit(ranFix$Tw_index)
+    } # else .force_fampar_stop(family=family, fampar= "p") # force any stop()
+    if ( ! is.null(ranFix$Tw_link) && ! is.na(Tw_link <- ranFix$Tw_link)) { 
+      assign("q",unname(Tw_link),envir=environment(family$aic)) 
+      ranFix$Tw_link <- NA
+      ranFix$Tw_link <- na.omit(ranFix$Tw_link)
+    } # else .force_fampar_stop(family=family, fampar= "q") # force any stop()
   } else if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## "outer phiGLM"
     disp_env <- family$resid.model
     if (is.null(disp_env$scaled_X)) {
@@ -223,7 +234,11 @@
   if (summand) {
     attr(cliks,"unique") <- NULL
     return(cliks)
-  } else return(sum(cliks))
+  } else {
+    clik <- sum(cliks)
+    if (! is.null(P2Mcorr <- processed$multinom_info$P2Mcorr)) clik <- clik+P2Mcorr
+    clik
+  }
 }
 
 # this is used for LLM too
@@ -340,6 +355,10 @@
     newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
     nophiHGLM <- ! any(processed$models[["phi"]]=="phiHGLM")
     for (innerj in seq_len(maxit.mean)) {
+      if ( ! is.null(processed$next_dynoffset)) {
+        processed$off <- off <- processed$next_dynoffset
+        processed$next_dynoffset <- NULL
+      }
       ## breaks when Xtol_rel is reached
       clik <- newclik
       # Historical oddity: the fit has worked with code which was OK for solving, but not for CI as the CI code suppresses 
@@ -418,6 +437,7 @@
     } ## end for (innerj in 1:maxit.mean)
     names(beta_eta) <- colnames(X.pv)
     return(list(eta=muetablob$sane_eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj,
+                phi_est=phi_est, # needed for TRACE(inner=TRUE)
                 sXaug=structure(NA,class="(G)LM"), qr_X=qr_X))
   }
 
@@ -500,7 +520,7 @@
       beta_eta <- init.HLfit$fixef
       if ( ! is.null(beta_eta) && ! is.null(attr(X.pv,"scaled:scale"))) {
         beta_eta <- .scale(beta=beta_eta,X=X.pv)
-      }
+      } # else beta_eta remains null so that inits_by_xLM can try to get values.
     } else beta_eta <- numeric(0L) # don't leave it NULL so that we don't try to get it from inits_by_xLM
   } 
   beta_eta

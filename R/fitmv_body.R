@@ -5,6 +5,7 @@ fitmv_body <- function(processed,
                        # control.dist=list(), ## info in processed
                        control=list(), ## optimizer, <optimizer controls>, precision
                        nb_cores=NULL,
+                       init.HLfit="ignored", # the good one is through processed$init_HLfit
                        ... ## cf dotnames processing below 
 ) {
   dotlist <- list(...) ## forces evaluations, which makes programming easier...
@@ -27,24 +28,19 @@ fitmv_body <- function(processed,
   for (st in pnames) HLCor.args[st] <- NULL 
   # 'processed' may be modified below, then will be copied in HLCor.args (and then removed from this envir for safety)
   optim.scale <- control[["optim.scale"]] 
-  if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
+  if (is.null(optim.scale)) optim.scale <- "transformed" ## currently no public alternative
   sparse_precision <- proc1$is_spprec
   #
   init$lambda <- .reformat_lambda(init$lambda, processed=processed, full_lambda=FALSE)
   init$phi <- .reformat_phi(init$phi, n_models=length(processed$unmerged), full_phi=FALSE) # input list -> provide names to list -> output named list
   # Automatically reformatting lower,upper, init NB_shape and COMP_nu would be less trivial as it should have the following format:
-  if (length(na.omit(init$NB_shape))!=length(names(init$NB_shape)) ||
-      length(na.omit(lower$NB_shape))!=length(names(lower$NB_shape)) ||
-      length(na.omit(upper$NB_shape))!=length(names(upper$NB_shape)) 
-  ) stop("Any non-NULL [init|lower|upper]$NB_shape should be a vector of numeric values (no NA),\n    named by index of submodels (e.g. c('2'=1)).")
-  if (length(na.omit(init$beta_prec))!=length(names(init$beta_prec)) ||
-      length(na.omit(lower$beta_prec))!=length(names(lower$beta_prec)) ||
-      length(na.omit(upper$beta_prec))!=length(names(upper$beta_prec)) 
-  ) stop("Any non-NULL [init|lower|upper]$beta_prec should be a vector of numeric values (no NA),\n    named by index of submodels (e.g. c('2'=1)).")
-  if (length(na.omit(init$COMP_nu))!=length(names(init$COMP_nu)) ||
-      length(na.omit(lower$COMP_nu))!=length(names(lower$COMP_nu)) ||
-      length(na.omit(upper$COMP_nu))!=length(names(upper$COMP_nu)) 
-  ) stop("Any non-NULL [init|lower|upper]$NB_shape should be a vector of numeric values (no NA),\n    named by index of submodels (e.g. c('2'=1)).")
+  for (st in c("NB_shape","beta_prec","COMP_nu","Tw_index","Tw_link"))
+  if (length(na.omit(init[[st]]))!=length(names(init[[st]])) ||
+      length(na.omit(lower[[st]]))!=length(names(lower[[st]])) ||
+      length(na.omit(upper[[st]]))!=length(names(upper[[st]])) 
+  ) stop(paste0("Any non-NULL [init|lower|upper][[",st,
+                "]] should be a vector of numeric values (no NA),\n",
+                "    named by index of submodels (e.g. c('2'=1))."))
   #
   user_init_optim <- init # more explicit name; will serve as template for canon.init which will serve as template for names of lewer, upper, initvec
   optim_blob <- .calc_optim_args_mv(processed, map_rd_mv=attr(processed$ZAlist, "map_rd_mv"), 
@@ -56,7 +52,7 @@ fitmv_body <- function(processed,
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   # init <- optim_blob$inits$`init` ## list; keeps all init values, all in untransformed scale
   init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
-  init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies 
+  init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies # obtained from processed$init_HLfit...
   fixed <- optim_blob$fixed
   corr_types <- optim_blob$corr_types
   # if (.safe_true(processed[["verbose"]]["get_LUarglist"][[1L]])) return(optim_blob$LUarglist)
@@ -162,17 +158,31 @@ fitmv_body <- function(processed,
       refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
       HLCor.args <- refit_args$HLCor.args
       ranPars_in_refit <- refit_args$ranPars_in_refit
-      if ( ! is.null(processed$X_off_fn) && # outer beta
+      if ( .has_X_off_betas(processed) && # see comments below on cases with '.has_X_off_betas'
            ! is.null(beta <- refit_args$HLCor.args$init.HLfit$fixef) # and we refit beta (which is the default)
            ) { 
-        processed$off <- environment(processed$X_off_fn)$ori_off
-        X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
-        processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
+        # => rebuild X.pv for inner optim in the refit that generates the ~full object
+        .get_off(processed, new_betaFix=0*beta) # remove Xb from processed$off
+        
+        X.pv <- environment(processed$X_off_Xb_fn)$X_fixed # Original comment: "the full matrix, scaled" 
+        # The simplest test of "the full matrix" would be outer beta estim with partial init, 
+        # but this fails before the final refit even with fitme_body.
+        # numInfo and the .constrOptim based method for confint both use 'return_only' 
+        # It is not clear whether other procedures that use X_off_Xb_fn reach this point,
+        # but were it so, when called from .numInfo_objfn, $X_off_Xb_fn is not necessarily "scaled".
+
+        processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, 
+                                             processed$ZAlist, nrand=length(processed$ZAlist), 
+                                             n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
                                              sparse_precision=processed$is_spprec, 
                                              as_mat=.eval_as_mat_arg(processed))
-        # HLCor.args$init.HLfit$fixef <- beta # mustr have been provided by .get_refit_args(); unscaled
         processed$port_env$port_fit_values$fixef <- NULL
-        processed$X_off_fn <- NULL # _____F I X M E_____ possible future programming problems if 'processed' is recycled
+        
+        # Temporarily throwing the X_off_Xb_fn for the final refit in {fitme_body with outer optim of beta}
+        # (but not in other cases of its use).
+        SAVE_X_off_Xb_fn <- processed$X_off_Xb_fn
+        processed$X_off_Xb_fn <- NULL 
+        
         processed$vecdisneeded <- processed$vecdisneeded_ori 
       } 
     } ## end if ...getCall... else
@@ -200,7 +210,7 @@ fitmv_body <- function(processed,
   # not local to anyHLCor_obj_args$processed: change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
-  hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0, or the HLCorcall
+  hlcor <- do.call(HLcallfn,HLCor.args) # recomputation post optimization, or only computation if length(initvec)=0, or the HLCorcall ####
   if (is.call(hlcor)) {
     if (length(initvec)) {
       attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, init.optim=init.optim,
@@ -208,14 +218,25 @@ fitmv_body <- function(processed,
                                       augZXy_phi_est=augZXy_phi_est,
                                       rC_transf=.spaMM.data$options$rC_transf)
     }
+    class(hlcor) <- c(class(hlcor),paste0(HLcallfn,"_body_call"))
     return(hlcor) ## HLCorcall
   } else {
+    if ( exists("SAVE_X_off_Xb_fn",inherits = FALSE)) processed$X_off_Xb_fn <- SAVE_X_off_Xb_fn
     if ( processed$fitenv$prevmsglength) { # there was output for a phi-resid.model. The fit object may then be printed...
       cat("\n")
       processed$fitenv$prevmsglength <- 0L
     }
   }
   # hlcor<- .update_ranef_info(hlcor, moreargs=moreargs)
+  # Introduced for p4m to easily pass info globally fitted params over fitmv calls
+  hlcor$ranef_info$internal_fix_in_out_info <- list(
+    #   # possibly redundant info but with distinct syntaxes:
+    lambda.object=hlcor$lambda.object["type"], # "", "fixed","fix_ranCoefs","fix_hyper", "outer_ranCoefs", "outer_hyper", 
+    #   envir=list(lambdaType=processed$envir$lambdaType), # "inner", ...
+    #
+    CorrEst_and_RanFix=hlcor$CorrEst_and_RanFix, # for its "type" attribute
+    NULL
+  )
   if (length(initvec)) {
     attr(hlcor,"optimInfo") <- list(LUarglist=optim_blob$LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,

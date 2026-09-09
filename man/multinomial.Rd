@@ -7,8 +7,7 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Analyzing multinomial data}
 \description{
-  The features described here were implemented to facilitate the analysis of multinomial data, before \code{\link{fitmv}} was developed, 
-  as a series of nested binomial data. \code{fitmv} should now be considered, as well as its wrapper \code{\link{pois4mlogit}} which allows one to fit models known as multinomial logit.
+  The features described here were implemented to facilitate the analysis of multinomial data, before \code{\link{fitmv}} was developed, as a series of nested binomial data. \code{fitmv} should now be considered, as well as its wrapper \code{\link{pois4mlogit}} which allows one to fit models known as multinomial logit.
   
   The main interface described here is the \code{multi} \dQuote{family}, to be used in the \code{family} argument of the fitting functions.
   Fits using it call \code{binomialize}, which can be called directly to check how the data are converted to nested binomial data, and to use these data directly. 
@@ -65,7 +64,8 @@ binomialize(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),
 
 Alternatively, one can provide the multinomial response data frame, which will be internally converted to nested binomial data if the \code{family} argument is a call to \code{multinomial} (see Examples).    
 
-For mixed models, the multinomial data can be fitted to a model with the same correlation parameters, and either the same or different variances of random effects, for all binomial responses. Which analysis is performed depends on whether the variances are fitted by \dQuote{outer optimization} or by \code{HLfit}'s \dQuote{inner iterative} algorithm, as controlled by the \code{init} or \code{init.corrHLfit} arguments (see Examples). These initial values therefore affect the definition of the model being fitted.      
+For mixed models, the multinomial data can be fitted to a model with the same correlation parameters, and either the same or different variances of random effects, for all binomial responses. Which analysis is performed depends on whether the variances are fitted by \dQuote{outer optimization} or by \code{HLfit}'s \dQuote{inner iterative} algorithm, as controlled by the \code{init} or \code{init.corrHLfit} arguments (see Examples, and \code{\link{inner-vs-outer}}). These initial values therefore affect the definition of the model being fitted. \code{\link{fitmv}} and \code{\link{pois4mlogit}} provide better control of model definition than \code{multi} does.
+
 \code{corrHLfit} will fit different variances by default. Adding an \code{init.corrHLfit} will force estimation of a single variance across models. \code{fitme}'s default optimization strategy is more complex, and has changed and still change over versions. This creates a \bold{back-compatibility issue} where the model to be fitted may change over versions of spaMM. To avoid that, it is strongly advised to use an explicit initial value when fitting a \code{multi} model by \code{fitme}.        
 
 }

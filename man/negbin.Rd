@@ -7,7 +7,9 @@
 Family function for negative binomial \dQuote{2} response (including truncated variant).
 }
 \description{
-Returns a GLM \code{\link[stats]{family}} object for negative-binomial model with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, where the shape parameter need or need not be specified, depending on usage. The zero-truncated variant can be specified as \code{negbin2(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
+Returns a GLM \code{\link[stats]{family}} object for the negative-binomial family with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, which can be represented as a Poisson-Gamma mixture, where the conditional Poisson mean is \eqn{\mu} times a Gamma random variable with mean 1 and variance  \code{1/shape} (as produced by \code{rgamma(., shape=shape,scale=1/shape)}).
+
+The zero-truncated variant can be specified as \code{negbin2(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
 
 A \bold{fixed-effect} residual-dispersion model can be fitted, using the \code{\link{resid.model}} argument, which is used to specify the form of the logarithm of the shape parameter. Thus the variance of the response become \eqn{\mu+\mu^2}/\code{exp(<specified linear expression>)}.
 
@@ -15,20 +17,13 @@ A \bold{fixed-effect} residual-dispersion model can be fitted, using the \code{\
 
 }
 \usage{
-# (the shape parameter is actually not requested unless this is used in a glm() call)
-#
-negbin2(shape = stop("negbin2's 'shape' must be specified"), link = "log", trunc = -1L, 
-        LLgeneric = TRUE)
-
-# For use with glm(), both negbin2's 'shape' and glm's method="llm.fit" are needed.  
-
-# alias with distinct arguments:
-Tnegbin(shape = stop("Tnegbin's 'shape' must be specified"), link = "log")
+negbin2(shape, link = "log", trunc = -1L, LLgeneric = TRUE)
+Tnegbin(shape, link = "log")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{shape}{
-  Shape parameter of the underlying Gamma distribution: the present negative binomial distribution can be represented as a Poisson-Gamma mixture, where the conditional Poisson mean is \eqn{\mu} times a Gamma random variable with mean 1 and variance  \code{1/shape} (as produced by \code{rgamma(., shape=shape,scale=1/shape)}). 
+  Shape parameter. The \dQuote{outer-optimizing} functions, such as \code{fitme} (see \code{\link{inner-vs-outer}}) will estimate this parameter if called with \code{family=negbin2()} (no given \code{shape} value). In other usages of this family, \code{shape} must be specified. 
 }
   \item{link}{
   log, sqrt or identity link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
@@ -48,7 +43,7 @@ The name \code{NB_shape} should be used to set values of shape in optimization c
 The returned family object is formally suitable for usage with \code{glm} if the \code{shape} argument is specified, but such usage is \emph{not} recommended as it will lead to incorrect results for the zero-truncated case.
 }
 \value{
-A family object with structure similar to \code{stats::} family object but with additional member functions for usage with \pkg{spaMM} fitting functions.
+A family object with structure similar to \code{stats::}\code{\link[stats]{family}} objects but with additional member functions for usage with \pkg{spaMM} fitting functions.
 }
 \references{
 McCullagh, P. and Nelder, J.A. (1989) Generalized Linear Models, 2nd edition. London: Chapman & Hall.

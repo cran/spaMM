@@ -1,14 +1,16 @@
+# first "short" test is beta_llmm_het fit
 .get_rdisPars_LowUp <- function(disp_env, 
                                 X={ if (is.null(XX <- disp_env$X)) {XX <- disp_env$scaled_X} ; XX }, 
                                 off=disp_env$off,lo, hi) { # lo and hi on 'response' scale for dispersion param
   if (length(off)==1L) off <- rep(off,nrow(X))
   # makeH represent the constraints a1 %*% beta <= b1
   # here X beta < log(hi) -off and [X beta >= log(lo) -off => - X beta <= off- log(lo) ]
+  linkfun <- disp_env$linkfun # typically log()
   if (requireNamespace("rcdd",quietly=TRUE)) {
-    vrepr <- rcdd::scdd(rcdd::makeH(a1=rbind(X,-X),b1=c(log(hi)-off,off-log(lo))))$output ## convex hull of feasible coefs
+    vrepr <- rcdd::scdd(rcdd::makeH(a1=rbind(X,-X),b1=c(linkfun(hi)-off,off-linkfun(lo))))$output ## convex hull of feasible coefs
     if (nrow(vrepr)==0L) {
       warning("The dispersion model appear to impose extreme dispersion values so may be difficult to fit.")
-      list(lower=rep(log(.Machine$double.xmin),ncol(X)), upper=rep(log(.Machine$double.xmax),ncol(X)))
+      list(lower=rep(linkfun(.Machine$double.xmin),ncol(X)), upper=rep(linkfun(.Machine$double.xmax),ncol(X)))
     } else {
       verticesRows <- (vrepr[,2]==1)
       betaS <- vrepr[verticesRows, -c(1:2), drop = FALSE] ## row vectors of boundary beta values
@@ -19,23 +21,29 @@
   } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
     message("If the 'rcdd' package were installed, spaMM could find a good range for the family dispersion parameters.")
     .spaMM.data$options$rcdd_warned <- TRUE
-    list(lower=rep(log(.Machine$double.xmin),ncol(X)), upper=rep(log(.Machine$double.xmax),ncol(X)))
+    list(lower=rep(linkfun(.Machine$double.xmin),ncol(X)), upper=rep(linkfun(.Machine$double.xmax),ncol(X)))
   }
 }
 
 
 .wrap_calc_famdisp_lowup <- function(processed, family=processed$family, prior.weights=processed$prior.weights) {
   
-  # provide famdisp_lowup bc LUarglist, which is returned in the fit object, should not include 'processed'
+  # Old comment: "provide famdisp_lowup bc LUarglist, which is returned in the fit object, 
+  # should not include 'processed'"
+  # Not quiteclear, but suggests it's for reuse of LUarglist. This provides element famdisp_lowup of
+  # LUarglist, so I should check the usage ____F I X M E____ of the latter, as this code appears to duplicate bounds
+  # provided elsewhere (with distinction rdisPars/named dispersion parameters, and acounting for prior weights)
   lo <- switch(family$family,
                "COMPoisson" = 0.05, # no prior.weights handling for COMPoisson 
                "beta_resp" = 1e-6/prior.weights, # '/'pw bc the disp param is here a prec param: precision =prec*pw must be within 1e-6, 1e6
                "betabin" = 1e-6/prior.weights, # '/'pw bc the disp param is here a prec param: precision =prec*pw must be within 1e-6, 1e6
+               "tweedie" = 1.1, # pw should affect the canoncial GLM dispersion param, not var.pover
                1e-6) #.Machine$double.xmin) # 1e-6 is typical lower bound for NB_shape
   hi <- switch(family$family,
-               "COMPoisson" = 10, # no prior.weights handling for COMPoisson 
+               "COMPoisson" = 10, 
                "beta_resp" = 1e6/prior.weights,
                "betabin" = 1e6/prior.weights,
+               "tweedie" = 1.999, # for Tw_index
                1e6) # .Machine$double.xmax) # 1e6 is typical upper bound for NB_shape
   .get_rdisPars_LowUp(disp_env=family$resid.model, lo=lo, hi=hi)
 }
@@ -43,15 +51,16 @@
 
 
 .calc_fixef_lowup <- function(processed) {
-  eta_range <- .sanitize_eta(eta=c(-Inf,Inf),family = processed$family, 
-                             processed=processed) # 'processed' arg for fitmv
-  lo <- eta_range[1]
-  hi <- eta_range[2]
-  X <- environment(processed$X_off_fn)$X_off # should be the scaled version. rcdd is not robust to extreme values
-  off <- environment(processed$X_off_fn)$ori_off
-  # makeH represent the constraints a1 %*% beta <= b1
-  # here X beta < (hi) -off and [X beta >= (lo) -off => - X beta <= off- (lo) ]
   if (requireNamespace("rcdd",quietly=TRUE)) {
+    X <- environment(processed$X_off_Xb_fn)$X_fixed # should better be the scaled version. rcdd is not robust to extreme values
+    # ncol(X has been checked before calling this fn.)
+    eta_range <- .sanitize_eta(eta=c(-Inf,Inf),family = processed$family, 
+                               processed=processed) # 'processed' arg for fitmv
+    lo <- eta_range[1]
+    hi <- eta_range[2]
+    off <- environment(processed$X_off_Xb_fn)$offsets
+    # makeH represent the constraints a1 %*% beta <= b1
+    # here X beta < (hi) -off and [X beta >= (lo) -off => - X beta <= off- (lo) ]
     vrepr <- rcdd::scdd(rcdd::makeH(a1=rbind(X,-X),b1=c((hi)-off,off-(lo))))$output ## convex hull of feasible coefs
     if (nrow(vrepr)==0L) {
       warning("The fixed-effect model appears to impose extreme 'eta' values so may be difficult to fit.")
@@ -67,7 +76,7 @@
   } else NULL
 }
 
-
+# That should by a relatively light object as it is needed post fit.
 .makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
                             init.optim, ## ~in transformed scale : it has all pars to be optimized
                             user.lower=list(),user.upper=list(),
@@ -75,7 +84,8 @@
                             optim.scale, moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf,
                             famdisp_lowup=NULL,
                             fixef_lowup=NULL,
-                            is_gammaId) {
+                            is_gammaId,
+                            famfam=NULL) {
   lower <- upper <- init.optim   
   for (it in seq_along(corr_types)) {
     corr_type <- corr_types[[it]]
@@ -261,9 +271,15 @@
     }
   }
   
-  if (! is.null(canon.init$phi)) { # *p*min, *p*max introduced for vector phi's for fitmv : might affect univariate-response fits
+  if (! is.null(canon.init$phi)) { # *p*min, *p*max allow vector phi's for fitmv
     phi <- user.lower$phi
-    if (is.null(phi)) phi <- pmax(pmin(1e-6,canon.init$phi/1.01),canon.init$phi/1e5) # >=1e-6 if canon.init$phi>1e-6
+    if (is.null(phi)) {
+      phi <- canon.init$phi
+      phi[] <- 1e-6 # so they have automatically submodel indices as names (for mv-fits with partially inner phi)
+      istw <- which(famfam=="tweedie")
+      phi[names(istw)] <- pmax(1e-5,phi[names(istw)]) 
+      phi <- pmax(pmin(phi,canon.init$phi/1.01),canon.init$phi/1e5) # >=1e-6 if canon.init$phi>1e-6 and not tweedie
+    }
     names(phi) <- names(canon.init$phi) # late addition for mv code (merging inits...)
     lower$trPhi <- .dispFn(phi)
     phi <- user.upper$phi
@@ -309,6 +325,28 @@
       lower$trNB_shape <- .NB_shapeFn(NB_shape)
       if (is.null(NB_shape <- user.upper$NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
       upper$trNB_shape <- .NB_shapeFn(NB_shape)
+    }
+  }
+  if (! is.null(canon.init$Tw_index)) { 
+    if (length(canon.init$Tw_index)>1L) { # mv case with >1 tweedie submodels
+      # then all vectors mus be named and canon.init must have values for all tweedie submodels
+      lower$Tw_index <-  .modify_list(rep(1.1, length(canon.init$Tw_index)), user.lower$Tw_index) 
+      upper$Tw_index <-  .modify_list(rep(1.999, length(canon.init$Tw_index)), user.upper$Tw_index)
+    } else {
+      if (is.null(user.lower$Tw_index)) lower$Tw_index <- 1.1
+      if (is.null(user.upper$Tw_index)) upper$Tw_index <- 1.999
+    } # !! change the doc if these bounds are modified !!
+  }
+  if (! is.null(canon.init$Tw_link)) { 
+    if (length(canon.init$Tw_link)>1L) { # mv case with >1 tweedie submodels
+      # then all vectors mus be named and canon.init must have values for all tweedie submodels
+      lower$Tw_link <-  .modify_list(rep(0, length(canon.init$Tw_link)), user.lower$Tw_link) 
+      upper$Tw_link <-  .modify_list(rep(1, length(canon.init$Tw_link)), user.upper$Tw_link)
+    } else {
+      if (is.null(user.lower$Tw_link)) stop("Give explicit 'lower' value for the 'Tw_link' argument.")
+      if (is.null(user.upper$Tw_link)) stop("Give explicit 'upper' value for the 'Tw_link' argument.")
+      lower$Tw_link <- user.lower$Tw_link
+      upper$Tw_link <- user.upper$Tw_link
     }
   }
   if (! is.null(canon.init$beta_prec)) { 
@@ -376,7 +414,7 @@
     } else { # using template presumably defined by the explicit init that the user gave to select outer beta estimation
       lower$beta[names(beta)] <- -Inf
       upper$beta[names(beta)] <- Inf
-      lower$beta[names(fixef_lowup$lower)] <- fixef_lowup$lower # (all wrt scaled X)
+      lower$beta[names(fixef_lowup$lower)] <- fixef_lowup$lower # (all unscaled) 
       upper$beta[names(fixef_lowup$upper)] <- fixef_lowup$upper
     }
   }

@@ -338,8 +338,7 @@ if (TRUE) {
       constrpos <- (! is.na(constraint))
       vec[constrpos] <- constraint[constrpos]
     }
-    if (anyNA(vec)) stop("Partial inits do not work for ranCoefs (unless other values are fixed).")
-    # _____F I X M E____: is this avoidable? Partial fixing is possible... so there must a default vec in that case, which might be provided as additional arg to this fn? 
+    # if (anyNA(vec)) stop("Partial inits do not work for ranCoefs (unless other values are fixed).")
     trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf) 
   }
   trRancoef
@@ -519,7 +518,7 @@ if (FALSE) {
                                   ) { 
   # !!!!!!!!! If I change the parametrisation I must also change the .xtol_abs_fn() code !!!!!!!!!
   if ( rC_transf=="chol") {
-    if (.spaMM.data$options$augZXy_fitfn==".HLfit_body_augZXy_invL") { # only devel code AFAICS
+    if (.spaMM.data$options$augZXy_body==".HLfit_body_augZXy_invL") { # only devel code AFAICS
       bnd1 <- diag(1e-10, Xi_ncol) # bc there is a solve on the implied chol factor
     } else bnd1 <- diag(0, Xi_ncol) # so not really chol factor, but still bounds a space of triangular factor containing chol factors
     if (tol_ranCoefs["inner"]) {
@@ -589,9 +588,6 @@ if (FALSE) {
     blockrows <- rows_bynesting[[lit]]
     within_values <- e_uniqueGeo[blockrows,coord_within]
     w_dist <- .dist_fn(within_values,method=dist.method)
-    # if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
-    #   distMatrix[[lit]] <- as(as.matrix(w_dist), "dsCMatrix") 
-    # } else distMatrix[[lit]] <- as(as(as(as.matrix(w_dist), "dMatrix"), "symmetricMatrix"), "CsparseMatrix") 
     nc <- ncol(w_dist)
     seqn1 <- seq_len(nc-1L)
     distMatrix[[lit]] <- sparseMatrix(x=w_dist[], 
@@ -660,11 +656,15 @@ if (FALSE) {
   return(verbose)
 }
 
+# input init.optim$ranCoefs should always be a complete ordered list in the case for random-coefficient models,
+# with full vectors even if user provided partial inits (and if the are constraints, applied here):
+# full vectors provided by .init_optim_lambda_ranCoefs()
 .calc_inits_ranCoefs <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
-  if ( ! is.null(init.optim$ranCoefs)) { ## should always be a complete ordered list in the case for random-coefficient models
-    # _____F I X M E_____ init values already in init.optim when this is called ?
-    if (! is.null(init$ranCoefs)) for (st in names(init$ranCoefs)) init.optim$ranCoefs[[st]] <- init$ranCoefs[[st]]
-    init$ranCoefs <- init.optim$ranCoefs
+  if ( ! is.null(init.optim$ranCoefs)) { ## 
+    # if (! is.null(init$ranCoefs)) { 
+    #   for (st in names(init$ranCoefs)) init.optim$ranCoefs[[st]] <- init$ranCoefs[[st]]
+    # }
+    init$ranCoefs <- init.optim$ranCoefs # maybe obsolete?
     trRanCoefs <- init.optim$ranCoefs
     for (char_rd in names(trRanCoefs)) trRanCoefs[[char_rd]] <- .constr_ranCoefsFn(trRanCoefs[[char_rd]], constraint=ranFix$ranCoefs[[char_rd]], 
                                                                                    rC_transf=.spaMM.data$options$rC_transf)
@@ -995,6 +995,7 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
+# Much of the work already done in .more_init_optim
 .calc_inits <- function(init.optim,init.HLfit,ranFix,corr_info,
                         moreargs,
                         user.lower,user.upper,
@@ -1058,6 +1059,18 @@ if (FALSE) {
     inits[["init.optim"]]$trbeta_prec <- .beta_precFn(inits[["init"]]$beta_prec)
     inits[["init.optim"]]$beta_prec <- NULL
   }
+  if (is.null(Tw_index <- inits[["init"]]$Tw_index)) Tw_index <- inits[["init.optim"]]$Tw_index # 'if user did not provide any, use the default one present in init.optim'
+  if ( ! is.null(Tw_index)) {
+    if ( ! is.null(user.upper$Tw_index)) Tw_index <- min(user.upper$Tw_index,Tw_index) # mv: this is only called on submodels, so pmin, pman NOT needed.
+    if ( ! is.null(user.lower$Tw_index)) Tw_index <- max(user.lower$Tw_index,Tw_index)
+    inits[["init.optim"]]$Tw_index <- inits[["init"]]$Tw_index <- Tw_index
+  } # else I could add warnings that lower|upper values will be ignored... 
+  if (is.null(Tw_link <- inits[["init"]]$Tw_link)) Tw_link <- inits[["init.optim"]]$Tw_link # 'if user did not provide any, use the default one present in init.optim'
+  if ( ! is.null(Tw_link)) {
+    if ( ! is.null(user.upper$Tw_link)) Tw_link <- min(user.upper$Tw_link,Tw_link) # mv: this is only called on submodels, so pmin, pman NOT needed.
+    if ( ! is.null(user.lower$Tw_link)) Tw_link <- max(user.lower$Tw_link,Tw_link)
+    inits[["init.optim"]]$Tw_link <- inits[["init"]]$Tw_link <- Tw_link
+  } # else I could add warnings that lower|upper values will be ignored... 
   if (is.null(inits[["init"]]$rdisPars)) inits[["init"]]$rdisPars <- inits[["init.optim"]]$rdisPars # 'if user did not provide any, use the default one present in init.optim'
   
   # Currently there is no default beta; only a user_init_optim one:
@@ -1077,21 +1090,39 @@ if (FALSE) {
   return(inits)
 }
 
+# eigen() and svd() loose dimnames, but rownames were found to be useful 
+# in some post-fit operations (for composite ranefs) 
+# We attempt to keep rownames without hampering all matrix computations during the fit
+# by defining the following wrappers which put names as elements of the retruned list.
+.eigen <- function(X, ...) {
+  esys <- eigen(X, ...) 
+  esys$rownames <- rownames(X)
+  esys
+}
+
+.svd <- function(X, ...) {
+  esys <- svd(X, ...) 
+  esys$rownames <- rownames(X)
+  esys
+}
+
+
+# Bare-bone version of the .eigen() -> eigen() call below, 
+# which R CMD check does not like, but that passes the long tests:
+# z <- .Internal(La_rs(X, FALSE))
+# ord <- rev(seq_along(z$values))
+# esys <- structure(class = "eigen", list(values = z$values[ord], 
+#                                 vectors = z$vectors[, ord, drop = FALSE]))
 .eigen_sym <- function(X, only.values=FALSE) {
   if (FALSE) { # transient effort to improve over eigen()
-    svdv <- svd(X)
+    svdv <- .svd(X)
     chk <- with(svdv,sign(u)*sign(v)) 
     if (any(chk<0L)) { # well, perhaps the matrix is symmetric but not positive definite. Correction code handles this case (only):
       for (colit in seq_len(ncol(chk))) if (all(chk[,colit]<0L)) svdv$d[colit] <- - svdv$d[colit]
     }
     esys <- with(svdv,list(values=d,vectors=(u+sign(u*v)*v)/2)) # a bit heuristic, but this appears more accurate than simpler alternatives.
   } else {
-    esys <- eigen(X,symmetric = TRUE, only.values=only.values) ## COV= .ZwZt(esys$vectors,esys$values) ##
-    # => bare-bone version, which R CMD check does not like, but that passes the long tests:
-    # z <- .Internal(La_rs(X, FALSE))
-    # ord <- rev(seq_along(z$values))
-    # esys <- structure(class = "eigen", list(values = z$values[ord], 
-    #                                 vectors = z$vectors[, ord, drop = FALSE]))
+    esys <- .eigen(X,symmetric = TRUE, only.values=only.values) ## COV= .ZwZt(esys$vectors,esys$values) ##
   }
   return(esys)
 }

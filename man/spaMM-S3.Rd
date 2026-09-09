@@ -6,6 +6,7 @@
 \alias{print.predictor}
 \alias{print.vcov.HLfit}
 \alias{print.spaMM_predictions}
+\alias{print.spaMM_simulations}
 %\alias{print.spcall}
 \alias{print.bootci4print}
 

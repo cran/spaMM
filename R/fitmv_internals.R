@@ -42,8 +42,9 @@
                     optim.scale=optim.scale,
                     famdisp_lowup=famdisp_lowupS,
                     fixef_lowup=fixef_lowup,
-                    is_gammaId=attr(processed$rand.families,'is_gammaId')) 
-  LUarglist$moreargs <- .calc_moreargs(processed=processed, 
+                    is_gammaId=attr(processed$rand.families,'is_gammaId'),
+                    famfam=attr(processed$families,"famfams")) 
+  LUarglist$moreargs <- .calc_corrfams_moreargs(processed=processed, 
                                        corr_types=processed$corr_info$corr_types, fixed=optim_blob$fixed, init.optim=init.optim, 
                                        control_dist=processed$control_dist, NUMAX=50, LDMAX=50, 
                                        KAPPAMAX=100.000001, # so that users can set it to 100...

@@ -35,7 +35,7 @@ fitme_body <- function(processed,
                                  verbose=verbose, optim.scale=optim.scale, For="fitme") 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   # init <- optim_blob$inits$`init` ## list; keeps all init values, all in untransformed scale
-  # For outer beta, $init.optim, $canon.init and $init.optim have $beta; (there is no $etaFix$beta)
+  # For outer beta, $init.optim, $canon.init and $init.optim have $beta; (they have no $etaFix$beta)
   # HLCor.obj() or HLfit.obj() willtake the $beta or $trBeta element of the relisted skeleton 
   # and move this information to the etaFix argument.
   init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
@@ -148,18 +148,30 @@ fitme_body <- function(processed,
       refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
       HLCor.args <- refit_args$HLCor.args
       ranPars_in_refit <- refit_args$ranPars_in_refit # MAY contain beta estimates in case of outer beta estim, depending on refit_info
-      if ( ! is.null(processed$X_off_fn) && # outer beta
+      if (  .has_X_off_betas(processed) &&  
            ! is.null(beta <- refit_args$HLCor.args$init.HLfit$fixef) # and we refit beta (which is the default)
       ) { 
         # => rebuild X.pv for inner optim in the refit that generates the ~full object
-        processed$off <- environment(processed$X_off_fn)$ori_off
-        X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
-        processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
+        .get_off(processed, new_betaFix=0*beta) # remove Xb from processed$off
+
+        X.pv <- environment(processed$X_off_Xb_fn)$X_fixed # Original comment: "the full matrix, scaled" 
+        # The simplest test of "the full matrix" would be outer beta estim with partial init, 
+        # but this fails before the final refit.
+        # It is not clear whether other procedures that use X_off_Xb_fn reach this point 
+        # (or the equivalent one in fitmv_body).
+        # but were it so, when called from .numInfo_objfn, $X_off_Xb_fn is not necessarily "scaled".
+        processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, 
+                                             processed$ZAlist, nrand=length(processed$ZAlist),
+                                             n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
                                              sparse_precision=processed$is_spprec, 
                                              as_mat=.eval_as_mat_arg(processed))
-        # HLCor.args$init.HLfit$fixef <- beta # mustr have been provided by .get_refit_args(); unscaled
         processed$port_env$port_fit_values$fixef <- NULL
-        processed$X_off_fn <- NULL # _____F I X M E_____ possible future programming problems
+        
+        # Temporarily throwing the X_off_Xb_fn for the final refit in {fitme_body with outer optim of beta}
+        # (but not in other cases of its use).
+        SAVE_X_off_Xb_fn <- processed$X_off_Xb_fn
+        processed$X_off_Xb_fn <- NULL 
+        
         processed$vecdisneeded <- processed$vecdisneeded_ori
       }
     } ## end if ...getCall... else
@@ -184,6 +196,8 @@ fitme_body <- function(processed,
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
   # Run in all cases to produce the full object (rather than only the optimization result):
+  # _F I X M E_ It once looked as if the next call failed if (all) ranpars are 
+  # inner estimated with init.HLfit values =NA. But I fail to replicate the pb.
   hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0, or simple getHLCorCall
   if (is.call(hlcor)) {
     ## then do.call(HLcallfn,HLCor.args) has returned the call, not the fit. 
@@ -197,6 +211,7 @@ fitme_body <- function(processed,
     }
     return(hlcor) ## HLCorcall
   } else {
+    if ( exists("SAVE_X_off_Xb_fn",inherits = FALSE)) processed$X_off_Xb_fn <- SAVE_X_off_Xb_fn
     if ( proc1$fitenv$prevmsglength) { # there was output for a phi-resid.model. The fit object may then be printed...
       cat("\n")
       proc1$fitenv$prevmsglength <- 0L

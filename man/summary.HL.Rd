@@ -27,7 +27,14 @@
   \item{x}{  The return object of HLfit or related functions.}
   \item{verbose}{ For \code{summary.HLfit}, whether to print the screen output that is the primary purpose of summary. \code{verbose=FALSE} may be convenient when \code{summary} is used as an extractor. For \code{summary.fixedLRT}, whether to print the model fits or not. }
   \item{max.print}{Controls \code{options("max.print")} locally.}
-  \item{details}{A vector with elements controlling whether to print some obscure details. Element \code{ranCoefs=TRUE} will print details about random-coefficients terms (see Details); and element \code{p_value="Wald"} will print a p-value for the t-value of each fixed-effect coefficient, assuming a gaussian distribution of the test statistic (but, beyond the generally questionable nature of p-value tables, see e.g. \code{LRT} and \code{fixedLRT} for alternative testing approaches). \code{p_value=TRUE} instead use Student's t test.}
+  \item{details}{A list or vector, with elements controlling whether to print some obscure details. Handled non-default elements are: 
+  \itemize{
+    \item \code{ranCoefs=TRUE} will print details about random-coefficients terms (see Details);
+    \item \code{p_value="Wald"} will print a p-value for the t-value of each fixed-effect coefficient, assuming a gaussian distribution of the test statistic (but, beyond the generally questionable nature of p-value tables, see e.g. \code{LRT} and \code{fixedLRT} for alternative testing approaches);
+    \item \code{p_value=TRUE} is similar to \code{p_value="Wald"} but instead uses Student's t test;
+    \item \code{full.form=\var{numeric value}} controls abbreviation of the display of model formulas if the number of output lines of a full display would exceed the given value. This may be particularly useful for multivariate-response fits ( See Details for the way formulas are abbreviated). \code{full.form=TRUE} is interpreted as \code{full.form=Inf}, and \code{FALSE} is interpreted as 0 (so that multiline submodel formulas are always abbreviated). Both the default (no specified value) and an explicit NULL value are interpreted as \code{8} for multivariate-response fits and as \code{Inf} for other fits..
+  }
+   } 
   \item{\dots}{  further arguments passed to or from other methods. }
 }
 \value{
@@ -35,6 +42,9 @@
 }
 \details{The random effect terms of the linear predictor are of the form \bold{ZLv}. In particular, for \bold{random-coefficients models} (i.e., including random-effect terms such as \code{(z|group)} specifying a random-slope component), correlated random effects are represented as \bold{b = Lv} for some matrix \bold{L}, and where the elements of \bold{v} are uncorrelated. In the output of the fit, the \code{Var.} column gives the
 variances of the correlated effects, \bold{b=Lv}. The \code{Corr.} column(s) give their correlation(s). If \code{details} is TRUE, estimates and SEs of the (log) variances of the elements of \bold{v} are reported as for other random effects in the \code{Estimate} and \code{cond.SE.} columns of the table of lambda coefficients. However, this non-default output is potentially misleading as the elements of \bold{v} cannot generally be assigned to specific terms (such as intercept and slope) of the random-effect formula, and the representation of \bold{b} as \bold{Lv} is not unique.
+
+The condition for abbreviation of formulas, as defined by \code{details$"full.form"} is on the number of lines of the unabbreviated output. But the effect, if any, is to truncate individual formulas as function of \code{getOption("width")}.
+For example, when displaying the 10 formulas for a 10-responses multivariate-response fit, the default value of \code{full.form} is 8, but 10 lines will still be printed, so this only avoids display of 10 multiline formulas. 
 }
 \examples{
 ## see examples of fitme() or corrHLfit() usage

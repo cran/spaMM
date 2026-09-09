@@ -32,14 +32,15 @@ A matrix, possibly in \code{\link[Matrix]{sparseMatrix}} format.
 Model coefficients estimates of a (weighted) linear model can be written as \bold{(X'WX)}\eqn{^{-1}}\bold{X'Wy} where \bold{X} is the design matrix for fixed effects, \bold{W} a diagonal weight matrix, and \bold{y} the response vector. In a linear mixed model, the same expression holds in terms of Henderson's augmented design matrix, of an augmented (still diagonal) weight matrix, and of an augmented response vector. For GLMMs and hierarchical GLMs generally, the solution of each step of the iteratively reweighted least squares algorithm again has the same expression in terms of appropriately defined augmented matrices and vectors.  
 
 \code{get_matrix} returns, for given values of the \code{which} argument, the following matrices from the model fit:\cr 
-\code{"AugX"}: \bold{X};\cr 
+\code{"AugX"}: \bold{X} where, here and below \bold{X} is the augmented design matrix when relevant;\cr 
 \code{"wei_AugX"}: \bold{WX};\cr 
 \code{"wAugX"}: \eqn{\sqrt{}}{\sqrt}(\bold{W})\bold{X};\cr 
 \code{"left_ginv"}: \bold{(X'WX)}\eqn{^{-1}}\bold{X'W} (the name stems from the fact that it is generalized inverse, denoted \bold{X}\eqn{^-}, since \bold{X}\bold{X}\eqn{^-}\bold{X}=\bold{X}, and it is a left one, since \bold{X}\eqn{^-}\bold{X} is an identity matrix when \bold{X} has full rank);\cr 
 \code{"hat_matrix"}: \bold{XX}\eqn{^-}=\bold{X }\bold{(X'WX)}\eqn{^{-1}}\bold{X'W};\cr 
 \code{"fixef_left_ginv"}: same as \code{"left_ginv"} but for the fixed-effect design matrix only (not to be confused with the corresponding block of \code{"left_ginv"});\cr 
-\code{"beta_v_cov"}: joint covariance matrix of estimates/predictions of fixed-effect coefficients and random effects (the \bold{v} in \code{\link{random-effects}}). 
-\code{"v_condcov"}: covariance matrix of predictions of random effects (the \bold{v} in \code{\link{random-effects}}) given fixed-effect coefficients. 
+\code{"beta_v_cov"}: joint covariance matrix of estimates/predictions of fixed-effect coefficients and random effects (the \bold{v} in \code{\link{random-effects}});\cr
+\code{"v_condcov"}: covariance matrix of predictions of random effects (the \bold{v} in \code{\link{random-effects}}) given fixed-effect coefficients;\cr 
+\code{"X2X"}: returns the \code{\link{X2X}} matrix. 
 
 
 }

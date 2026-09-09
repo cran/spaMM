@@ -54,6 +54,8 @@
 ## For (.|.)...) the elements for noAR and ZL are left NULL. 
 ## For other ranef types (AR1, IMRF) the elements for noAR are left NULL,  Dummy dense triangular matrices are build for ZL (if the preclist was NULL)
 ## The unexpected time-consuming step may then be compute_ZAL on potentially huge dummy dense triangular matrices. (_F I X M E__)
+
+# **************** This function is no longer called by default ******************** 
 .calc_G_diagnosis_fast <- function(corr_info, ZAlist) { # OLD method
   preclist <- corr_info$adjMatrices
   corrlist <- corr_info$corrMatrices
@@ -86,13 +88,17 @@
         if (inherits(template,"dist")) {
           template <- proxy::as.matrix(template, diag=1)
         }  
-        if (got_chol <- (is.matrix(template) || is(template,"Matrix"))) { # testing dim() is not appropriate bc spaMM has a dim.precision method _____F I X M E_____ what's fastest ? inherits(.,"precision") || is.null(dim(.)) ?
+        if (got_chol <- (is.matrix(template) || is(template,"Matrix"))) { # testing dim() is not appropriate bc spaMM has a dim.precision method
           cholcorr <- try(chol(template)) # base::chol or Matrix::chol 
           if (inherits(cholcorr,"try-error")) stop(cli::format_error("A correlation matrix is (nearly) singular. Check the correlation model and/or see {.topic [sparse_precision](spaMM::sparse_precision)}.")) 
           preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
           ZAlist[[rd]] <- .addrightcols_Z(Z=ZAlist[[rd]], colnames(template), verbose=FALSE)
           # drop0(cholcorr...) might be useful here if also performed in the relevant .calc_Lunique_for_correl_algos() -> mat_sqrt() -> .wrap_Ltri_t_chol() call...
-          corrlist[[rd]] <- drop0(cholcorr,tol=0) # more logical than (previously)  preclist[[rd]], apart from speed # _____F I X M E_____rethink 
+          corrlist[[rd]] <- drop0(cholcorr,tol=0) # more logical than (previously)  preclist[[rd]], apart from speed 
+          # (could
+          # (1) corrlist[[rd]] <- drop0(cholcorr,tol=0)
+          # (2) preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps) 
+          # be more efficient ?)
           # cf alternative fn: corrlist[[rd]] <- .fill_denseL(nc_ori, nc=ncol(ZAlist[[rd]]), LHS_nlev, existing=drop0(cholcorr,tol=0)) 
           ## I previously assumed that "the chol factor of a relatedness matrix appears" 
           # "as sparse as its precmat" but this is only roughly true if one compares only drop0() values.
@@ -251,7 +257,7 @@
         if (inherits(template,"dist")) {
           template <- proxy::as.matrix(template, diag=1)
         }  
-        if (got_chol <- (is.matrix(template) || is(template,"Matrix"))) { # testing dim() is not appropriate bc spaMM has a dim.precision method _____F I X M E_____ what's fastest ? inherits(.,"precision") || is.null(dim(.)) ?
+        if (got_chol <- (is.matrix(template) || is(template,"Matrix"))) { # testing dim() is not appropriate bc spaMM has a dim.precision method
           cholcorr <- try(chol(template)) # base::chol or Matrix::chol 
           if (inherits(cholcorr,"try-error")) stop(cli::format_error("A correlation matrix is (nearly) singular. Check the correlation model and/or see {.topic [sparse_precision](spaMM::sparse_precision)}.")) 
           preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
@@ -372,7 +378,7 @@
 .provide_G_diagnosis <- local({
   time_warned <- FALSE
   diagnosis_time <- 0
-  function(corr_info, ZAlist, fast=.spaMM.data$options$fast_G_diagnosis) {
+  function(corr_info, ZAlist, fast=.spaMM.data$options$fast_G_diagnosis) { # default is fast=FALSE...
     # .assign_geoinfo_and_LMatrices_but_ranCoefs() may serve as a template, but we don't want actual matrices except to assess computation costs
     if (is.null(corr_info$G_diagnosis)) {
       if ( ! time_warned) time1 <- Sys.time()
@@ -550,6 +556,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
     algebra <- "spprec" 
     processed$spprec_method <- .spaMM.data$options$spprec_method 
   }
+  processed$how$algebra <- algebra
   algebra
 }
 
@@ -754,8 +761,6 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 
 .preprocess_resid <- function(preprocess_arglist) {
   residProcessed <- do.call(.preprocess,preprocess_arglist) ## cf verbose explicitly set to NULL 
-  # preprocess here plays the role of fitme as wrapper bringing the following info to fitme_body:
-  #
   # we add ".phi" to attr(residProcessed$predictor - for summary() only ? But then same operation on version with hyper-ranefs
   fullform <-  .preprocess_formula(as.formula(paste(".phi",.DEPARSE(residProcessed$predictor))))
   mostattributes(fullform) <- attributes(residProcessed$predictor)
@@ -798,7 +803,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 
 .check_phi_Fix <- function(phi.Fix, family) {
   if ( ! (constr_fit <- ! is.null(phi.Fix))) {
-    if (constr_fam <- ! family$family %in% c("gaussian","Gamma")) {
+    if (constr_fam <- ! family$family %in% c("gaussian","Gamma","tweedie")) {
       phi.Fix <- 1 
     } # else if (var(y)==0) phi.Fix <- .spaMM.data$options$min_disp
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
@@ -827,8 +832,9 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
                              control.glm=control.glm, ## constrained
                              verbose=c(print_phiHGLM_info=print_phiHGLM_info), ## TRACE would be overriden by the final do_TRACE call of the parent .preprocess()
                              For="fitme", ## constrained: preprocess must allow spatial and non-spatial models
-                             init.HLfit=as.list(resid.model$init.HLfit) ## converts NULL to list() as exp'd by .preprocess()
-  )
+                             init.HLfit=as.list(resid.model$init.HLfit), ## converts NULL to list() as exp'd by .preprocess()
+                             CONTROL=list(ppc_reactvt_warn=TRUE, dyndyn=FALSE)
+                             )
   ## preprocess formal arguments that were ignored up to v.2.4.30 14/05/2018:
   other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
   preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
@@ -886,7 +892,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
           models[["phi"]] <- "phiGLM" # meaningful: see how new offset values are predicted in .calcResidVar()
         } else { 
           models[["phi"]] <- "phiGLM"
-          disp_env <- family$resid.model # virgin envir distinct from the processed$residModel list
+          disp_env <- family$resid.model # envir distinct from the processed$residModel *list*
           disp_env$resid.formula <- resid.formula 
           if ( ! is.null(off)) disp_env$off <- off
           disp_env$colnames_X <- namesX_disp
@@ -897,7 +903,8 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   } else { # Typically when phi.Fix was not NULL. In particular for rdisPars it is presumably 1. models[["phi"]] remains ""
     if ( # ( ! mainfamfam %in% c("gaussian","Gamma")) && 
          .DEPARSE(resid.formula) != "~1") {
-      if ( ! mainfamfam %in% c("beta_resp", "betabin", "negbin1","negbin2", "gaussian", "Gamma")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
+      if ( ! mainfamfam %in% c("beta_resp", "betabin", "negbin1","negbin2", "gaussian", "Gamma", "tweedie")) 
+        warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"), immediate. = TRUE)
       resid.formula <- resid.model$formula
       if ( ! is.null(.parseBars(resid.formula))) stop("Random effects are not allowed in model for family parameter.")
       # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent to a fixed etaFix
@@ -956,7 +963,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
     if ( level ) { # may be 0.5...
       if (level >= 1L ) {
         # 'tracer' function:
-        if (processed$augZXy_cond) { # .HLfit_body_augZXy() does not have an etaFix argument: See comments in its soruce file.
+        if (processed$augZXy_cond) { # .HLfit_body_augZXy() does not have an etaFix argument: See comments in its source file.
           .warn_augZXy_scaling_once()
           tracing_op <- quote(try(.TRACE_fn(fixed, processed=processed))) # the closure of the traced function must have a 'fixed' variable
         } else tracing_op <- quote(try(.TRACE_fn(fixed, etaFix, processed))) # the closure of the traced function must have both 'fixed' and 'etaFix' variable
@@ -983,20 +990,15 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
         exit_op <- quote({})
       }
       
-      if ( ! is.null(processed$HLfit_body_fn2)) {
-        suppressMessages(trace(processed$HLfit_body_fn2, where=asNamespace("spaMM"), print=FALSE, 
-                               tracer=tracing_op, # shows the parameters
-                               exit=exit_op)) # shows the objective fn
-      }
       suppressMessages(trace(processed$HLfit_body_fn, where=asNamespace("spaMM"), print=FALSE, 
                              tracer=tracing_op, # shows the parameters
                              exit=exit_op)) # shows the objective fn
-      # if (processed$is_spprec) {
-      #   suppressMessages(trace(.solve_IRLS_as_spprec, where=asNamespace("spaMM"),print=FALSE,tracer=quote(cat(">"))))
-      # } else suppressMessages(trace(.solve_IRLS_as_ZX, where=asNamespace("spaMM"), print=FALSE,tracer=quote(cat(">"))))
-      #suppressMessages(trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
-      #suppressMessages(trace(spaMM.getOption("Matrix_method"),print=FALSE,tracer=quote(cat("."))))
-      #suppressMessages(trace(spaMM.getOption("spprec_method"),print=FALSE,tracer=quote(cat("."))))
+      
+      if ( ! is.null(processed$augZXy_body_fn)) {
+        suppressMessages(trace(processed$augZXy_body_fn, where=asNamespace("spaMM"), print=FALSE, 
+                               tracer=tracing_op, # shows the parameters
+                               exit=exit_op)) # shows the objective fn
+      }
       for (method_st in c("matrix_method","Matrix_method","spprec_method","Hobs_Matrix_method")) {
         fn <- paste("get_from_MME",strsplit(spaMM.getOption(method_st),"def_")[[1L]][2],sep=".") 
         if (level<4L) {
@@ -1008,10 +1010,10 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
         }
       }
     } else { # TRACE=0
-      if ( ! is.null(processed$HLfit_body_fn2)) {
-        .silent_M_E(untrace(processed$HLfit_body_fn2, where=asNamespace("spaMM")))   
-      }
       .silent_M_E(untrace(processed$HLfit_body_fn, where=asNamespace("spaMM")))   
+      if ( ! is.null(processed$augZXy_body_fn)) {
+        .silent_M_E(untrace(processed$augZXy_body_fn, where=asNamespace("spaMM")))   
+      }
       for (method_st in c("matrix_method","Matrix_method","spprec_method","Hobs_Matrix_method")) {
         fn <- paste("get_from_MME",strsplit(spaMM.getOption(method_st),"def_")[[1L]][2],sep=".") 
         suppressMessages(untrace(fn, where=asNamespace("spaMM")))
@@ -1033,8 +1035,8 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 }
 
 
-.calc_Binomial_Den <- function(Y, family, nobs) {
-  if (family$family %in% c("binomial","betabin") && NCOL(Y)>1) {
+.calc_Binomial_Den <- function(Y, famfam, nobs) {
+  if (famfam %in% c("binomial","betabin") && NCOL(Y)>1) {
     BinomialDen <- rowSums(Y)
     if (any(chk <- BinomialDen == 0L)) {
       # if (For_fitmv) {
@@ -1050,15 +1052,17 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 }
 
 .check_y <- function(family, y, BinomialDen) {
-  if (family$family %in% c("binomial","betabin")) {
+  famfam <- family$family
+  if (famfam %in% c("binomial","betabin")) {
     if (length(y)==1L || (var(y)==0 && var(BinomialDen)==0) ) { warning("var(response) = 0, which may cause errors.") }  
     bin_all_or_none <- all(pmin(y,BinomialDen-y)==0L)
   } else { 
     bin_all_or_none <- FALSE
     if ( ! is.null(y)) { ## y may be NULL in evaluation of residProcessed
       if ( length(y)==1L || var(y)==0) { # (~1, family=poisson, data=<single response> ) can be fitted
-        if (family$family %in% c("gaussian", "Gamma")) warning("var(response) = 0, which may cause errors.") 
-      } else if (var(y)<1e-3 && family$family=="gaussian") {
+        if (famfam %in% c("gaussian", "Gamma","tweedie")) 
+          warning("var(response) = 0, which may cause errors.", immediate. = TRUE) 
+      } else if (var(y)<1e-3 && famfam=="gaussian") {
         warning("The variance of the response is low, which may lead to imperfect estimation of variance parameters.\n Perhaps rescale the response?")
       }
     }  
@@ -1304,7 +1308,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   } else {
     obsInfo <- (
       HLmethod[[1L]]!="SEM" && 
-        opt && (nrand || opt>1L) # so that default is "obs" for MM and "exp" in fixed-effect models, when not determined by previous conditions.
+        opt ## had previously : && (nrand || opt>1L) # so that default was still "exp" in fixed-effect models
     ) # use .spaMM.data's default method is not SEM
   }
   obsInfo

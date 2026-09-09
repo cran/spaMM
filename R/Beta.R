@@ -30,7 +30,7 @@ Beta <- function(link="logit"){
     dev <- 2 * wt * (y*log( y/mu) +(1-y)*log((1-y)/(1-mu)))
     return(pmax(dev,0)) ## resids(1/2,1/2,1) might be slightly negative...
   }
-  parent.env(environment(variance)) <- # ______F I X M E____ for this and similar instances I will have to find a replacement
+  parent.env(environment(variance)) <- # _____F I X M E____ for this and similar instances see ZZZ_parent.env_mess.R
     environment(stats::Gamma) ## explanations in spaMM_Gamma() source
   structure(list(family = "Beta", link = linktemp, linkfun = stats$linkfun,
                  linkinv = stats$linkinv, variance = variance, dev.resids = dev.resids, mu.eta = stats$mu.eta),

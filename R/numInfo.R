@@ -1,9 +1,9 @@
 # The 'good' procedure using hlcorcall
 .numInfo_objfn <- function(x, 
-                           hlcorcall, # Conceived for a processed call (call from numInfo()); but .p4m_by_outer_optim() may use an unprocessed call.
-                           # ie a call with a $processed argument
-                           # which is not yet the case for .p4m_by_outer_optim() fits using a call to .p4m_by_iters().
-                           # such a call may allow a $processed_call arg (not yet successfully used) rather than a $processed arg.
+                           hlcorcall, # Conceived for a processed call, ie a call with a $processed argument; 
+                           # but works with .p4m_by_iters calls [pois4mlogit -> 
+                           #  .p4m_by_outer_optim(hlcorcall=.p4m_by_iters call)], 
+                           # which are not always processed calls, in which case 'hlcorcall' is a misnomer.
                            skeleton, 
                            transf, # signals transformed input. FALSE when called from numInfo(), 
                                    # TRUE when called from as_LMLT <- function(., transf=TRUE) as the argument is passed all the way down to here
@@ -11,7 +11,7 @@
                            objective,
                            moreargs,
                            full_beta,
-                           objfn.extras=list()
+                           objfn.extras=list() # receives LUarglist
                            ) {
   parlist <- relist(x, skeleton) # loses the keepInREML attribute, but this does not matter bc this attr is effective only in preprocessing..
   # Here if the original fit was an HLCor call there was no outer optim hence no moreargs computed and the 'moreargs' attr is NULL
@@ -51,7 +51,33 @@
     parlist <- .canonizeRanPars(parlist, corr_info=NULL, checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)
   }
   hlcorcall$fixed <- .modify_list(hlcorcall$fixed, parlist) 
+  #
+  p4m_port_env <- hlcorcall[["control"]]$port_env
+  # This .numInfo_objfn() is called by numInfo() and by .p4m_by_outer_optim().
+  # control$port_env is provided by .p4m_by_outer_optim() -> .get_template4objfn()
+  # When numInfo() controls all ranPars, 
+  #   it calls pois4mlogit() itself calling .p4m_by_iters() but not .p4m_by_outer_optim(). 
+  #   Then, p4m_port_env is absent from hlcorcall$control and thus .numInfo is unaffected. 
+  # The compatibility of p4m_port_env usage with any numInfo() computation is untested.
+  
+  ## So this controls inits over successive calls to .p4m_by_iters() within .p4m_by_outer_optim():
+  if ((beyond_1st_p4m_by_iters_in_p4m_by_outer_optim <- 
+       ( ! is.null(.dynoffset <- p4m_port_env$.dynoffset)))) {
+    hlcorcall$data$".dynoffset" <- .dynoffset
+    hlcorcall$"init.HLfit" <- p4m_port_env$"init.HLfit" # correct but .p4m_by_iters also sees the copy in p4m_port_env.
+  }
   refit <- eval(hlcorcall)
+  if (inherits(refit,"pois4mlogit") && is.environment(p4m_port_env)) { # if in_p4m_by_outer_optim...
+    if ((is_1st_p4m_by_iters_in_p4m_by_outer_optim <- 
+         is.null(p4m_port_env$.dynoffset)) ||
+        logLik(refit) > logLik(p4m_port_env$bestfit)) {
+      p4m_port_env$.dynoffset <- refit$data$".dynoffset"
+      p4m_port_env$"init.HLfit" <- list(v_h=ranef(refit, type="bare.init"),
+                                        fixef=na.omit(fixef(refit)))
+      p4m_port_env$bestfit <- refit
+    } 
+  }
+  
   if (is.null(objective)) { # call from .get_covbeta() : there must not be an etaFix in the skeleton
     refit
   } else ( - refit$APHLs[[objective]])
@@ -231,7 +257,7 @@
                                     ranpars, # beware canonical/non canonical in later extensions of this fn.
                                     # optional for beta numDerivs:
                                     beta_eta=NULL, fitobject,
-                                    ori_off=model.offset.HLfit(fitobject)) {
+                                    offsets=model.offset.HLfit(fitobject)) {
   processed <- hlcorcall$processed
   if (is.list(processed)) {
     proc1 <- processed[[1L]]
@@ -253,13 +279,12 @@
     # Here for numInfo computation we mix features of inner and outer optim. Not the most lucid block of code...
     # A comment in HLfit_body() says "AUGI0_ZX$X.pv must correspondingly have been reduced by .preprocess()"
     # Indeed. There was an etaFix$beta in preprocessing, which allowed as call to 
-    # .process_betaFix() before merged_X was put into AUGI0_ZX.
+    # .preprocess_betaFix() before merged_X was put into AUGI0_ZX.
     betanames <- names(fixef(fitobject))
     X.pv <- model.matrix(fitobject)
     X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
     X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
-    #     ori_off <- model.offset.HLfit(fitobject) # processed$off differs from it as get_HLCorcall(., etaFix) -> .preprocess(...etaFix) adds the etaFix-derived offset.
-    processed$X_off_fn <- .def_off_fn(X_off, ori_off=ori_off) 
+    processed$X_off_Xb_fn <- .def_off_Xb_fn(X_fixed=X_off, offsets=offsets) 
     processed[["vecdisneeded_ori"]] <-  processed[["vecdisneeded"]]
     processed[["vecdisneeded"]] <- processed[["vecdisneeded"]] & ncol(X.pv) 
   }
@@ -413,6 +438,31 @@
   hess
 }
 
+.get_p4m_call_4numInfo <- function(fitobject, outer_call=getCall(fitobject), skeleton) {
+  ## modify outer_call
+  outer_call$data <- fitobject$data # with "good" .dynoffset
+  outer_call["initfn"] <- NULL 
+  inits <- get_inits_from_fit(fitobject) # !! get inits from the fit, not the call
+  #
+  init.HLfit <- inits[["init.HLfit"]]
+  init.HLfit <- remove_from_parlist(init.HLfit, list(fixef=skeleton$etaFix$beta))
+  init.HLfit$v_h <- ranef(fitobject, type="bare.init")
+  outer_call$init.HLfit <- .modify_list(outer_call[["init.HLfit"]], init.HLfit) 
+  #
+  ranPars_init <- inits[["init"]] 
+  ranPars_init <- remove_from_parlist(ranPars_init, skeleton)
+  outer_call$init <- .modify_list(outer_call[["init"]], ranPars_init) 
+  #
+  call_control <- outer_call[["control"]]
+  if (fitobject$models$eta=="etaHGLM") {
+    if ( ! length(ranPars_init)) { # all ranPars are fixed by original call or in skeleton
+      call_control[["p4m"]] <- 'H' # sufficient to infer ranefs for known ranPars
+    } # else "oH" should be run (as default) because only .p4m_by_outer_optim() can estimate ranPars
+  } else call_control[["p4m"]] <- 'o'
+  call_control[["meta_port_env"]] <- list2env(list(prevmsglength=0L,IT=0L), parent = emptyenv())
+  outer_call[["control"]] <- call_control
+  outer_call
+}
 
 
 # ___F I X M E____ I should enable numInfo() on resid models, [but then see comment on FIXME in ..calcPHI()]
@@ -431,47 +481,54 @@ numInfo <- function(fitobject,
                     return.="",
                     # method.args=list(eps=1e-4, d=0.0001, zero.tol=sqrt(.Machine$double.eps/7e-7), r=4, v=2, show.details=FALSE),
                     ...) {
-  ## We need an X_off_fn so that the etaFix is used to build an offset. 
+  ## We need an X_off_Xb_fn so that the etaFix is used to build an offset. 
   ## IRLS function do not really handle etaFix. We need an etaFix at preprocessing stage so that columns are suppressed from AUGI0_ZX$X.pv
   ## => => get_HLCorcall(fitobject, ... etaFix=list(beta=fixef(fitobject)))
-  ## Currently X_off_fn is set by .preprocess() only given an init beta, not a given beta, => we set up it in this function
+  ## Currently X_off_Xb_fn is set by .preprocess() only given an init beta, not a given beta, _____F I X M E_____ check whether this comment is still correct.
+  ##    => we set up it in this function
   
   ### REML: the resulting SEs are consistent with those from the beta table... (with keepInREML used in numInfo())
   is_REML <- .REMLmess(fitobject,return_message=FALSE)
   is_PQL_sl <- fitobject$HL[1L]==0L # fixed effects estimated by h-lik
   if (is.null(which)) {
     if (is_REML || is_PQL_sl) {
-      which <-      c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "COMP_nu", "beta_prec", "rdisPars")
-    } else which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "COMP_nu", "beta_prec", "rdisPars", 
+      which <-      c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", 
+                      "COMP_nu", "beta_prec", "rdisPars","Tw_index","Tw_link")
+    } else which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", 
+                      "COMP_nu", "beta_prec", "rdisPars","Tw_index","Tw_link", 
                       "beta")
   } else {
     if (is_PQL_sl &&
         "beta" %in% which) warning("'beta'in 'which' argument may give confusing results when PQL approx. has been used.",
                                    immediate. = TRUE)
   }
+  
   # if (is_REML && "beta" %in% which) {
   #   REMLformula <- formula(fitobject)
   # } else REMLformula <- NULL
 
-  # but the skeleton understood by hlcorcall is already a re-merging of fixed and oprimized values, 
+  # but the skeleton understood by hlcorcall is already a re-merging of fixed and optimized values, 
   # so it also needs a full ranCoefs, the hessian must first be computed on full ranCoefs, 
   # and fixed columns be removed afterwards 
 
   where_rP <- .get_fittedPars(fitobject, fixef=FALSE, verbose=verbose, partial_rC="keep", phifits=FALSE, phiPars=FALSE) 
   for_which_rP <- .get_fittedPars(fitobject, which=which, fixef=FALSE, verbose=verbose, partial_rC="keep", phifits=FALSE, phiPars=FALSE) # may be zero-length
   if ("beta" %in% which) {beta_eta <- structure(fixef(fitobject), keepInREML=TRUE)} else beta_eta <- NULL
+  skeleton <- for_which_rP
+  if (length(beta_eta)) skeleton$etaFix$beta <- beta_eta
+  if (verbose) print(skeleton)
+  
   outer_call <- getCall(fitobject)
-  if ( ! is.null(refit_verbose <- refit_hacks$verbose)) {
-    refit_verbose <- .modify_list(outer_call$verbose, refit_verbose)
-  } else refit_verbose <- outer_call$verbose
-  if (.get_bare_fnname.HLfit(fitobject, call.=outer_call)=="pois4mlogit") {
-    outer_call$data <- fitobject$data # with "good" .dynoffset
-    outer_call$init <- get_inits_from_fit(fitobject)$init # !! get inits from the fit, not the call
-    outer_call["initfn"] <- NULL 
-    hlcorcall <- outer_call
+  if (is_p4m <- inherits(fitobject,"pois4mlogit")) {
+    hlcorcall <- .get_p4m_call_4numInfo(fitobject, outer_call=outer_call,skeleton=skeleton)   #  'hlcorcall': misnomer for p4m
+    hlcorcall[["multinom_info"]] <- fitobject[["p4m_info"]][["multinom_info"]]
+    ##
     objective <- .get_objective(fitobject)
     proc_info <- list(objective=objective) 
   } else {
+    if ( ! is.null(refit_verbose <- refit_hacks$verbose)) {
+      refit_verbose <- .modify_list(outer_call$verbose, refit_verbose)
+    } else refit_verbose <- outer_call$verbose
     hlcorcall <- get_HLCorcall(fitobject, 
                                fixed=where_rP, # If one use 'for_which_rP' here, parameters still get fixed cf (hlcorcall$fixed),
                                # but to what is usually  default initial values (of not interest here)
@@ -491,9 +548,6 @@ numInfo <- function(fitobject,
     ) 
   }
   #
-  skeleton <- for_which_rP
-  if (length(beta_eta)) skeleton$etaFix$beta <- beta_eta
-  if (verbose) print(skeleton)
   
   # cannot remove partially-fixed ranCoefs too early. They must be kept in skeleton in all cases
   ufixed <- na.omit(unlist(outer_call$fixed))
@@ -540,7 +594,8 @@ numInfo <- function(fitobject,
   } 
   
   # Final value always refer to untransformed params:
-  parnames <- c(names(unlist(skeleton[setdiff(names(skeleton), "etaFix")])), names(skeleton$etaFix$beta))
+  parnames <- c(names(unlist(skeleton[setdiff(names(skeleton), "etaFix")])), 
+                names(skeleton$etaFix$beta))
   if (transf) { # from CANON to TRANSF
     canon_skeleton <- skeleton
     skeleton <- .ad_hoc_trRanpars(skeleton)
@@ -557,6 +612,7 @@ numInfo <- function(fitobject,
                   transf=transf, # whether x is on untransformed scale
                   objective=proc_info$objective, full_beta=fixef(fitobject), 
                   moreargs=.get_moreargs(fitobject), ...)
+  if (is_p4m && hlcorcall[["control"]][["meta_port_env"]]$IT>0L) cat("\n")
   
   if ("smoothed" %in% attrs) {
     df <- attr(resu,"df")

@@ -127,6 +127,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
   return(lev)
 } 
 
+
 # Semantics: hat values: from a projection matrix, vs leverages: final standardizing coefficients
 .hatvals2std_lev <- function(hatvals, sXaug, anynull_phi.Fix, u_h,
                              processed, # (fit object in post-fit calls)
@@ -209,22 +210,60 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     # lambda
     if (models[[1L]]=="etaHGLM" && need_simple_lambda) ## d h/ d !log! lambda correction     
       hatvals$ranef <- hatvals$ranef + .corr_notEQL_lambda(nrand,cum_n_u_h,lambda_est,lcrandfamfam) 
-    # phi hence not poiss,binom:
     if (is.null(families <- processed$families)) {
-      if (processed$family$family=="Gamma" && anynull_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
-        phiscaled <- as.vector(phi_est/eval(prior.weights)) ## as.vector drops the attributes inherited from prior.weights
-        hatvals$resid <- hatvals$resid +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
-      }    
+      if (anynull_phi.Fix) { # excludes uninteresting families
+        family  <- processed$family
+        famfam <- family$family
+        if (famfam=="gaussian") {
+          # nothing to do
+        } else if (famfam=="Gamma") { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
+          phiscaled <- as.vector(phi_est/eval(prior.weights)) ## as.vector drops the attributes inherited from prior.weights
+          hatvals$resid <- hatvals$resid +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
+        } else if (famfam=="tweedie") { # see ad hoc notebook
+          phiscaled <- as.vector(phi_est/eval(prior.weights)) ## as.vector drops the attributes inherited from prior.weights
+          mu <- muetablob$mu
+          p <- environment(family$aic)$"p"
+          dlogLs <- numeric(length(mu))
+          for (ii in seq_along(mu)) {
+            dlogLs[ii] <- family$dlogLdphi(y=y[ii], mu=mu[ii], p=p, phi=phiscaled[ii])
+          }
+          qcorr <- .calc_levphi_corr_tweedie(y=drop(y),
+                                             mu=mu,
+                                             phiscaled = phiscaled,
+                                             family=family,
+                                             dlogLs=dlogLs)
+          hatvals$resid <- hatvals$resid + qcorr 
+          hatvals$dlogLdphi <- sum(dlogLs)
+        } else warning("term missing here...") # to catch future response families.
+      } 
     } else { # mv case, list of families
       cum_nobs <- attr(families,"cum_nobs")
-      for (mv_it in seq_along(families)) {
-        fam <- families[[mv_it]]
-        if (fam$family=="Gamma" && anynull_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
+      n_submodels <- length(families)
+      mv_dlogLdphi <- rep(NA_real_,n_submodels) 
+      for (mv_it in seq_len(n_submodels)) {
+        family_it <- families[[mv_it]]
+        famfam <- family_it$family
+        if (famfam=="Gamma" && anynull_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
           resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
           phiscaled <- phi_est[[mv_it]]/eval(prior.weights[[mv_it]]) 
-          hatvals$resid[resp_range] <- hatvals$resid[resp_range] +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
-        }    
+          hatvals$resid[resp_range] <- hatvals$resid[resp_range] +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and cf Gamma case in notebook for tweedie
+        } else if (famfam=="tweedie") { # see ad hoc notebook
+          resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+          phiscaled <- phi_est[[mv_it]]/eval(prior.weights[[mv_it]]) 
+          y_it <- y[resp_range]
+          mu_it <- muetablob$mu[resp_range]
+          dlogLs <- numeric(length(mu_it)) 
+          p <- environment(family_it$aic)$"p"
+          for (ii in seq_along(mu_it)) {
+            dlogLs[ii] <- family_it$dlogLdphi(y=y_it[ii], mu=mu_it[ii], p=p, phi=phiscaled[ii])
+          }
+          qcorr <- .calc_levphi_corr_tweedie(y=y_it, mu=mu_it, phiscaled = phiscaled,
+                                             family=family_it, dlogLs=dlogLs)
+          hatvals$resid[resp_range] <- hatvals$resid[resp_range] + qcorr 
+          mv_dlogLdphi[mv_it] <- sum(dlogLs)
+        } 
       }
+      hatvals$mv_dlogLdphi <- mv_dlogLdphi
     }
   }
   hatvals

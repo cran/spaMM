@@ -1,3 +1,7 @@
+# This is called to store info about a problem and defined are error function which will use the info
+# if an error later occurs. Typical example:
+# phi is estimated as ~0 . .sanitize_phi_est() sees this and calls .hack_options_error().
+# An error occurs at a later step using the same phi_est. The info from .sanitize_phi_est() is reported.
 .hack_options_error <- local({
   .R_errorfn_or_expr <- NULL ## keep original error-handling function, "stop" or "recover" or rstudio stuff or NULL
   .message <- NULL ## the message to show when an error occurs

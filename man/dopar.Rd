@@ -84,7 +84,7 @@ Control of random numbers through the \code{"L'Ecuyer-CMRG"} generator and the \
 \seealso{
 \code{\link{dofuture}} is yet another interface with (essentially) the same functionalities as \code{dopar}. See the documentation of the \code{\link{wrap_parallel}} option for its differences from \code{dopar}.
 
-See \code{\link{spaMM_boot}} and \code{\link{spaMM2boot}} for more specialized interfaces for parametric bootstrap computations.
+See \code{\link{spaMM_boot}} and \code{\link{spaMM2boot}} for more specialized interfaces for parametric bootstrap computations. By default, these functions themselves call \code{dopar}. 
 }
 \examples{
 ## See source code of spaMM_boot()

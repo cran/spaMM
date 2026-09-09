@@ -27,10 +27,10 @@
            outer,
            IRLS_fn=get(".solve_v_h_IRLS", asNamespace("spaMM"), inherits=FALSE) 
 ) {
-  if (outer) {
+  if (outer) { # when called from .wrap_do_damped_WLS_outer()
     trace <- max(0L,Trace-1L)
     stylefn_v <- stylefn_v_out
-  } else {
+  } else { # when called from .solve_v_h_IRLS()
     trace <- max(0L,Trace-2L) # => TRACE=3 will give more details on steps of v_h_IRLS thant TRACE=2
     stylefn_v <- stylefn_v_in
   }
@@ -51,10 +51,11 @@
     cat(stylefn("[")) # cat(which_LevMar_step) #=> a substep of V_IN_B: "strict_v|b" or "b_&_v_in_b"
   } 
   GLGLLM_const_w <- attr(processed$models,"GLGLLM_const_w")
-  if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+  if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)[["mnsizes"]])) {
     X.pv <- processed$AUGI0_ZX$X.pv
   }
-  while ( TRUE ) { ## loop on damping; each iteration produce blue + ul-greens + yellow
+  while ( TRUE ) { ## loop on damping; 
+    # "each iteration produce blue + ul-greens + yellow" (may produce, depending on other arguments, such as outer=TRUE)
     if (processed$HL[1L]==1L) { ## ML fit 
       Vscaled_beta <- old_Vscaled_beta
       ## maximize p_v wrt beta only
@@ -119,7 +120,8 @@
       fitted <- drop(Xscal_ori %*% Vscaled_beta) # eta,mu always from the surrogate Poisson model
     } else fitted <- drop(Xscal %*% Vscaled_beta) ## length nobs+nr ! 
     eta <- fitted[ypos] + off
-    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
+    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, 
+                             dyndyn=FALSE, phi_est=phi_est) 
     fitted[ypos] <- newmuetablob$sane_eta
     
     neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
@@ -130,8 +132,11 @@
 
     mMatrix_arglist <- list(weight_X=newweight_X, w.ranef=newwranefblob$w.ranef, H_global_scale=H_global_scale)
     if (is_p4m_H) {
-      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
-      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = newmuetablob)
+      p4mprobs <- .calc_p4mprobs(muetablob=newmuetablob, multinom_info)
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
+      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
       # newXscal needed for logL computation
       newZAL_scaling <- 1/sqrt(newwranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
       mMatrix_arglist$Xaug <-  newXscal <- .make_Xscal(dcdv_p4m, ZAL_scaling = newZAL_scaling, processed=processed, 
@@ -175,6 +180,7 @@
       break
     } #  =: single call to .calc_APHLs_from_ZX to only fit v_h for the input beta_eta.
     if (first_it) { # test run many times, may be true only the first time
+      # it seems mis-specified p4m -> singular sXaug -> pot4improv is NaN -> low_pot is NA -> bug. No other case of this bug known.
       pot4improv <- .pot4improv(which_LevMar_step, sXaug, gainratio_grad=zInfo$gainratio_grad, seq_n_u_h)
       loc_pot_tol <- .loc_pot_tol(which_LevMar_step, processed$spaMM_tol)
       if (is.null(low_pot)) low_pot <- (pot4improv < loc_pot_tol) 
@@ -279,7 +285,7 @@
     if (trace) {cat(stylefn(damping))}
   }
   if (trace) cat(breakcond)
-  if (is.null(newsXaug)) { ## which means that hlik is the local objective or that (GLGLLM_const_w).
+  if (is.null(newsXaug)) { ## which means that hlik is the local objective [which_LevMar_step="v", notably] or that (GLGLLM_const_w).
     # For HL11, p_v will be used as oldAPHLs in the next call to .do_damped_WLS_outer() in an alternating algo;
     #   and sXaug may be needed to compute sscaled in .solve_v_h_IRLS()
     # For PQL fits newsXaug has not been needed in the damping loop but will be needed after exiting this fn
@@ -290,9 +296,12 @@
       newsXaug <- do.call(def_sXaug_fn, mMatrix_arglist)
       if (Trace) { 
         tracechar <- ifelse(.BLOB(newsXaug)$nonSPD,"!",".")
+        # ** This dot is to be seen after 'OK_gain'. **
         if (processed$p_v_obj=="p_v") { # v estimation within HL11
-          cat(stylefn_v(tracechar))
-        } else  cat(stylefn(tracechar)) # PQL/L, vb extimation
+          cat(stylefn_v(tracechar)) # underlined "cyan" (light purple...) or green dot for "v" step 
+                                    # ie whether stylefn v_in_last or v_out_last was selected at the beginning of the fn,
+                                    # ie whether called from .solve_v_h_IRLS() or from .wrap_do_damped_WLS_outer().      
+        } else  cat(stylefn(tracechar)) # PQL/L, vb estimation # simple dot
       }
       APHLs_args$sXaug <- newsXaug
     } 
@@ -325,7 +334,7 @@
   return(RESU)
 }
 
-#copies to allow independent debug()ing
+#copies to allow independent debug()ing. But breakpoints do not operate in the copies.
 .do_damped_WLS_v_in_b <- .do_damped_WLS 
 .do_damped_WLS_outer <- .do_damped_WLS
 
@@ -403,19 +412,19 @@
   m_grad_obj
 }
 
-.makeMatp4m <- function(mat, # a design matrix, ZAL or X ... or a ZAXlist...
-                        multinom_info, processed, muetablob) {
+# 'mat' is a design matrix, ZAL or X ... or a ZAXlist...
+# Either 'p4mprobs' or 'muetablob' needed
+.makeMatp4m <- function(mat, 
+                        multinom_info, processed, muetablob, p4mprobs=NULL) {
   if (! is.null(attr(mat,"p4m_ized")))  stop("recursive call of .makeMatp4m()") # (!) test also TRUE for Xscal whether p4m_ized or not
-  if (inherits(mat,"ZAXlist")) mat <- .get_bind_ZAXlist(mat)
+  if (inherits(mat,"ZAXlist")) mat <- .get_force_bind_ZAXlist(mat) 
   if ( ! NCOL(mat)) return(mat)
+  if (is.null(p4mprobs)) p4mprobs <- .calc_p4mprobs(muetablob=muetablob, multinom_info)
   has_dynoffset <- multinom_info$has_dynoffset
-  muP_template <- multinom_info$muP_template
-  muP_template[multinom_info$mnpos_in_template] <- muetablob$mu
-  p4mprobs <- .Dvec_times_matrix(1/rowSums(muP_template,na.rm = TRUE),muP_template)
   cum_nobs <- attr(processed$vec_nobs,"cum_nobs")  
   if (inherits(mat,"sparseMatrix")) {
     iis <- jjs <- xxs <- NULL
-    seq_nrow <- seq(nrow(muP_template))
+    seq_nrow <- seq(nrow(p4mprobs))
     for (mv_it in seq_len(ncol(p4mprobs))[has_dynoffset]) { 
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       p4mprobs_it <- p4mprobs[,mv_it]
@@ -532,12 +541,16 @@
     ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
     weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) # -> .... sqrt([H_]w.resid * H_global_scale)
     def_sXaug_fn <- get(processed$sXaug_method,asNamespace("spaMM"), inherits=FALSE)
-    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)$mnsizes)) {
+    
+    if (is_p4m_H <- ! is.null((multinom_info <- processed$multinom_info)[["mnsizes"]])) {
       # In the case which works, there is a pair of .makeMatp4m() calls each time this function is called,
       # which is once for any HLfit_body() call. The dynoffset is updated at the pois4mlogit() level, 
       # HLfit_body is called in each .p4m_by_iter() iteration.
-      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
-      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, muetablob = muetablob)
+      p4mprobs <- .calc_p4mprobs(muetablob=muetablob, multinom_info)
+      dcdv_p4m <- .makeMatp4m(mat=ZAL, multinom_info=multinom_info, processed=processed,
+                              p4mprobs=p4mprobs)
+      dcdb_p4m <- .makeMatp4m(mat=X.pv, multinom_info=multinom_info, processed=processed, 
+                              p4mprobs=p4mprobs)
       replaces_etamo <- drop(dcdv_p4m %*% v_h + dcdb_p4m %*% beta_eta)
       muetablob$dz1_p4m <- replaces_etamo - drop(ZAL %*% v_h +X.pv %*% beta_eta)
       constant_zAug_args$ZAL <- dcdv_p4m #  "doSeeMe" # see comment on other instance of this code
@@ -553,6 +566,7 @@
       damped_WLS_v_in_b_fn <- .do_damped_WLS_v_in_b # = .do_damped_WLS()
       damped_WLS_fn <- .do_damped_WLS_outer # = .do_damped_WLS()
     }
+    
     which_i_llblock <- .which_i_llblock(Xscal, n_u_h) # preprocessing for faster updating of (sparse) Xscal when scaling changes
     sXaug <- def_sXaug_fn(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale, 
                           force_QRP_global= ! LevenbergM) # do not force QRP when LevM!
@@ -591,7 +605,12 @@
     best_HL1_lik <- -Inf
     pot4improv <- NULL
     ################ L O O P ##############
-    for (innerj in 1:maxit.mean) {
+    for (innerj in 1L:maxit.mean) {
+      if ( ! is.null(processed$next_dynoffset)) {
+        processed$off <- off <- processed$next_dynoffset
+        processed$next_dynoffset <- NULL
+      }
+      
       if( ! LevenbergM && allow_LM_restart) { ## FIXME the next step improvement would be 
         #  ./. to keep track of lowest lambda that created problem and use LM by default then
         # if (innerj>1L && notSPD) {
@@ -974,9 +993,9 @@
             cat(cli::col_red("!"))
           } else if ( ! identical(processed$warned_maxit_mean, TRUE)) {
             processed$warned_maxit_mean <- TRUE
-            if (!is.null(for_intervals)) {
-              message("Iterative algorithm converges slowly.")
-            } else message(cli::format_message("Iterative algorithm converges slowly. See {.topic [convergence](spaMM::convergence)} for suggestions."))
+            message("Iterative algorithm converges slowly.")
+            # immediate message + warningList$innerNotConv... makes sense.
+            # ( innerj passed upstream through loopout_blob$auglinmodblob$innerj )
           }
         }
         break

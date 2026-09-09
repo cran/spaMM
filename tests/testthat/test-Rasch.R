@@ -27,7 +27,7 @@ if( requireNamespace("multilevel", quietly = TRUE)) {
     hl1 <- fitme(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
                  #verbose=c(TRACE=interactive()),
                  data=lql, family=binomial()) 
-    # down to 6.3s with "R-devel post 4.5.0"
+    # down to 6.3s with "R-devel post 4.5.0" and even less with v4.6.124
     testthat::expect_equal(logLik(hl1),c(p_v=-20354.8828))
     if (.is_spprec_fit(hl1)) message(paste('.is_spprec_fit(hl1) in test-Rasch: was a non-default option selected?'))
   } else cat(" requires example_maxtime>7")

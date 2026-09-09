@@ -18,8 +18,7 @@ HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
    A \code{predictor}, i.e. a formula with attributes (see \code{\link{Predictor}}), or possibly simply a simple \code{formula} if an offset is not required.
   }
   \item{fixed, ranPars}{
-  A list of given values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
-  (optional, but passed to HLfit if present). \code{ranPars} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{fixed}} for further information about these two parameters.
+  A list of given values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters (optional, but passed to HLfit if present). \code{ranPars} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{fixed}} for further information about these two parameters.
 }
   \item{data}{
    The data frame to be analyzed.

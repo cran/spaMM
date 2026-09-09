@@ -72,7 +72,7 @@ The function proceeds by first preprocessing all submodels independently, before
 %Some fits may by default be slower than is possible by playing with control arguments \code{init} and \code{init.HLfit}.
 }
 \value{
-A (single) list of class \code{HLfit}, as returned by other fitting functions in \pkg{spaMM}. The main difference is that it contains a \code{families} element describing the response families, instead of the \code{family} elements of fitted objects for univariate response.
+A (single) \code{list} with additional classes \code{HLfit} (as returned by other fitting functions in \pkg{spaMM}) and \code{fitmv}. It contains a \code{families} element describing the response families, instead of the \code{family} elements of fitted objects for univariate response (the \code{family} extractor works in both cases). The \code{data} element retains rows of the data for which some responses or some predictors are missing, in contrast to the univariate case.  
 }
 \seealso{
 See \code{\link{X2X}} for details, examples and an helper function facilitating the use of this argument. 

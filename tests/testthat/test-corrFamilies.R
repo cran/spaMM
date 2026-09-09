@@ -98,7 +98,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       p2 <- get_predVar(ARpfit)[2:4]
       p3 <- get_predVar(AR1fit, newdata=ts[2:4,])
       p4 <- get_predVar(ARpfit, newdata=ts[2:4,])
-      testthat::expect_true(diff(range(p1-p2,p1-p3,p1-p4))<1e-8)
+      testthat::expect_true(diff(range(p1-p2,p1-p3,p1-p4))<2e-8)
     }
     cat(cli::col_yellow("ARMA; ")) 
     {

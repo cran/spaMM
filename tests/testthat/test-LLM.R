@@ -23,10 +23,10 @@ if (spaMM.getOption("example_maxtime")>39) {
     testthat::test_that("check Tpoisson() mixed model",
                         testthat::expect_true(diff(c(range(logLik(tp),-182.07022358 )))<1e-5))
     # small numerical issues for Tnegbin with large shape, which should converge to Tpoisson irrespective of obsInfo since log is canonical for poisson:
-    fitme(I(1+cases)~1+(1|id),family=negbin(trunc=0, shape=1e10), data=scotlip, method=c("ML")) # -182.0711 after -182.0691 and -182.0708 (Hexp must be ~Hobs as shape -> infty)
-    fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0, shape=1e10), data=scotlip, method=c("ML","obs")) # -182.0691
+    fitme(I(1+cases)~1+(1|id),family=negbin(trunc=0, shape=1e10), data=scotlip) # -182.0711 after -182.0691 and -182.0708 (Hexp must be ~Hobs as shape -> infty)
+    fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0, shape=1e10), data=scotlip) # -182.0691
     
-    (tnb2 <- fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0), data=scotlip, method=c("ML","obs"))) # # -181.7404 
+    (tnb2 <- fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0), data=scotlip)) # # -181.7404 
     testthat::test_that("check truncated negbin(2) mixed model",
                         testthat::expect_true(diff(c(range(logLik(tnb2),-181.7403819160504 )))<1e-10))
     
@@ -89,8 +89,8 @@ if (spaMM.getOption("example_maxtime")>39) {
                   init=list())) # -181.7984   
     tnb1de <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0), data=scotlip, verbose=c(TRACE=TRACEv), 
                     init=list(),control.HLfit=list(algebra="decorr")) # -181.7984  
-    tnb1sp <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0), data=scotlip, verbose=c(TRACE=TRACEv), 
-                    init=list(),control.HLfit=list(algebra="spprec")) # -181.7984  
+    (tnb1sp <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0), data=scotlip, verbose=c(TRACE=TRACEv), 
+                    init=list(),control.HLfit=list(algebra="spprec"))) # -181.7984  
     testthat::test_that("check truncated negbin1()",
                         testthat::expect_true(diff(c(range(logLik(tnb1),logLik(tnb1de),logLik(tnb1sp),-181.7984443645773  )))<2e-6))
     
@@ -99,10 +99,18 @@ if (spaMM.getOption("example_maxtime")>39) {
       # the default method finds nonSPD matrices including at the attained fit. Then the Lev_M results are hard to characterize. 
       tnb1 <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0,shape=0.076247), data=scotlip, verbose=c(TRACE=interactive()), 
                     fixed=list(lambda=2.20016)) 
+      # => "The negative-Hessian was not positive definite at the final estimates. Likelihood may not be maximized. "
       tnb1de <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0,shape=0.076247), data=scotlip, verbose=c(TRACE=interactive()), 
                       fixed=list(lambda=2.20016), control.HLfit=list(algebra="decorr")) 
       tnb1sp <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0,shape=0.076247), data=scotlip, verbose=c(TRACE=interactive()), 
                       fixed=list(lambda=2.20016), control.HLfit=list(algebra="spprec")) 
+      if (FALSE) {
+        spaMM.options(use_G_dG=FALSE) # Worst case for comparison since everything is nonSPD...
+        tnb1CHM <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0,shape=0.076247), data=scotlip, verbose=c(TRACE=TRUE), 
+                         fixed=list(lambda=2.20016)) # p_v= -195.3739
+        spaMM.options(use_G_dG=TRUE) # default
+      }
+      
       if (FALSE) {
         # Further, in QRP_CHM LevM does not use the same Hessian matrix. Effect was first seen in levM_v_h (iter 28 gainratio and newlik (hlik): use TRACE=2 to see it), and the final result differs.    
         spaMM.options(Hobs_Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled")
@@ -246,7 +254,11 @@ if (spaMM.getOption("example_maxtime")>39) {
         #
         # Same logic for simulate():
         #
-        crit <- length(simulate(mvfit, newdata=misspred, sizes=rep(1L,5))) # 5 as simulation requires residVar
+        foo <- simulate(mvfit, newdata=misspred, sizes=rep(1L,5))
+        crit <- length(foo) # with lot of NAs 
+        testthat::test_that("check handling of missing data in simulate(mvfit...)",
+                            testthat::expect_true(crit==6L)) # (has been 42 by some devel versions)
+        crit <- length(na.omit(foo)) # 5 as simulation requires residVar
         testthat::test_that("check handling of missing data in simulate(mvfit...)",
                             testthat::expect_true(crit==5L))
         

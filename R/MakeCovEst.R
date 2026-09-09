@@ -65,9 +65,7 @@
     #  We also want chol_Q it to be lower triangular (dtCMatrix can be Up or Lo) 
     #    to obtain a dtCMatrix by bdiag(list of lower tri dtCMatrices). It already is lower tri.
     # Beyond this, design_u may be lower or upper tri
-    if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
-      evec <- as(esys$vectors, "dgCMatrix") 
-    } else evec <- as(as(esys$vectors,"generalMatrix"),"CsparseMatrix") # the aim of converison to dgC is that ZWZt is automatically dsC through call to Matrix::tcrossprod
+    evec <- as(as(esys$vectors,"generalMatrix"),"CsparseMatrix") # the aim of converison to dgC is that ZWZt is automatically dsC through call to Matrix::tcrossprod
     if (regularize) {
       blob$compactprecmat <- .ZWZtwrapper(evec, 1/esys$d_regul) # dsCMatrix
     } else blob$compactprecmat <- .ZWZtwrapper(evec, 1/esys$values) # dsCMatrix
@@ -147,10 +145,13 @@
   return(longLv) 
 } ## end def .makelong_bigq
 
+# rownames(kronprod) seem needed only post fit, so they should 
+# have been added to kron_Y when building the final fit object: cf .add_kron_Y_info().
+# These rownames may currently still be NULL during the fit.
 .makelong_kronprod <- function(Lcompact, kron_Y) {
   if (methods::.hasSlot(Lcompact,"x") && any(Lcompact@x==0)) Lcompact <- drop0(Lcompact) # Seems cheap
   kronprod <- kronecker(Lcompact, kron_Y) # sparse as inferred from argument structure
-  # so if the Lcompact has explicit zeros in @x, a drop0() would be useful. But do it on the LHS, not on the product!
+  rownames(kronprod) <- rep(rownames(kron_Y), nrow(Lcompact)) # possibly NULL, see details above.
   if ( inherits(Lcompact,c("dtCMatrix","ltCMatrix")) && 
        inherits(kron_Y,c("dtCMatrix","ltCMatrix"))) return(as(as(kronprod,"triangularMatrix"),"CsparseMatrix"))
   if ( inherits(Lcompact,c("dsCMatrix","lsCMatrix", "lsyMatrix", "dsyMatrix")) && 

@@ -295,6 +295,8 @@
   if ( ! is.null(parlist$trNB_shape)) names(parlist$trNB_shape) <- mv_it
   if ( ! is.null(parlist$beta_prec)) names(parlist$beta_prec) <- mv_it
   if ( ! is.null(parlist$trbeta_prec)) names(parlist$trbeta_prec) <- mv_it
+  if ( ! is.null(parlist$Tw_index)) names(parlist$Tw_index) <- mv_it
+  if ( ! is.null(parlist$Tw_link)) names(parlist$Tw_link) <- mv_it
   # The input parlist$rdisPars may be a vector, or a list (even an empty one)
   # Notably: parlist may be provided by .calc_optim_args(): for each submodel that function provides 
   #           inits$init and other parlists as for a single resp fit -> parlist$rdisPars is a vector
@@ -330,6 +332,7 @@
   } else optim_blob
 }
 
+# This is called by fitmv_body so not really preprocessing
 .calc_optim_args_mv <- function(processed, map_rd_mv, user_init_optim, fixedS, user.lower, user.upper, verbose, optim.scale) {
   unmerged <- processed$unmerged 
   optim_blob <-  NULL
@@ -351,7 +354,9 @@
                  rdisPars=structure(list(NULL),names=mv_it), # Another fake skeleton
                  beta_prec=phistr,
                  NB_shape=phistr, 
-                 COMP_nu=phistr)
+                 COMP_nu=phistr,
+                 Tw_index=phistr,
+                 Tw_link=phistr)
     # 'hyper' elements are indexed in not by ranefs but only for reference by the map, which creates a new problem
     if (has_hy && length(hy_in_mv <- map_hy_mv[[mv_it]])) {
       hy_in_submv <- structure(names(hy_in_mv), names=hy_in_mv) # reverse map (its names are full model indices); names() and seq_along should be equiv ?
@@ -441,10 +446,11 @@
     attr(optim_blob$inits$init.optim$hyper,"hy_info") <- processed$hyper_info # *environment*: for .makeLowerUpper, with distinct name for easier tracking 
   }
   
-  if (! is.null(processed$X_off_fn)) { # outer beta... (not same workflow as in fitme)
-    X_off <- environment(processed$X_off_fn)$X_off
+  if ( .has_X_off_betas(processed) &&
+       length(user_init_optim$beta) ) { # outer beta... (not same workflow as in .preprocess(univar))
+    X_off <- environment(processed$X_off_Xb_fn)$X_fixed
     optim_blob[["inits"]][["init"]]$beta <-  
-      optim_blob[["inits"]][["init.optim"]]$beta <- .scale(user_init_optim$beta, X=X_off) # outer beta. numeric values needed.s
+      optim_blob[["inits"]][["init.optim"]]$beta <- user_init_optim$beta # outer beta. numeric values needed.s
     # fixef_lowup <- .calc_fixef_lowup(processed) # cannot work as such bc would need a nontrivial eta
     # (the .sanitize_eta call might to modified to avoid that).
     # Thus, currently, the user must have provided some bounds
@@ -452,43 +458,10 @@
     # by these arguments, but nevertheless currently have to be copied in:
     fixef_lowup <- list()
     # Keep in mind that for NULL beta, .scale() returns a scaled X matrix...
-    if (length(user.lower$beta)) fixef_lowup$lower <- .scale(user.lower$beta, X=X_off)
-    if (length(user.upper$beta)) fixef_lowup$upper <- .scale(user.upper$beta, X=X_off)
+    if (length(user.lower$beta)) fixef_lowup$lower <- user.lower$beta 
+    if (length(user.upper$beta)) fixef_lowup$upper <- user.upper$beta 
   } else fixef_lowup <- NULL
   
-  
-  
-###   Handling of corrFamily inits
-  # This block is actually buggy for at least an mv fit with two ranefs, one 'is_cF' the other not.
-  # In that case the value of nrand passed to .init_optim_lambda_ranCoefs is 1
-  # and this is not properly handled. 
-  # But this block appears to have been made obsolete by some upstream changes.
-  #
-  # corr_info <- processed$corr_info
-  # if (any(is_cF <- corr_info$is_cF_internally)) {
-  #   # ad hoc calls of functions devised for other uses:
-  #   loc.init.optim <- .init_optim_lambda_ranCoefs(
-  #     processed, 
-  #     other_reasons_for_outer_lambda = TRUE, 
-  #     optim_blob$init.optim, 
-  #     nrand=length(which(is_cF)), 
-  #     ranCoefs_blob=list(isRandomSlope =FALSE), var_ranCoefs=FALSE,
-  #     user_init_optim=user_init_optim
-  #   ) # seems to take correctly the fixed ones into account
-  #   # Not brilliant:
-  #   lam_cF <- .calc_inits_dispPars(optim_blob$inits$init,init.optim=loc.init.optim,init.HLfit=NULL,fixedS,user.lower,user.upper)
-  #   optim_blob$inits <- .modify_list(optim_blob$inits, list(init=lam_cF$init["lambda"],init.optim=lam_cF$init.optim["trLambda"]) , obey_NULLs=FALSE)
-  #   corr_types <- corr_info$corr_types
-  #   for (rd in which(is_cF)) {
-  #     corr_type <- corr_types[[rd]]
-  #     char_rd <- as.character(rd)
-  #     optim_blob$inits <- processed$corr_info$corr_families[[rd]]$calc_inits(
-  #       inits=optim_blob$inits, char_rd, 
-  #       # optim.scale, # currently ignored (not passed)
-  #       user.lower=user.lower, user.upper=user.upper) 
-  #   }
-  # }
-  ###
   optim_blob <- .makeLowUp_stuff_mv(optim_blob, user.lower=user.lower, user.upper=user.upper, 
                                     optim.scale, processed, verbose, fixef_lowup=fixef_lowup)
   
@@ -773,25 +746,24 @@
 }
 
 
-.process_betaFix <- function(X.pv, betaFix, merged) { 
+.preprocess_betaFix <- function(X.pv, betaFix, merged) { 
   namesbetafix <- names(betaFix)
   if (is.null(namesbetafix)) {
     message("The elements of etaFix$beta should be named and the names should match the column names of the design matrix.")
   }
   if (length(setdiff(namesbetafix,colnames(X.pv)))==0L) { ## if no incorrect name
     betaFix <- .scale(X = X.pv, beta = betaFix)
-    offFromEtaFix <- drop(X.pv[ ,namesbetafix,drop=FALSE] %*% betaFix) # must be vector not matrix
+    merged$X_off_Xb_fn <- .def_off_Xb_fn(X_fixed=.subcol_wAttr(X.pv, j=namesbetafix, drop=FALSE), 
+                                       offsets=merged$off,
+                                       sc_betaFix=betaFix)  # X.pv is scaled here so betaFix must be too
+    merged$off <- merged$X_off_Xb_fn(NULL,NULL,NULL)
     namesbetavar <- setdiff(colnames(X.pv),namesbetafix)
     X.pv <- .subcol_wAttr(X.pv, j=namesbetavar, drop=FALSE)
-    if (is.null(merged$off)) {
-      merged$off <- offFromEtaFix
-    } else merged$off <- merged$off + offFromEtaFix
   } else {
     stop("The names of elements of etaFix$beta should all match column names of the design matrix.")
   }
   X.pv
 }
-
 
 .merge_processed <- function(calls_W_processed, data, init=list(), control.HLfit=list(), method="ML", verbose=NULL, init.HLfit=list(),
                              covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list(), etaFix=list(),
@@ -858,7 +830,7 @@
     "verbose","control.glm","HL","p_v_obj",#"rand.families",
     "spaMM_tol",
     "break_conv_logL","intervalInfo",
-    "objective","port_env")
+    "objective","port_env","CONTROL")
   ) assign(st,value=unmerged[[1L]][[st]],envir=merged)
   #
   # This small loop for elements recursively updated later, so not yet assigned into 'merged':
@@ -879,7 +851,7 @@
   phi_models[[1L]] <- models[["phi"]]
   rdispar_models[[1L]] <- models[["rdispar"]]
   #
-  ZAlist <- unmerged[[1L]]$ZAlist
+  ZAlist <- unmerged[[1L]]$ZAlist # misnomer, as A woill be included much later (cf .update_ZAlist() call)
   ZAlist <- .correct_ZA_mv_ranCoefs(ZAlist, mv_it=1L)
   ZAlist <- .merge_ZAlists(list(), ZAlist, 0L, vec_nobs[1L], 1L)
   merged_X <- .merge_Xs(NULL, unmerged[[1L]][["AUGI0_ZX"]]$X.pv, mv_it=1L)
@@ -944,6 +916,7 @@
     surrogate_info <- list(
       has_dynoffset=has_dynoffset, 
       validPrownames=validrownames, # list of vectors of strings
+      # is_fixefM=length(ZAlist)==0L,
       vec_nobs=vec_nobs # valid for poisson fit; cf .get_multinom_info() for use.
     ) 
     .sendFromTheDepths(surrogate_info=surrogate_info, class="spaMM.FTD.SI")
@@ -999,13 +972,21 @@
   has_estim_families_par <- FALSE
   for (mv_it in seq_along(unmerged)) {
     family_it <- families[[mv_it]]
-    has_estim_families_par <- ((family_it$family %in% c("negbin1","negbin2") && 
-                                  inherits(substitute(shape, env=environment(family_it$aic)),"call")) ||
-                                 (family_it$family %in% c("beta_resp","betabin") && inherits(substitute(prec, env=environment(family_it$aic)),"call"))||
-                                 (family_it$family=="COMPoisson" && inherits(substitute(nu, env=environment(family_it$aic)),"call")))
+    has_estim_families_par <- (
+      (family_it$family %in% c("negbin1","negbin2") && 
+         .is_fampar_missing(family=family_it,fampar="shape")) ||
+        (family_it$family %in% c("beta_resp","betabin") && 
+           .is_fampar_missing(family=family_it,fampar="prec"))||
+        (family_it$family=="COMPoisson" && 
+           .is_fampar_missing(family=family_it,fampar="nu"))||
+        (family_it$family=="tweedie" && 
+           (.is_fampar_missing(family=family_it,fampar="p") ||
+              .is_fampar_missing(family=family_it,fampar="q")))
+    )
     if (has_estim_families_par) break
   }
   attr(families,"has_estim_families_par") <- has_estim_families_par 
+  attr(families,"famfams") <- sapply(families, `[[`, x="family")
   #
   merged$families <- families
   # namestable <- table(colnames(merged_X)) 
@@ -1047,21 +1028,21 @@
   attr(merged_X,"cum_nobs") <- cum_nobs
   
   #### replacement for .preprocess_X_XRe_off():
-  if ( length(betaFix <- etaFix$beta)>0 ) {
+  if ( length(betaFix <- etaFix$beta)>0 ) { # .preprocess_betaFix updates {any $off previously created by merging submodel $off's}
     if (is.null(merged_X.Re)) { # standard REML were it not for betaFix:
       # in standard REML the correction is based on the cols of X.pv (were it not for betaFix) 
       keepInREML <- attr(betaFix,"keepInREML") 
       if (is.null(keepInREML)) keepInREML <- FALSE
       if (keepInREML) merged_X.Re <- merged_X # keep cols of full X.pv in X.Re (as in std REML without betaFix)
-      merged_X <- .process_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
+      merged_X <- .preprocess_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
       if ( ! keepInREML) {
         merged_X.Re <- merged_X # keeps only cols of sub X in X.pv
       } else { 
-        # (keepInREML TRUE)=> merged_X has been modified by .process_betaFix, but we don't update 'XReinput', so the two are now different, 
-        # 'XReinput' being the merged_X before .process_betaFix -> .subcol_wAttr()ing
+        # (keepInREML TRUE)=> merged_X has been modified by .preprocess_betaFix, but we don't update 'XReinput', so the two are now different, 
+        # 'XReinput' being the merged_X before .preprocess_betaFix -> .subcol_wAttr()ing
         # 'XReinput' is the name in .preprocess() of what is here merged_X.Re. Maybe tidy .preprocess()? 
       }
-    } else merged_X <- .process_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
+    } else merged_X <- .preprocess_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
     merged[["vecdisneeded"]] <- merged[["vecdisneeded"]] & ncol(merged_X)
   }
   #
@@ -1087,18 +1068,18 @@
   ####
   
   if ( length(init_beta <- init[["beta"]])) { # outer beta. See above for fixed beta
-    # The distinction is between, say, 
+    # The distinction by this test is between, say, 
     # * fitmv(., etaFix=list(beta=.)):    [ case if length(betaFix <- etaFix$beta) above ]
-    #    an offset could be set at preprocessing time, there is no need for an X_off_fn and no final inner 'refit' of beta is considered.  
+    #    an offset could be set at preprocessing time, there is no need for an X_off_Xb_fn and no final inner 'refit' of beta is considered.  
     # * fitmv(., init=list(beta=.)): outer optimization of beta
-    #    an X_off_fn is used to compute  X_off %*% beta for each new beta, 
+    #    an X_off_Xb_fn is used to compute  X_off %*% beta for each new beta, 
     #    and a final inner 'refit' of beta is possible => distinct 'vecdisneeded_ori' to be used then.  
     ## In both cases, cols of merged_X are removed, so the two are not compatible (at least for the same coefficients).
     betanames <- names(init_beta)
     if (length(intersect(colnames(merged_X),betanames))!=length(init_beta)) stop("init[['beta']] must have names matching those of the design matrix")
     X_off <-.subcol_wAttr(merged_X, j=betanames, drop=FALSE)
     merged_X <- .subcol_wAttr(merged_X, j=setdiff(colnames(merged_X),betanames), drop=FALSE)
-    merged$X_off_fn <- .def_off_fn(X_off, ori_off=merged$off)
+    merged$X_off_Xb_fn <- .def_off_Xb_fn(X_fixed=X_off, offsets=merged$off)
     merged[["vecdisneeded_ori"]] <-  merged[["vecdisneeded"]]
     merged[["vecdisneeded"]] <- merged[["vecdisneeded"]] & ncol(merged_X)
   }
@@ -1203,11 +1184,21 @@
     # The AMatrices are deduced from the the covStruct argument, not from the formula terms of the submodels 
     # => they are not yet factored in ZAlist, although they are available from the above call to .assign_AMatrices_corrFamily
     ## Same problem for user-provided A matrix, whatever the corr_type (which may be NA).
+    ## BUT "IMRF" is a "special ranef" with ad hoc code, not handled by the general corrFamily
+    # interface, so it gets a special handling here (in contrast to even MAternIMRFa).
+    # See related comment on .calc_ZAlist() call in .preprocess().
+    is_IMRF_ss <- (attr(ZAlist, "exp_ranef_types") %in% c("IMRF")) 
+    # test this rather than corr_info$corr_types which contains NA for (.|.) (incl. ranCoefs) 
+    # and would then be ignored by which().
+    # At this point, for MaternIMRFa() the ZA product has not yet been performed,
+    # But for IMRF(), it has.
     ZAlist <- .update_ZAlist(ZAlist, AMatrices=corr_info$AMatrices, 
-                             which_ZA= which(! corr_info$corr_types == "IMRF"))
+                             which_ZA=which( ! is_IMRF_ss )) # IMRFs are separately handled below
+    # ____F I X M E____ it would be nice to be able to check that all A matrices are taken into account.
     # Using corr_info:
     merged$control_dist <- .preprocess_control.dist(control.dist, corr_info$corr_types)
     #
+    .check_init.HLfit(init.HLfit)
     merged$init_HLfit <- .preprocess_init.HLfit(init.HLfit, corr_info)
   
     merged$is_spprec <- .wrap_determine_spprec(control.HLfit, ZAlist=ZAlist, processed=merged, X.pv=merged_X)
@@ -1251,7 +1242,6 @@
   thread_nbr <- control.HLfit$NbThreads
   if (is.null(thread_nbr)) thread_nbr <- .spaMM.data$options$NbThreads # should be 1L by default
   
-  # merged_X <- .scale(merged_X) not necessary since the merged X's are already scaled
   if (nrand) {
     merged$models[["eta"]] <- "etaHGLM" 
     vec_n_u_h <- unlist(lapply(merged$ZAlist,ncol)) 
@@ -1295,7 +1285,7 @@
   merged$verbose <- .reformat_verbose(verbose,For="fitme") 
   merged$HLfit_body_fn <- .spaMM.data$options$HLfit_body
   .do_TRACE(merged)
-  merged$HLfit_body_fn <- merged$HLfit_body_fn2 <- get(merged$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
+  merged$HLfit_body_fn <- get(merged$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
   delayedAssign("HLCor_body", get("HLCor_body", asNamespace("spaMM"), inherits=FALSE), assign.env = merged) 
   delayedAssign("HLCor", get("HLCor", asNamespace("spaMM"), inherits=FALSE), assign.env = merged) 
   merged$HLfit <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) 
@@ -1326,47 +1316,108 @@
   format(dif)
 }
 
-.diagnose_string_mismatches <- function(extracols, names_ori) {
+# Functions derived from cli:::format_diff_str_color
+.format_invalid <- function (x, ...) { # for 1st invalid name
+  out <- lapply(seq_len(nrow(x$lcs)), function(i) {
+    op <- x$lcs$operation[i]
+    off <- x$lcs$offset[i]
+    len <- x$lcs$length[i]
+    if (op == "match") {
+      paste0(x$old[off + 1:len], collapse = "")
+    }
+    else if (op == "delete") {
+      cli::bg_red(cli::col_black(paste0(x$old[off + 1:len], collapse = "")))
+    }
+    else if (op == "insert") {
+      cli::col_red(paste0(rep("\U00B7",len), collapse = ""))
+    }
+  })
+  paste(out, collapse = "")
+}
+
+.format_valid <- function (x, ...) {
+  out <- lapply(seq_len(nrow(x$lcs)), function(i) {
+    op <- x$lcs$operation[i]
+    off <- x$lcs$offset[i]
+    len <- x$lcs$length[i]
+    if (op == "match") {
+      paste0(x$old[off + 1:len], collapse = "")
+    }
+    else if (op == "delete") {
+      paste0(rep("\U00B7",len), collapse = "")
+    }
+    else if (op == "insert") {
+      paste0(x$new[off + 1:len], collapse = "")
+    }
+  })
+  paste(out, collapse = "")
+}
+
+
+.diagnose_string_mismatches <- function(extracols, obs_coln_LHS) {
   submodelstr <- function(v) gsub(pattern="(.+?)_([0-9]+)$",replacement = "\\2", x=v)
-  # find first submodel with extracols 
-  extrasubmodels <- as.integer(sapply(extracols, submodelstr))
+  # find first submodel with extracols
+  extrasubmodels <- suppressWarnings(as.integer(sapply(extracols, submodelstr))) 
+  # : suppresses ...NAs introduits lors de la conversion automatique
+  if (anyNA(extrasubmodels)) {
+    message(paste0("submodel indices appear to be missing from name(s): '",
+                   paste(extracols[is.na(extrasubmodels)], collapse="', '"),"'"))
+    return(NULL)
+  }
   extra1stsub <- min(extrasubmodels)
-  # find correct names for this submodel
-  names1stsub <- names_ori[as.integer(sapply(names_ori, submodelstr))==extra1stsub]
-  # first mismatch in first submodel:
+  # find names implied by this submodel formula
+  names1stsub <- obs_coln_LHS[as.integer(sapply(obs_coln_LHS, submodelstr))==extra1stsub]
+  # first mismatches in first suspect submodel:
   mismatch1 <- extracols[extrasubmodels==extra1stsub][1]
-  mess <- cli::format_message(paste0("Differences of first ",
-                                     format(cli::diff_str("invalid",""))," name '", mismatch1, 
-                                     "' with ",format(cli::diff_str("","valid"))," 
+  if (length(names1stsub)) {
+    mess <- cli::format_message(paste0("Differences of first ",
+                                       format(cli::diff_str("invalid",""))," name '", mismatch1, 
+                                       "' with ",format(cli::diff_str("","valid"))," 
                                      names for submodel ", extra1stsub," are:"))
-  message(mess)
-  diffs <- lapply(names1stsub, function(v) cli::diff_str(mismatch1, v))
-  # Sort by number of colored characters...
-  diffs <- diffs[order(.unlist(lapply(diffs, function(v)  {
-    lcs <- v$lcs
-    sum(lcs[lcs$operation != "match", "length"])
-  })), decreasing = FALSE)]
-  diffs <- lapply(diffs, format)
-  diffs <- paste(diffs, collapse="    ")
-  #  diffs <- gsub('(.{1,60})(\\s|$)', '\\1\n', diffs) # break lines (but collapses mutilple spaces)
-  # format_message()collapse multiple spaces (bad) and provides line breaks (good).
-  mess <- cli::format_message(diffs)
-  message(mess)
+    message(mess)
+    diffs <- lapply(names1stsub, function(v) cli::diff_str(mismatch1, v))
+    # Sort by number of colored characters...
+    diffs <- diffs[order(.unlist(lapply(diffs, function(v)  {
+      lcs <- v$lcs
+      sum(lcs[lcs$operation != "match", "length"])
+    })), decreasing = FALSE)]
+    diffs <- lapply(diffs, function(foo) {
+      c(.format_invalid(foo),.format_valid(foo))
+    })
+    diffs <- do.call(rbind, diffs)
+    writeLines(paste0(cli::bg_blue(cli::col_black("invalid")),": ", paste(diffs[,1], collapse="   ")))
+    writeLines(paste0("  ",cli::bg_green(cli::col_black("valid")),": ", paste(diffs[,2], collapse="   ")))
+  } else {
+    mess <- cli::format_message(paste0("First invalid name '", mismatch1, 
+                                       "' refers to submodel ",extra1stsub," which has no fixed effect."))
+    message(mess)
+  }
+  
+  # diffs <- paste(diffs, collapse="    ")
+  # #  diffs <- gsub('(.{1,60})(\\s|$)', '\\1\n', diffs) # break lines (but collapses multiple spaces)
+  # # format_message()collapse multiple spaces (bad) and provides line breaks (good).
+  # mess <- cli::format_message(diffs)
+  # message(mess)
   NULL
 }
 
-genX2X <- function(matches, names_ori) {
+genX2X <- function(matches, names_ori) { 
   if (missing(names_ori)) return(match.call())
-  # matches: list(<colname X2X>= c(<some colnames RHS>))
-  matched_coln_LHS <- .unlist(matches)
-  matched_coln_X2X <- names(matches)
-  if (length(extracols <- setdiff(matched_coln_LHS, names_ori))) {
-    .diagnose_string_mismatches(extracols, names_ori)
-    stop(paste0("name(s) '", paste(extracols, collapse="', '"),
-               "' are invalid. See additional message for hint."))
+  # 'matches' is a list of the form list(<colname X2X>= c(<some colnames LHS>), ...)
+  # 'names_ori' are the regressor variables implied by the model formulas; 
+  # they are the colnames of the LHS 'X_ori' of the matrix product X_ori %*% X2X.
+  matchable_coln_LHS <- .unlist(matches) # LHS regressors for which 'matches' give info  
+  matching_coln_X2X <- names(matches) # to become some of the colnames of the matrix product.
+  # By convention, all 'matchable_coln_LHS' should appear in the 'names_ori' information:
+  # (this convention helps detecting potential errors in definition of 'matches')
+  if (length(extracols <- setdiff(matchable_coln_LHS, names_ori))) { 
+    .diagnose_string_mismatches(extracols, obs_coln_LHS=names_ori)
+    stop(paste0("some submodel regressor name(s) are invalid: '", paste(extracols, collapse="', '"),
+               "'. See additional message for hint."))
   }
-  unmatched_coln_LHS <- setdiff(names_ori, matched_coln_LHS)
-  colnames_X2X <- c(unmatched_coln_LHS, matched_coln_X2X)
+  # LHS regressors for which 'matches' provide no info will the added to the final result: 
+  unmatched_coln_LHS <- setdiff(names_ori, matchable_coln_LHS)
+  colnames_X2X <- c(unmatched_coln_LHS, matching_coln_X2X)
   X2X <- matrix(0, ncol=length(colnames_X2X), nrow=length(names_ori),
                 dimnames=list(names_ori, colnames_X2X))
   X2X[cbind(unmatched_coln_LHS,unmatched_coln_LHS)] <- 1

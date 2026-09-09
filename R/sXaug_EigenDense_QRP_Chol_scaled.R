@@ -203,9 +203,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
         # BLOB$sortPerm will be NULL
       } else if (EigenDense_QRP_method=="qr") {
         ## ( this slightly affects predVar in onelambda vs twolambda)
-        if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
-          QRsXaug <- qr(as(sXaug[],"dgCMatrix")) ## QRsXaug <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
-        } else  QRsXaug <- qr(as(as(sXaug[],"generalMatrix"),"CsparseMatrix")) ## QRsXaug <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
+        QRsXaug <- qr(as(as(sXaug[],"generalMatrix"),"CsparseMatrix")) ## QRsXaug <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
         BLOB$perm <- QRsXaug@q + 1L
         BLOB$R_scaled <- as.matrix(qrR(QRsXaug,backPermute = FALSE))
         delayedAssign("sortPerm", sort.list(BLOB$perm), assign.env = BLOB ) # never NULL
@@ -418,21 +416,22 @@ get_from_MME.sXaug_EigenDense_QRP_Chol_scaled <- function(sXaug,which="",szAug=N
                  "LevMar_step" = {
                    R_scaled_blob <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_scaled_blob")
                    dampDpD <- damping*R_scaled_blob$diag_pRtRp ## NocedalW p. 266
-                   list(dVscaled_beta = .damping_to_solve(XDtemplate=R_scaled_blob$XDtemplate, dampDpD=dampDpD,rhs=LMrhs), 
+                   list(dVscaled_beta = .damping_to_solve_QR(XDtemplate=R_scaled_blob$XDtemplate, dampDpD=dampDpD,rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  "LevMar_step_v_h" = {
-                   ## FR->FR probably not the most elegant implementation 
+                   ## FR->FR probably not the most elegant implementation. IN spcorr we can take advantage
+                   # of permuted Cholesky updates, but not here.
                    R_scaled_v_h_blob <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_scaled_v_h_blob")
-                   dampDpD <- damping*R_scaled_v_h_blob$diag_pRtRp_scaled_v_h ## NocedalW p. 266
-                   list(dVscaled = .damping_to_solve(XDtemplate=R_scaled_v_h_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
+                   dampDpD <- damping*R_scaled_v_h_blob$diag_pRtRp_scaled_v_h  ## NocedalW p. 266
+                   list(dVscaled = .damping_to_solve_QR(XDtemplate=R_scaled_v_h_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  "LevMar_step_beta" = {
                    if ( ! length(LMrhs)) stop("LevMar_step_beta called with 0-length LMrhs: pforpv=0?")
                    R_beta_blob <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_beta_blob")
                    dampDpD <- damping*R_beta_blob$diag_pRtRp_beta
-                   list(dbeta = .damping_to_solve(XDtemplate=R_beta_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
+                   list(dbeta = .damping_to_solve_QR(XDtemplate=R_beta_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  ## all other cases:

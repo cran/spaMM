@@ -1,7 +1,7 @@
-.composite_pred_warn <- local({
+.warn_once_composite_pred <- local({
   composite_pred_warned <- FALSE
   function() {
-    if ( ! environment(.composite_pred_warn)$composite_pred_warned) {
+    if (composite_pred_warned) {
       warning(paste("predictions combining 'newdata' and composite random effects\n",
                     "may fail for most corrFamily and perhaps other terms."), 
               call.=FALSE)
@@ -20,6 +20,7 @@
   loc.na.action <- function(object, vars, ...) .na.vars(object, na.action=na.action, vars=vars, ...) 
   n_subm <- length(locformS) 
   locdataS <- vector("list", n_subm)
+  nobsS <- integer(n_subm)
   if (need_new_design) {
     newX.pv <- eta_fix <- NULL
     for (mv_it in seq_len(n_subm)) {
@@ -31,47 +32,32 @@
       newX_info <- .get_newX_info(locformS[[mv_it]], locdata_it, object, mv_it=mv_it)
       newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
       eta_fix <- c(eta_fix, newX_info$eta_fix)
+      nobsS[mv_it] <- nrow(locdataS[[mv_it]])
     }
     if ( ! is.null(X2X)) newX.pv <- newX.pv %*% X2X
     RESU <- list(locdata=locdataS, # locdata in RESU for cbind()ing the predictions in .predict_body();
-                 newX.pv=newX.pv, eta_fix=eta_fix) 
+                 newX.pv=newX.pv, eta_fix=eta_fix) # more widely used by .fv_linkinv()
   } else {
+    validrownames <- attr(object$data,"validrownames")
     for (mv_it in seq_len(n_subm)) {
       locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]], verbose=verbose)
       if (length(aliases)) {
         for (varname in names(aliases)) locdata_it[[varname]] <- locdata_it[[aliases[[varname]][mv_it]]]
       }
-      locdataS[[mv_it]] <- locdata_it
+      locdataS[[mv_it]] <- locdata_it[validrownames[[mv_it]],,drop=FALSE] # distinctifif there were NA in the response values
+      nobsS[mv_it] <- nrow(locdataS[[mv_it]])
     }
+    # similar in .get_newfixef_info():
     RESU <- list(locdata=locdataS, # locdata in RESU allowing (potential) cbind() with predictions in .predict_body(). (maybe not implemented for mv)
                  newX.pv=model.matrix(object)) 
   } 
-  nobsS <- integer(n_subm)
-  for (mv_it in seq_len(n_subm)) nobsS[mv_it] <- nrow(locdataS[[mv_it]])
   RESU$cum_nobs <- cumsum(c(0L,nobsS)) # more widely used by .fv_linkinv()
   RESU
 }
 
-
-.calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
-                            variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
-                            control=list(), na.action=na.omit, verbose=TRUE) {
-  locformS <- formula.HLfit(object, which="")
-  if (inherits(re.form, "formula")) {
-    re.formS <- vector("list", length(locformS))
-    for (mv_it in seq_along(locformS)) {
-      # As the doc says... simulate.HLfit(., type="marginal")  -> default re.form = NA -> does not mean that the ranef is absent, 
-      # but that simulation is unconditional on it. re.forms[[mv_it]] = NA should have the same meaning.
-      re.formS[[mv_it]] <- .update_formula_shared_ranefs(locform=re.form, re.form=locformS[[mv_it]], rm_LHS=TRUE)
-    }
-  } else if (length(re.form)==1L && is.na(re.form)) {
-    re.formS <- rep(NA, length(locformS))
-  } else re.formS <- re.form # a list or NULL. 
-  # checking variables in the data BEFORE removing "marginalized upon" ranefs.
-  # These variables are needed in newdata_it <- locdataS[[mv_it]] in simulate.HLfit() -> .calc_ZAlist_newdata_mv() 
+.get_allvarsS <- function(object, locformS, variances, control, aliases) {
   allvarsS <- vector("list", length(locformS))
-  aliases <- object$aliases
-  for (mv_it in seq_along(locformS)) {
+  for (mv_it in seq_along(locformS)) { # extract a function ?
     ## [-2] important to ignore response variables
     allvars_it <- all.vars(.strip_cF_args(locformS[[mv_it]][-2])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
     if (variances$residVar || control$simulate) {
@@ -85,35 +71,61 @@
     }
     allvarsS[[mv_it]] <- allvars_it
   }
-  #
-  ## possible change of random effect terms (removing "marginalized upon" ranefs)
-  for (mv_it in seq_along(locformS)) locformS[[mv_it]] <- .update_formula_shared_ranefs(locformS[[mv_it]], re.formS[[mv_it]], rm_LHS=FALSE)
-  ## matching ranef terms of re.form
-  if (length(object$ZAlist)) { 
-    if (identical(control$keep_ranef_covs_for_simulate, TRUE) || # : condition for the case 
-                      # where only eta_fixed is predicted for marginal simulation, hence re.form is NA ("no  prediction for ranef") BUT 
-                      # we will need the locdataS with the variables for ranefs, to simulate these ranefs.
-                      # We will need ALSO marginal covariance matrices for the ranefs !! The ZAL in simulate.HLfit() has been correct
-                      # before and after changes in the simulate.HLfit() code 2023/07/23
-         ( re.form_allows_ranefs <- ( is.null(re.form) || # : this condition means that re.form_allows_ranefs may be TRUE despite no ranef in model formula 
-                                      any( ! sapply(re.formS, .noRanef))) )
-       ) { 
-      map_rd_mv <- attr(object$ZAlist, "map_rd_mv")
-      ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
-      #
-      newinoldS <- vector("list", length(locformS))
+  allvarsS
+}
+
+.calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
+                            variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
+                            control=list(), na.action=na.omit, verbose=TRUE) {
+  # for simulate, re.form is NA but we use arguments re.form=NULL in specific functions,
+  # This seems OK to get the $eta_fix (from here RESU <- .get_locdataS_blob() and 
+  # through .point_predict().) and the design matrices for all ranefs.
+  keep_ranef_covs_for_simulate <- control$keep_ranef_covs_for_simulate 
+  aliases <- object$aliases
+  
+  locformS <- formula.HLfit(object, which="")
+  if (inherits(re.form, "formula")) {
+    re.formS <- vector("list", length(locformS))
+    for (mv_it in seq_along(locformS)) {
       # As the doc says... simulate.HLfit(., type="marginal")  -> default re.form = NA -> does not mean that the ranef is absent, 
       # but that simulation is unconditional on it. re.forms[[mv_it]] = NA should have the same meaning.
-      # In the present step we retain only the ranefs conditioned upon. The Zlist computed here will be used to put then in  
-      # 'eta_fixed_cond' (in simulate.HLfit).
-      # The 'marginalized upon' ones are handled by simulate.HLfit -> (get_ZALMatrix or .calc_ZAlist_newdata) + .simulate_ranefs
-      for (mv_it in seq_along(locformS)) newinoldS[[mv_it]] <- .get_newinold(re.formS[[mv_it]], locformS[[mv_it]], 
-                                                                             ori_exp_ranef_strings, rd_in_mv=map_rd_mv[[mv_it]])
+      re.formS[[mv_it]] <- .update_formula_shared_ranefs(locform=re.form, re.form=locformS[[mv_it]], rm_LHS=TRUE)
+    }
+  } else if (length(re.form)==1L && is.na(re.form)) {
+    re.formS <- rep(NA, length(locformS))
+  } else re.formS <- re.form # a list, or a single NULL. 
+  
+  # checking variables in the data BEFORE removing any ranefs (for simulate in particular).
+  # These variables are needed in newdata_it <- locdataS[[mv_it]] 
+  allvarsS <- .get_allvarsS(object, locformS, variances, control, aliases)
+  #
+  ## possible change of random effect terms in locformS
+  if (control$simulate) { # we keep all ranefs
+    for (mv_it in seq_along(locformS)) locformS[[mv_it]] <- 
+        .update_formula_shared_ranefs(locformS[[mv_it]], re.form=NULL, rm_LHS=FALSE)
+  } else for (mv_it in seq_along(locformS)) locformS[[mv_it]] <- 
+    .update_formula_shared_ranefs(locformS[[mv_it]], re.formS[[mv_it]], rm_LHS=FALSE)
+  
+  ## matching ranef terms of re.form
+  
+  if (length(object$ZAlist)) { 
+    ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
+    #
+    if (keep_ranef_covs_for_simulate) { 
+      # correct newinoldS  for newrd_in_obsS[[mv_it]] <- rep((newinold[new_rd] %in% newinoldS[[mv_it]]), nobs_it)
+      newinoldS <- .get_newinoldS(object, ori_exp_ranef_strings, locformS, re.formS = NULL)
+      newinold <- seq_along(ori_exp_ranef_strings) # for simulation, all ranefs are used 
+      # in one way or another (cond or marg). Elements of newZAlist will be used at either step.
+      # We will need ALSO the marginal covariance matrices for the 'marg' ranefs
+      # we will need the locdataS with the variables for 'marg' ranefs.
+    } else if ( re.form_allows_ranefs <- ( is.null(re.form) || # : this condition means that re.form_allows_ranefs may be TRUE despite no ranef in model formula 
+                                           any( ! sapply(re.formS, .noRanef))) ) { 
+      newinoldS <- .get_newinoldS(object, ori_exp_ranef_strings, locformS, re.formS)
       newinold <- unique(.unlist(newinoldS))
     } else newinold <- NULL 
   } else newinold <- NULL
   #
-  no_aliases <- setdiff(unique(.unlist(allvarsS)), names(object$aliases))
+  no_aliases <- setdiff(unique(.unlist(allvarsS)), names(aliases))
   if (length(newinold)) {
     new_exp_ranef_strings <- ori_exp_ranef_strings[newinold]
     ranef_form <- as.formula(paste("~",(paste(new_exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
@@ -162,16 +174,10 @@
     strucList <- object$strucList
     if (need_new_design) {
       ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
-      # barlist <- .process_bars_mv(predictors=formula.HLfit(object,which = ""),
-      #                             map_rd_mv=map_rd_mv,
-      #                             as_character=FALSE) ## but default expand =TRUE 
-      # barlist <- structure(barlist[newinold], type=attr(barlist,"type")[newinold])
-      
+
       for (mv_it in seq_along(locdataS)) locdataS[[mv_it]] <- locdataS[[mv_it]][,ranefvars, drop=FALSE]
       ranefdata <- do.call(rbind, locdataS)
       ori_exp_ranef_terms <- attr(object$ZAlist,"exp_ranef_terms")
-      # new_exp_ranef_terms <- structure(ori_exp_ranef_terms[newinold], type=attr(ori_exp_ranef_terms,"type")[newinold])
-      
       #
       # This will first construct a list possibly with excess nonzero elements in the Z's 
       # This will be corrected in the next loop, cf .Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]])
@@ -179,33 +185,22 @@
       raneftypes <- attr(ori_exp_ranef_terms,"type")
       if (any(raneftypes[newinold] %in% c("MaternIMRFa","corrFamily") & # tentative  
               object$ranef_info$is_composite[newinold]) # does not distinguish (0+(mv())) from other composite
-          ) .composite_pred_warn()
+          ) .warn_once_composite_pred()
       newZlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, # subsetting -> new_exp_ranef_terms will be made internally using rd_in_mv arg
                               data=ranefdata, 
+                              For=if (control$simulate) {"simulate"} else "predict", 
                               rd_in_mv=newinold, # here, must be "conditioned upon" ranefs
                               rmInt=0L, sparse_precision=FALSE, 
                               corr_info=.get_from_ranef_info(object),
-                              #
-                              # ! use levels_type default as is required for simulation !
-                              # In (at least, marginal sim for) univariate case, .calc_new_X_ZAC is not where new Zlist is computed, levels_type= "seq_len" can be used;
-                              # In simulation for mv case, .calc_new_X_ZAC_mv() provides new Zlist, the explicit levels_type arg should not be used.
-                              #
-                              ## Old comment:
-                              # levels_type= "seq_len", ## superseded in specific cases: notably, 
-                              # ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
-                              # ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
-                              # ## This is controlled by package option 'uGeo_levels_type' (default = "data_order" as the most explicit).
-                              # ## The sames functions are called with the same arguments for predict with newdata.
-                              # ##
-                              # ## This means that if there are repeated geo positions in the newdata 
-                              # ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
+                              # Use levels_type default as is required for simulation !
                               sub_oldZAlist=object$ZAlist,  # subsetting will be made internally
                               lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
       
       # As explained above,
       # each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
       # bc it's built from 'ranefdata' built as if all submodels were affected by each (new) ranef
-      # => need to correct this
+      # => need to correct this by computing a product with a diag matrix whose elements 
+      # are 0/1 depending on (newinold[new_rd] %in% newinoldS[[mv_it]]).
       newrd_in_obsS <- vector("list", length(newinoldS))
       loc_cum_nobs <- RESU$cum_nobs
       for(new_rd in seq_along(newinold)) {
@@ -246,12 +241,16 @@
       ranefdata <- object$data
     }
     RESU$newZAlist <- newZAlist
-    # We determine which matrices we need for computation of Evar:
-    need_Cnn <- .calc_need_Cnn(object, newinold, ori_exp_ranef_types, variances, newZAlist)
+    if (keep_ranef_covs_for_simulate) {
+      need_Cnn <- control$marginalized
+    } else { # We determine which matrices we need for computation of Evar:
+      need_Cnn <- .calc_need_Cnn(object, newinold, ori_exp_ranef_types, variances, newZAlist)
+    }
     which_mats <- list(no= need_new_design, 
                        ## cov_newLv_newLv_list used in .calc_Evar() whenever newdata, but elements may remain NULL if $cov not requested
                        ## However, for ranCoefs, we need Xi_cols rows for each response's predVar. (FIXME) we store the full matrix.
-                       nn= need_Cnn ) 
+                       nn= need_Cnn,
+                       Lnn=keep_ranef_covs_for_simulate) 
     #nrand <- length(newinold)
     #
     ## AT this point both newZAlist and subZAlist may have been reduced to 'newnrand' elements relative to ori object$ZAlist.
@@ -266,7 +265,9 @@
                                    invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list,
                                    for_mv=TRUE)
       RESU <- .update_cov_no_nn(RESU, blob, which_mats, newZAlist)
-      RESU$newZACpplist <- .compute_ZAXlist(ZAlist=newZAlist, XMatrix=RESU$cov_newLv_oldv_list) ## build from reduced list, returns a reduced list
+      RESU$newZACpplist <- .compute_ZAXlist(ZAlist=newZAlist, 
+                                            cols_from_RHS = FALSE,
+                                            XMatrix=RESU$cov_newLv_oldv_list) ## build from reduced list, returns a reduced list
       ## This $newZACpplist serves to compute new _point predictions_.
       #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
       #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
@@ -582,7 +583,7 @@
   newcols <- repnames %in% newlevels ## handle replicates (don't `[` newoldC using names !)
   oldcols <- repnames %in% oldlevels
   
-  Unewlevels <- unique(colnames(newZAlist[[new_rd]]))
+  Unewlevels <- unique(newlevels)
   ## rhs_C and compactcovmat for newoldC or newnewC
   compactcovmat <- latentL_blob$compactcovmat
   
@@ -597,14 +598,29 @@
     ## so newZAlist contains permuted ZP, newoldC contains L_Q^(-T) L_Q^{-1} which is permuted, 
     ## and L_Q v is always provided by .calc_invL_coeffs() 
     ### distinct features of this composite adjacency case is that 
-    ## (1) difference from composite corrMatrix is that there is no old_kron_Y_Lmat;
+    ##################### OLD comments:
+    ## (1) "difference from composite corrMatrix is that there is no old_kron_Y_Lmat;"
     ## (2) the strucList element represents the Kronecker product, not its LHS =>
     ##     using dimnames is bound to fail since they are repeated.
-    uuC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Might eventually reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
-    if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(uuC,
-                                                                            ranefs=ranefs[[new_rd]])
-    # assign to newLv_env$cov_newLv_oldv_list, cov_newLv_newLv_list, diag_cov_newLv_newLv_list
-    # although newnew code seems missing, it is not needed (there is a test of predVar cov=TRUE) 
+    #################### according to which I computed the following, which is not generally valid with newdata:
+    if (is.null(kron_Y_L <- sub_corr_info$kron_Y_LMatrices[[old_rd]])) { # spprec case ?
+      # assign to newLv_env$cov_newLv_oldv_list, cov_newLv_newLv_list, diag_cov_newLv_newLv_list
+      # although newnew code seems missing, it is not needed (there is a test of predVar cov=TRUE) 
+      uuC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Might eventually reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+      if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(uuC,
+                                                                              ranefs=ranefs[[new_rd]])
+      stop("need more fixes and tests in composite case with new data") #______F I X M E_____ 
+    } else { # **corr algebras?
+      ##################### but now I see a sub_corr_info$kron_Y_LMatrices,
+      # so I can try proceeding as in corrMatrix case (the same fn is used below; minimal checks only)
+      uuC <- .tcrossprod(kron_Y_L, perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+      rownames(uuC) <- colnames(uuC) <- Uoldlevels 
+      .assign_newLv_for_newlevels_corrMatrix(uuC, latentL_blob=latentL_blob,
+                                             newlevels=Unewlevels, 
+                                             newLv_env, new_rd, corr.model, which_mats, ranefs,
+                                             Lnn_not_Cnn=Lnn_not_Cnn)
+    }
+    
   } else if (corr.model=="corrMatrix") {
     # # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
     # see also test-composite-extra

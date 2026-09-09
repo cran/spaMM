@@ -82,9 +82,9 @@
     damped_WLS_fn(v_infer_args=v_infer_args, # ! may be empty list, but check the ... ! ## I cannot always list(...) bc it contains promises that are not always defined
                   which_LevMar_step=loc_LevMar_step, damping=damping, outer=TRUE,
                   stylefn=switch(loc_LevMar_step,
-                                 v=.spaMM.data$options$stylefns$vloop,
+                                 v=.spaMM.data$options$stylefns$vloop, # "cyan" (light purple), with underlined cyan for the dots (bc outer=TRUE)
                                  "strict_v|b"=.spaMM.data$options$stylefns$strictv,
-                                 .spaMM.data$options$stylefns$betaloop ),
+                                 .spaMM.data$options$stylefns$betaloop ), # betaloop is yellow
                   ...), # ... important args in the ... 
     step=which_LevMar_step
   )

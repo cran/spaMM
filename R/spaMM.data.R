@@ -6,7 +6,8 @@
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE) as controlled by next two options:
   perm_G=TRUE, 
-  perm_Q=NULL,  
+  perm_Q=NULL, 
+  perm_wd2hdv2w=TRUE, 
   use_ZA_L=TRUE, # NULL may act as TRUE when augZxy_cond=TRUE
   bind_ZAL=TRUE, # set it to FALSE to use ZAXlist beyond spprec 
   algfacs=c(spprec=40, spcorr=7.5),
@@ -58,7 +59,7 @@
   allow_augZXy=NULL, ## interpreted as TRUE if phiScal (=>not phiFix) before further conditions are applied, and FALSE otherwise 
   # allow_augZXy=2L forces augZXy usage with non-constant prior weights, if other conditions for its usage are satisfied.
   augZXy_solver=c("chol","EigenQR"), # "chol", "QR" (currently = "EigenQR"), "EigenQR" (dense or sparse), or "qr" (=base::qr)
-  augZXy_fitfn=".HLfit_body_augZXy", # safe version, no specific singularity, but no refinement beyond augmentation by y
+  augZXy_body=".HLfit_body_augZXy", # safe version, no specific singularity, but no refinement beyond augmentation by y
   check_alt_augZXy=FALSE, ## private, effective only if alternative augZXy fitfn is set to TRUE
   ##############
   optimizer1D="optimize", 
@@ -131,7 +132,7 @@
   Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in .update_phifitarglist() and in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
   beta_min_y = 1e-8, ##  for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var();  ___F I X M E____ value is quick ad hoc fix
   ###############
-  example_maxtime=0.7,
+  example_maxtime=0.6,
   bin_mu_tol=.Machine$double.eps, # was 1e12 for a long time
   QRmethod=NULL, ## For user-provided values. The code does not and should not change this. Cf control.HLfit$algebra too
   #
@@ -168,7 +169,7 @@
                 rescue=cli::col_red,
                 strictv=cli::col_blue,
                 vloop=cli::col_cyan,
-                v_out_last=cli::combine_ansi_styles("cyan", "underline"), # seen a lot for v steps... # old comment : final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
+                v_out_last=cli::combine_ansi_styles("cyan", "underline"), # (light purple...) seen a lot for v steps... # old comment : final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
                 # colors tell what the numbers are for: grad of objective for v, versus grad of objective for beta (or joint beta,v) 
                 betaloop=cli::col_yellow, # also bracketing the damped_WLS loop for new beta when  which_LevMar_step=="b_&_v_in_b"
                 betalast=cli::combine_ansi_styles("yellow", "underline"),

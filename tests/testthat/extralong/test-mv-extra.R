@@ -33,15 +33,17 @@ spaMM_tol_ori <- spaMM.options(spaMM_tol=local_spaMM_tol) # to control strictnes
 }
 
 {
-  data("wafers")
-  me <- fitme(y ~ 1+(1|batch), family=Gamma(log), data=wafers)
-  set.seed(123)
-  y2 <- simulate(me, type="residual")
-  wafmv <- wafers
-  wafmv$batch2 <- wafmv$batch
-  wafmv$y2 <- y2
-  wafmv$ly <- log(wafmv$y)
-  wafmv$y3 <- log(y2)
+  {
+    data("wafers")
+    me <- fitme(y ~ 1+(1|batch), family=Gamma(log), data=wafers)
+    set.seed(123)
+    y2 <- simulate(me, type="residual")
+    wafmv <- wafers
+    wafmv$batch2 <- wafmv$batch
+    wafmv$y2 <- y2
+    wafmv$ly <- log(wafmv$y)
+    wafmv$y3 <- log(y2)
+  }
 
   (zut1 <- fitmv(submodels=list(mod1=list(formula=ly ~ 1+(1|batch), family=gaussian()),
                          mod2=list(formula=y3 ~ 1+(1|batch2), family=gaussian())), 
@@ -236,11 +238,21 @@ spaMM_tol_ori <- spaMM.options(spaMM_tol=local_spaMM_tol) # to control strictnes
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2),logLik(zut3),logLik(zut4)))<1e-14)
   
   cat(cli::col_yellow("visual checks; "))# and low fixed phis are useful for the following visual checks:
-  set.seed(123)
-  ressim1 <- simulate(zut1, type="residual")
-  ressim2 <- simulate(zut1, newdata=zut1$data, type="residual")
-  margsim1 <- simulate(zut1)
-  margsim2 <- simulate(zut1, newdata=zut1$data)
+  { # valid only with above seed; important test to catch potential bugs in simulate()
+    set.seed(123)
+    ressim1 <- simulate(zut1, type="residual")
+    ressim2 <- simulate(zut1, newdata=zut1$data, type="residual")
+    margsim1 <- simulate(zut1)
+    margsim2 <- simulate(zut1, newdata=zut1$data)
+    testthat::test_that("expected correlation of 'residual' simulation",
+                        testthat::expect_equal(cor(ressim1,ressim2), 0.9419325,tolerance=1e-7))
+    testthat::test_that("expected (noisy lack of) correlation of 'marginal' simulation",
+                        testthat::expect_equal(cor(margsim1,margsim2), -0.3501692,tolerance=1e-7))
+    testthat::test_that("expected correlation of sub-responses in 'residual' simulation",
+                        testthat::expect_equal(cor(ressim2[1:198], ressim2[1L+(1:198)]), 0.8856665,tolerance=1e-7))
+    testthat::test_that("expected correlation of sub-responses in 'residual' simulation",
+                        testthat::expect_equal(cor(margsim2[1:198], margsim2[1L+(1:198)]), 0.9222296,tolerance=1e-7))
+  }
   plot(ressim1,ressim2);abline(0,1) # clusters on the diagonal
   plot(margsim1,margsim2);abline(0,1) # TWO indep draws of the 11 levels => clusters are not on the diagonal
   # the two submodels share the ranef values so the clusters are always on the diagonal, even for margsim:
@@ -542,6 +554,18 @@ spaMM_tol_ori <- spaMM.options(spaMM_tol=local_spaMM_tol) # to control strictnes
                     data=freimv, lower=list(COMP_nu=c("2"=1.1))))  
     ## assign("last.warning", NULL, envir = baseenv()) # flush the .COMP_maxn() warnings()
   }  
+  {
+    cat(cli::col_yellow("tweedie; "))
+    if (requireNamespace("GLMsData", quietly = TRUE)) {
+      data("quilpie", package = "GLMsData") # used by Dunn & Smyth 2018. It has 0's
+      quilpie$Phase <- factor(quilpie$Phase)
+      gatw1 <- fitmv(submodels=list(list(I(0.0001+Rain) ~ Phase,family=Gamma(log)),
+                                    list(Rain ~ Phase,family=spaMM::tweedie(link = "log"))), 
+            data=quilpie)
+
+    } else cat(cli::bg_green(cli::col_black("Package 'GLMsData' not available for testing.")))
+    
+  }
 }
 
 data("Loaloa")
@@ -992,13 +1016,15 @@ if (requireNamespace("INLA",quietly = TRUE)) {
 } else cat(cli::bg_green(cli::col_black("INLA package not available for testing")))
 
 { cat(cli::col_yellow("adjacency; "))
-  data("scotlip")
-  (mod1 <- fitme(cases ~ I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)),
-        adjMatrix=Nmatrix, family=poisson(), data=scotlip) )
-  scotmv <- scotlip
-  set.seed(123)
-  scotmv$cases2 <- simulate(mod1)
-  scotmv$code2 <- scotmv$gridcode
+  {
+    data("scotlip")
+    (mod1 <- fitme(cases ~ I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)),
+                   adjMatrix=Nmatrix, family=poisson(), data=scotlip) )
+    scotmv <- scotlip
+    set.seed(123)
+    scotmv$cases2 <- simulate(mod1)
+    scotmv$code2 <- scotmv$gridcode
+  }
   (mod2 <- fitme(cases2 ~ I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)),
                 adjMatrix=Nmatrix, family=poisson(), data=scotmv) )
   
@@ -1035,25 +1061,29 @@ if (requireNamespace("INLA",quietly = TRUE)) {
                    data=scotmv,adjMatrix=Nmatrix)) 
     confint(zut1, parm="(Intercept)_1")
   }
-  {   # mv(1,2) (a bit slow) # but ___F I X M E____ should go in main tests
+  {   
+    # (using .pmatch() patch for pmatch bug).
     (zut1 <- fitmv(submodels=list(mod1=list(cases ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson()),
                                   mod2=list(cases2 ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson())), 
                    data=scotmv,adjMatrix=Nmatrix)) 
     (zut2 <- fitmv(submodels=list(mod2=list(cases2 ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson()),
                                   mod1=list(cases ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson())), 
                    data=scotmv,adjMatrix=Nmatrix)) 
-    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-07) # more accurate with 0+...
+    (zutsp <- fitmv(submodels=list(mod2=list(cases2 ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson()),
+                                  mod1=list(cases ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson())), 
+                   data=scotmv,adjMatrix=Nmatrix, control=list(algebra="spprec")))
+    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(zutsp)))<1e-07) # more accurate with 0+...
     p1 <- predict(zut1)
     p2 <- try(predict(zut1, newdata=zut1$data), silent=TRUE) 
     if (inherits(p2,"try-error")) {
-      message("predict(., newdata) fails on composite adjacency fit")
+      stop("predict(., newdata) fails on composite adjacency fit")
     } else {
       (crit <- max(abs(p2-p1)))
       testthat::expect_true(crit<1e-10) 
     }
     p3 <- try(predict(zut1, newdata=zut1$data[2:4,]), silent=TRUE) 
     if (inherits(p3,"try-error")) {
-      message("predict(., newdata != data) fails on composite adjacency fit")
+      warning("predict(., newdata != data) fails on composite adjacency fit.") 
     } else {
       (crit <- max(abs(p3-p2[as.vector(sapply(c(0,56), FUN=`+`, y=2:4))])))
       testthat::expect_true(crit<1e-12) 
@@ -1061,17 +1091,34 @@ if (requireNamespace("INLA",quietly = TRUE)) {
     p1 <- get_predVar(zut1, variances=list(cov=TRUE))
     p2 <- try(get_predVar(zut1, newdata=zut1$data, variances=list(cov=TRUE)), silent=TRUE) 
     if (inherits(p2,"try-error")) {
-      message("predict(., newdata) fails on composite adjacency fit")
+      stop("predict(., newdata) fails on composite adjacency fit")
     } else {
       (crit <- max(abs(p2-p1)))
       testthat::expect_true(crit<1e-10) 
     }
     p3 <- try(get_predVar(zut1, newdata=zut1$data[2:4,], variances=list(cov=TRUE)), silent=TRUE) 
     if (inherits(p3,"try-error")) {
-      message("predict(., newdata != data) fails on composite adjacency fit")
+      warning("predict(., newdata != data) fails on composite adjacency fit.") 
     } else {
       chkpos <- as.vector(sapply(c(0,56), FUN=`+`, y=2:4))
       (crit <- max(abs(p3-p2[chkpos,chkpos])))
+      testthat::expect_true(crit<1e-12) 
+    }
+    p1 <- get_predVar(zut1, variances=list(cov=TRUE))
+    p2 <- try(get_predVar(zut1, newdata=zut1$data, variances=list(cov=TRUE)), silent=TRUE) 
+    if (inherits(p2,"try-error")) {
+      stop("predict(., newdata) fails on composite adjacency fit")
+    } else {
+      (crit <- max(abs(p2-p1)))
+      testthat::expect_true(crit<1e-10) 
+    }
+    psp <- get_predVar(zutsp, variances=list(cov=TRUE))
+    p4sp <- try(get_predVar(zutsp, newdata=zutsp$data[2:4,], variances=list(cov=TRUE)), silent=TRUE) 
+    if (inherits(p4sp,"try-error")) {
+      warning("predict(., newdata != data) fails on composite adjacency fit.") 
+    } else {
+      chkpos <- as.vector(sapply(c(0,56), FUN=`+`, y=2:4))
+      (crit <- max(abs(p4sp-psp[chkpos,chkpos])))
       testthat::expect_true(crit<1e-12) 
     }
     # 
@@ -1160,7 +1207,7 @@ if(FALSE) { cat(cli::col_yellow("simulation study; "))
       if (return.fit) {
         return(fitlfh)
       } else {
-        corr <- VarCorr(fitlfh)[2,"Corr."]
+        corr <- VarCorr(fitlfh)[2,"Cor.1"]
         cat(corr)
         corr
       }
@@ -1209,7 +1256,7 @@ if(FALSE) { cat(cli::col_yellow("simulation study; "))
       if (return.fit) {
         return(fitlfh)
       } else {
-        corr <- VarCorr(fitlfh)[2,"Corr."]
+        corr <- VarCorr(fitlfh)[2,"Cor.1"]
         cat(corr)
         corr
       }
@@ -1264,7 +1311,7 @@ if(FALSE) { cat(cli::col_yellow("simulation study; "))
       if (return.fit) {
         return(fitlfh)
       } else {
-        corr <- VarCorr(fitlfh)[2,"Corr."]
+        corr <- VarCorr(fitlfh)[2,"Cor.1"]
         cat(corr)
         corr
       }

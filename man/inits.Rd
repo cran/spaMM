@@ -4,12 +4,12 @@
 Controlling optimization strategy through initial values
 }
 \description{
-Several parameters (notably the dispersion parameters: the variance of random effects and the residual variance parameter, if any) can be estimated either by iterative algorithms, or by generic optimization methods. The development of the \code{fitme} function aims to provide full control of the selection of algorithms. For example, if two random effects are fitted, then\cr \code{init=list(lambda=c(NA,NaN))} enforces generic optimization for the first variance and iterative algorithms for the second.\cr 
+Several parameters (notably the dispersion parameters: the variance of random effects and the residual variance parameter, if any) can be estimated either by iterative algorithms, or by generic optimization methods (see \code{\link{inner-vs-outer}}). Initial values provide control of the selection of algorithms. For example, if two random effects are fitted by \code{fitme}, then\cr \code{init=list(lambda=c(NA,NaN))} enforces generic optimization for the first variance and iterative algorithms for the second.\cr 
 \code{init=list(lambda=c(0.1,NaN))} has the same effect and additionally provides control of the initial value for optimization (whereas \code{init.HLfit=list(lambda=c(NA,0.1))} will provide control of the initial value for iterations).
 
 How to know which algorithm has been selected for each parameter? \code{fitme(., verbose=c(TRACE=TRUE))} shows successive values of the variables estimated by optimization (See Examples; if no value appears, then all are estimated by iterative methods). The first lines of the summary of a fit object should tell which variances are estimated by the \dQuote{outer} method.
 
-\code{corrHLfit}, which uses inner optimization by default, can be forced to perform outer optimization. Its control is more limited, as \code{NA}s and \code{NaN}s are not allowed. Instead, only numeric values as in \code{init=list(lambda=0.1)} are allowed. 
+\code{corrHLfit}, which uses inner estimation by default, can be forced to perform outer optimization. Its control is more limited, as \code{NA}s and \code{NaN}s are not allowed. Instead, only numeric values as in \code{init=list(lambda=0.1)} are allowed. 
 }
 \examples{
 \dontrun{

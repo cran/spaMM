@@ -4,7 +4,7 @@
   rpType <- .modify_list(attr(ranFix, "type"), attr(skeleton, "type"))
   attr(ranFix, "type") <- rpType
   if (FALSE) {
-    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, fixed=ranFix))
+    hlfit <- eval(call(.spaMM.data$options$augZXy_body, processed=processed, fixed=ranFix))
   } else {
     ranFix <- .canonizeRanPars(ranPars = ranFix, corr_info = NULL, 
                                checkComplete = FALSE, rC_transf = .spaMM.data$options$rC_transf)
@@ -62,7 +62,8 @@
       ####################################################################################################
       # we don't want anything specific on u_h values:
       w.ranef <- 1/lambda_est # call to .updateW_ranefS() reduced to this for v3.6.39
-      muetablob <- .muetafn(eta=rep(NA,nobs),BinomialDen=processed$BinomialDen,processed=processed) 
+      muetablob <- .muetafn(eta=rep(NA,nobs),BinomialDen=processed$BinomialDen,
+                            dyndyn=FALSE,processed=processed) 
       phi_est <- ranFix$phi 
       if (is.null(phi_est)) phi_est <- processed$phi.Fix ## not sure this is needed
       if (is.null(phi_est)) { 

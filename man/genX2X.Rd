@@ -12,6 +12,12 @@ In the examples, the vector \eqn{\beta} of fixed-effect coefficients of the defa
 \bold{M} must have column names, labeling the \eqn{\beta^*} coefficients.
 
 Because specifying the \bold{M} matrix can be laborious and error-prone, the helper function \code{genX2X} is provided. The typical way of using it, illustrated below, is \code{X2X=genX2X(matches=\var{list})}, with the second argument of the function missing. This argument will be provided internally, so the user does not have to find its correct form. Without this argument, the function returns its own call, which is not of any immediate interest for the user.   
+
+The \code{matches} list is a named list: the names will become some of the column names of the matrix product (the new regressor variables) and each element should be a vector of column names of the original \bold{X} matrix. 
+
+A common source of error in specifying \code{X2X} is not correctly predicting the latter column names (for example, forgetting the appended submodel indices). Under the (not otherwise necessary, but practically useful) premise that vector elements not matching original column names are wrongly predicted column names, \code{genX2X} checks that all vector elements match original column names. 
+
+The names of regressors for interaction terms, in particular, may be wrongly predicted because even if the user-level model formula contains \code{\var{x}:\var{y}}, a base R function may relabel it as \code{\var{y}:\var{x}} (this happens if \code{\var{y}} appears before \code{\var{x}} in the formula), and thus the \code{matches} vector elements should be of the form \code{\var{y}:\var{x}_\var{s}} for submodels \code{\var{s}} that are thus affected. Running \code{attr(terms(\var{submodel formula}),"term.labels")} will show whether such reversals of variables occur for some interaction terms. 
 }
 \usage{
 genX2X(matches, names_ori)
@@ -19,14 +25,17 @@ genX2X(matches, names_ori)
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{matches}{
-A named list, whose elements are vectors of names (character strings). The list names are those of some of the coefficients to be fitted(notably, the names to be given to the new, shared coefficients); and the vector elements are some names of coefficients of the original model (the one without an \code{X2X} argument) that should be constrained to be identical to the corresponding shaed coefficient.
+A named list, whose elements are vectors of names (character strings). The list names are those of some of the coefficients to be fitted (notably, the names to be given to the new, shared coefficients); and the vector elements are some names of coefficients of the original model (the one without an \code{X2X} argument) that should be constrained to be identical to the corresponding shared coefficient.
 }
   \item{names_ori}{
 Either missing, or the names of all coefficients of the default model (the one without \code{X2X} argument). 
-}
+}  
 }
 \value{
 \code{genX2X} returns a matrix if \code{names_ori} is provided, and returns the call to the \code{genX2X} function is this argument is missing.
+}
+\seealso{
+\code{vignette("Multinomial-logit", package = "spaMM")} for more examples.
 }
 \examples{
 ### Data preparation

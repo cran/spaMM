@@ -17,7 +17,7 @@
     if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
     if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
-  if ( (family$family %in% c("gaussian","Gamma"))) { # exponential families with a "phi" dispersion parameter
+  if ( (family$family %in% c("gaussian","Gamma","tweedie"))) { # exponential families with a "phi" dispersion parameter
     if ( ! is.null(phi.object$fixef) ) {
       iterativeEsts <- c(iterativeEsts,"phi")
     } else if ( identical(attr(phi.object$phi_outer,"type"),"var")) {
@@ -50,7 +50,7 @@
   beta_table <- cbind(Estimate=object$fixef,"Cond. SE"=beta_se,"t-value"=fixef_z)
   if (p_value=="Wald") {
     beta_table <- cbind(beta_table,"p-value"=1-pchisq(fixef_z^2,df=1))
-  } else if (p_value) { # t-test for each coefficient
+  } else if (p_value=="" || p_value) { # t-test for each coefficient
     dft <- df.residual(object)
     beta_table <- cbind(beta_table,"p-value"=2*(1-pt(abs(fixef_z), df=dft)))
   }
@@ -194,8 +194,8 @@ summary.HLfitlist <- function(object, ...) {
 .prettify_family <- function(family,linkstring="") {
   famfam <- family$family
   if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
-    withArgs <- eval(withArgs,envir=environment(family$aic))
-    legend <- paste0(withArgs, "(\u00A0",linkstring, family$link,"\u00A0)")
+    legend <- eval(withArgs,envir=environment(family$aic))
+    if (famfam !="tweedie") legend <- paste0(legend, "(\u00A0",linkstring, family$link,"\u00A0)")
   } else legend <- paste0(famfam, "(\u00A0",linkstring, family$link,"\u00A0)")
   if (identical(family$zero_truncated, TRUE)) legend <- paste("0-truncated", legend)
   return(legend)
@@ -226,7 +226,8 @@ summary.HLfitlist <- function(object, ...) {
 }
 
 
-.display_raw_lambdas <- function(in_pointLambda, row_map, lambda.object, hy_ranges) {
+.display_raw_lambdas <- function(in_pointLambda, row_map, lambda.object, hy_ranges,
+                                 external_fix_in_out_info) {
   # if (details$ranCoefs) {
   #   displaypos <- innerlambda_pos
   # } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
@@ -234,7 +235,8 @@ summary.HLfitlist <- function(object, ...) {
   #if ( ! details$ranCoefs) displaypos <- setdiff(displaypos, random_slope_pos)
   displaypos <- which(in_pointLambda)
   displayrows <- unlist(row_map[displaypos])
-  nicertypes <- lambda.object$type[displaypos]
+  if (is.null(types <- external_fix_in_out_info$lambda.object$type)) types <- lambda.object$type
+  nicertypes <- types[displaypos]
   posf <- ( nicertypes=="fixed")
   posfh <- ( nicertypes=="fix_hyper") # see paste0(hy_lam_type,"_hyper") in .calc_initial_init_lambda()
   posoh <- ( nicertypes=="outer_hyper") # again, see paste0(hy_lam_type,"_hyper") in .calc_initial_init_lambda()
@@ -316,7 +318,7 @@ summary.HLfitlist <- function(object, ...) {
         }
       }
     }
-    colnames(summ_corr_cols) <- rep("Corr.",ncol(summ_corr_cols))
+    colnames(summ_corr_cols) <- paste0("Cor.",seq_len(ncol(summ_corr_cols)))
     # }
     random_slope_ncol_geq_1_pos <- which(attr(object$strucList,"isRandomSlope")) 
     random_slope_ncol_geq_1_rows <- unlist(row_map[ random_slope_ncol_geq_1_pos ])
@@ -397,7 +399,8 @@ summary.HLfitlist <- function(object, ...) {
     .display_raw_lambdas(in_pointLambda=attribs$in_pointLambda, 
                          row_map=attribs$row_map, 
                          object$lambda.object,
-                         object$ranef_info$hyper_info$ranges
+                         object$ranef_info$hyper_info$ranges,
+                         external_fix_in_out_info=object$ranef_info$external_fix_in_out_info
                          ) ## not the table with SEs / covariances
   }
   #
@@ -494,16 +497,20 @@ summary.HLfitlist <- function(object, ...) {
 
 .summary_phi_object <- function(object, phi.object=object$phi.object, family=object$family, 
                                 pw=object$prior.weights, summ, phimodel, mv_it=NULL) { # 'mv_it' needed for non-trivial  .get_glm_phi(object, it=it)
-  if (family$family %in% c("gaussian","Gamma")) {
+  if (family$family %in% c("gaussian","Gamma","tweedie")) {
     if (! is.null(mv_it)) {
       cat(cli::style_underline("* response ", mv_it))
       if (family$family=="Gamma") {
         cat(" (Gamma) residual var = phi * mu^2:\n")
+      } else if (family$family=="tweedie") {
+        cat(" (tweedie) residual var = phi * mu^p:\n")
       } else cat(" (gaussian) residual variance:  \n")    
     } else {
       cat(" -")
       if (family$family=="Gamma") {
         cat("-- Residual variation ( var = phi * mu^2 )  --\n")
+      } else if (family$family=="tweedie") {
+        cat("-- Residual variation ( var = phi * mu^p )  --\n")
       } else cat("------------- Residual variance  ------------\n")    
     }
     if ( ! .is_unit(pw)) cat(paste("Prior weights:",
@@ -525,7 +532,12 @@ summary.HLfitlist <- function(object, ...) {
           cat(paste("phi estimate was",signif(phi_outer,6),"\n"))
         } else { # "outer phiGLM"
           phiform <- .get_phiform(object, mv_it)
-          cat(paste0("Estimates for log(phi) ",deparse(phiform),":\n"))
+          famlink <- eval(.get_phifam(object, mv_it))$link 
+          if (famlink=="identity") { # maybe never occurs
+            cat(paste0("Estimates for phi ",deparse(phiform),":\n"))
+            # glm_phi <- .get_glm_phi(object, mv_it) # ? never tested
+            # print(coefficients(glm_phi))
+          } else cat(paste0("Estimates for ",famlink,"(phi) ",deparse(phiform),":\n"))
           print(phi.object$beta_phi)
         }
       }
@@ -588,7 +600,10 @@ summary.HLfitlist <- function(object, ...) {
                      "negbin2"="shape",
                      "family dispersion parameter"
       )
-      info <- paste0("Coefficients for log(",info,")", deparse(disp_env$resid.formula)," :\n")     
+      famlink <- eval(.get_phifam(object, mv_it))$link 
+      if (famlink=="identity") { # This occurs in probitgem:::.optimthroughSmooth()
+        info <- paste0("Coefficients for ",info, deparse(disp_env$resid.formula)," :\n")  
+      } else info <- paste0("Coefficients for log(",info,")", deparse(disp_env$resid.formula)," :\n")  
       dispcoef_table <- cbind(disp_env$beta, NA)
       colnames(dispcoef_table) <- c("Estimate", "Cond. SE")
       summ$dispcoef_table <- dispcoef_table
@@ -613,6 +628,74 @@ summary.HLfitlist <- function(object, ...) {
   }
 } # returns NULL or message
 
+.estimate_form_output_nlines <- function(form) {
+  if (is.list(form)) {
+    otpt <- capture.output({for (mv_it in seq_along(form)) {
+      cat("formula_",mv_it,": ",sep="")
+      print(form[[mv_it]],showEnv=FALSE)}})
+  } else {
+    otpt <- capture.output({
+      cat("formula: ")
+      print(form,showEnv=FALSE)})
+  }
+  length(otpt)
+}
+
+.reformat_details <- function(details) {
+  if (is.null(names(details))) { # assumes an unnamed boolean
+    details <- list("ranCoefs"=details,"p_value"=details) ## handle FALSE or TRUE input
+  } else details <- as.list(details)
+  # This means a (named) vector input is possible when any implied type coercion of elements is meaningful.
+  if (is.null(dff <- details[["full.form"]])) { # implicit (default) or explicit NULL
+    details["full.form1"] <- Inf
+    details["full.forms"] <- 8L
+  } else if (is.logical(dff)) {
+    if (dff) { # is TRUE
+      details["full.form1"] <- Inf
+      details["full.forms"] <- Inf
+    } else { # dff is FALSE
+      details["full.form1"] <- 0L
+      details["full.forms"] <- 0L
+    }
+    details["full.form"] <- NULL
+  } else if (is.numeric(dff)) {
+    details["full.form1"] <- dff
+    details["full.forms"] <- dff
+    details["full.form"] <- NULL
+  } else stop('details[["full.form"]] must be NULL or numeric or T/F.')
+  if (is.null(details[["ranCoefs"]])) details["ranCoefs"] <- FALSE
+  if (is.null(details[["p_value"]])) details["p_value"] <- FALSE
+  if (is.null(details[["digits"]])) details["digits"] <- 4 # _F I X M E__ document this? Only used in .print_lambda_table() so rather cryptic.
+  details
+}
+
+.output_form <- function(form, details) {
+  if (is.list(form)) {
+    dffs <- details[["full.forms"]]
+    if (is.infinite(dffs) || 
+        (otpt_nlines <- .estimate_form_output_nlines(form)) <= dffs) {
+      for (mv_it in seq_along(form)) {
+        cat("formula_",mv_it,": ",sep="")
+        print(form[[mv_it]],showEnv=FALSE)
+      }
+    } else {
+      cat("formulas:\n")
+      for (mv_it in seq_along(form)) { 
+        cat(substring( capture.output( str(
+          form[[mv_it]], give.attr=FALSE, give.head= FALSE, nchar.max =getOption("width"))),31L),"\n")
+      }
+    }
+  } else {
+    cat("formula: ")
+    dff1 <- details[["full.form1"]]
+    if (is.infinite(dff1) || 
+        (otpt_nlines <- .estimate_form_output_nlines(form)) <= dff1) {
+      print(form,showEnv=FALSE)
+    } else cat(substring( capture.output( str(
+      form, give.attr=FALSE, give.head= FALSE, nchar.max =getOption("width")-9L)),31L),"\n")
+  }
+}
+
 
 `summary.HLfit` <- function(object, details=FALSE, max.print=100L, verbose=TRUE, ...) { 
   parent_from_there <- parent.frame()
@@ -623,23 +706,14 @@ summary.HLfitlist <- function(object, ...) {
     return(silent)
   }
   oldopt <- options(max.print=max.print)
-  if (is.null(names(details))) details <- structure(rep(details,2),names=c("ranCoefs","p_value")) ## handle FALSE or TRUE input
-  details <- as.list(details)
-  if (is.null(details[["ranCoefs"]])) details["ranCoefs"] <- FALSE
-  if (is.null(details[["p_value"]])) details["p_value"] <- "" ## a string such as "Wald"
-  if (is.null(details[["digits"]])) details["digits"] <- 4 # _F I X M E__ document this? Only used in .print_lambda_table() so rather cryptic.
+  details <- .reformat_details(details)
   models <- object$models
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
   randfamfamlinks <- unlist(lapply(object$rand.families, .prettify_family))
   randfamlinks <- unlist(lapply(object$rand.families, getElement, name="link"))
   summ <- list()
   form <- formula.HLfit(object, which="hyper")
-  if (is.list(form)) {
-    for (mv_it in seq_along(form)) {cat("formula_",mv_it,": ",sep=""); print(form[[mv_it]],showEnv=FALSE)}
-  } else {
-    cat("formula: ")
-    print(form,showEnv=FALSE)
-  }
+  .output_form(form, details)
   #
   #  HLchar <- paste(as.character(object$HL),collapse="")
   #  cat(paste0("[code: ",HLchar,"]"," method: "))
@@ -715,13 +789,27 @@ summary.HLfitlist <- function(object, ...) {
     nfam <- length(object$families)
     famst <- character(nfam)
     inverse_pred_mess <- vector("list", nfam)
+    is_p4m <- inherits(object,"pois4mlogit")
+    has_dynoffset <- object$p4m_info$multinom_info$has_dynoffset
     for (mv_it in seq_along(object$families)) {
-      famst[mv_it] <- paste0(mv_it,":\u00A0", .prettify_family(object$families[[mv_it]], linkstring = "") , sep="") 
+      fam_it <- .prettify_family(object$families[[mv_it]], linkstring = "")
+      famst[mv_it] <- paste0(mv_it,":\u00A0", fam_it , sep="") 
       inverse_pred_mess[[mv_it]] <- .check_inverse_pred(object=object, family=object$families[[mv_it]]) 
       # : not elegant: assumes that .muetafn() passes the attrs checked by .check_inverse_pred (OK so far...),
       # and that they correspond to a single family-link combination (OK so far...).
     }
     inverse_pred_mess <- .unlist(inverse_pred_mess) # NULL or "character" vector
+    if (is_p4m && has_dynoffset[mv_it]) {
+      famst <- as.list(famst)
+      which_multinom <- which(has_dynoffset)
+      dyno_range <- range(which_multinom)
+      famst[which_multinom[-1]] <- list(NULL)
+      if (all(seq(dyno_range[1L],dyno_range[2L])==which_multinom)) {
+        dyno_range <- paste0(dyno_range, collapse='--')
+      } else dyno_range <- paste0(which_multinom, collapse=',')
+      famst[[which_multinom[1L]]] <- paste(dyno_range, ": multinomial-logit")
+      famst <- .unlist(famst)
+    }  
     famst <- paste0(famst, collapse="; ")
     famst <- gsub('(.{45,65})(\\s)', '\\1\n  ', famst) 
     # : syntax to break long lines into spaces-delimited strings of mini 45 and maxi (spaces allowing) 65
@@ -729,14 +817,18 @@ summary.HLfitlist <- function(object, ...) {
     cat("\n")
   } else {
     inverse_pred_mess <- .check_inverse_pred(object)
-    cat("family:", .prettify_family(object$family, linkstring = "link = ") , "\n") 
+    family <- object$family
+    cat("family:", .prettify_family(family, linkstring = "link = ") , "\n") 
   }
-  summ$family <- object$family
+  summ$family <- family
   if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
   } else {
     cat(" ------------ Fixed effects (beta) ------------\n")
     beta_table <- .make_beta_table(object, p_value=details$p_value)
+    if (inherits(object,"pois4mlogit")) {
+      mess <- cli::format_message("Don't trust the SEs: see Details of {.help [{.fun LRT}](spaMM::pois4mlogit)}.")
+    }
     print(beta_table,4) 
     if (prod(dim(beta_table))>max.print && missing(max.print) ) {
       cat(' [ Use the summary.HLfit() "max.print" argument\n   to control getOption("max.print") at this point ].\n')
@@ -786,13 +878,16 @@ summary.HLfitlist <- function(object, ...) {
                           digits=details$digits) 
     } 
     groups_n <- unlist(lapply(object$ZAlist,ncol))/attr(object$ZAlist,"Xi_cols")
-    cat(paste0("# of obs: ",nrow(object$data),"; # of groups: ",
+    if (inherits(object,"fitmv")) {
+      nobs_info <- paste0("# of obs per submodel: ", paste(object$vec_nobs, collapse=" "),";\n")
+    } else nobs_info <- paste0("# of obs: ",nrow(object$data),"; ")
+    cat(paste0(nobs_info,"# of groups: ", 
               paste0(names(namesTerms),", ",groups_n, collapse="; ")
               ), "\n")
   }
   ##
   if (length(vec_nobs <- object$vec_nobs)) { # fitmv case; then object$phi.object must be a list of phi objects 
-    if (any(.unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma")) ||
+    if (any(.unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma","tweedie")) ||
         ! all(sapply(object$prior.weights, attr, "is_unit")) ||
         length(setdiff(object$models$rdispar, c("","rdiOff")))) {
       cat("-------------- Residual variation -------------\n")    
@@ -841,7 +936,7 @@ summary.HLfitlist <- function(object, ...) {
   print(astable)
   summ$likelihoods <- likelihoods
   if (length(object$warnings) ) silent <- sapply(object$warnings, cat, "\n") 
-  cat(paste(inverse_pred_mess, collapse="\n"))
+  cat(paste(inverse_pred_mess, collapse="\n")) 
   options(oldopt)
   invisible(summ)
 }

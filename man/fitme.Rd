@@ -66,13 +66,7 @@ Optional arguments, notably those listed in the comments of the Usage section ab
 }
 }
 \details{
- For approximations of likelihood, see \code{\link{method}}. For the possible structures of random effects, see \code{\link{random-effects}},
-
-For \code{phi}, \code{lambda}, and \code{ranCoefs}, \code{fitme} may or may not use the internal iterative fitting methods of \code{HLfit}. The latter methods are well suited for heteroscedastic (or \dQuote{structured-dispersion}) models, but require computations which can be slow for large datasets. For mixed models, \code{fitme} by default tries to select the fastest method when both can be applied. Therefore, \code{fitme} tends to use generic \dQuote{outer} optimization methods, rather than \dQuote{inner} iterative algorithms, by default for large datasets, unless there is a non-trivial \code{resid.model}. The precise criteria for selection of either method are liable to future changes.  The alternative function \code{corrHLfit} tends to use iterative methods as much as possible.
-
-Further, the internal fitting methods of \code{HLfit} also provide more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To force the evaluation of such information after an outer-optimization by a \code{fitme} call, use the \code{control$refit} argument (see Example). Alternatively (and possibly of limited use), one can force inner-optimization of \code{lambda} for a given random effect, or of \code{phi}, by setting it to \code{NaN} in \code{init} (see Example using \sQuote{blackcap} data). The same syntax may be tried for \code{phi}.
-
-The results of REML fits of non-gaussian mixed models by outer-optimization may (generally slightly) differ from those by the iterative method. Explicit values of the \code{init} argument may be used to control the selection of either method in \code{fitme} or \code{corrHLfit}, and may be used to ensure better consistency over successive versions of \code{spaMM}: use \code{NaN} as noted above to enforce inner-optimization, and \code{NA} or a numeric value to enforce outer-optimization.  
+ For approximations of likelihood, see \code{\link{method}}. For the possible structures of random effects, see \code{\link{random-effects}}. For the different results that may be obtained by using the \code{init} argument to select \dQuote{inner}- vs.\dQuote{outer}-estimation methods for dispersion parameters \eqn{\lambda} and \eqn{\phi}, and the availability of standard errors for these estimates, see \code{\link{inner-vs-outer}}.
 }
 \value{
 The return value of an \code{HLCor} or an \code{HLfit} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{fitme} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{fitme}. 
@@ -86,36 +80,9 @@ The return value of an \code{HLCor} or an \code{HLfit} call, with additional att
  ## p-value:
  1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
 
-## See ?spaMM for examples of conditional autoregressive model and of non-spatial models. 
-
-## Contrasting different optimization methods:
-# We simulate Gamma deviates with mean mu=3 and variance=2, 
-#  ie. phi= var/mu^2= 2/9 in the (mu, phi) parametrization of a Gamma 
-#  GLM; and shape=9/2, scale=2/3 in the parametrisation of rgamma().
-#  Note that phi is not equivalent to scale: 
-#  shape = 1/phi and scale = mu*phi.
-set.seed(123)
-gr <- data.frame(y=rgamma(100,shape=9/2,scale=2/3))
-# Here fitme uses HLfit methods which provide cond. SE for phi by default:
-fitme(y~1,data=gr,family=Gamma(log))
-# To force outer optimization of phi, use the init argument:
-fitme(y~1,data=gr,family=Gamma(log),init=list(phi=1))
-# To obtain cond. SE for phi after outer optimization, use the 'refit' control:
-fitme(y~1,data=gr,family=Gamma(log),,init=list(phi=1),
-      control=list(refit=list(phi=TRUE))) ## or ...refit=TRUE...
-
-## Outer-optimization is not necessarily the best way to find a global maximum, 
-#  particularly when there is little statistical information in the data:  
-if (spaMM.getOption("example_maxtime")>1.6) {
-  data("blackcap")
-  fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap) # poor
-  #  Compare with the following two ways of avoiding outer-optimization of lambda:
-  corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
-            method="ML")
-  fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap, 
-        init=list(lambda=NaN))
-}
-
-## see help("COMPoisson"), help("negbin"), help("Loaloa"), etc., for further examples.
+# See help("spaMM")" for examples of conditional 
+# autoregressive model and of non-spatial models. 
+# see help("COMPoisson"), help("negbin"), help("Loaloa"), help("inner-vs-outer"), 
+# and many other documentation pages, for further examples.
 }
 \keyword{ model }

@@ -71,7 +71,9 @@ if (FALSE) {  ## DOC:
   if (is.null(vec_nobs)) {
     if (is.null(x)) x <- modifier
   } else if (.anyNULL(x) ) {
-    for (mv_it in seq_along(modifier)) if ( is.null(x[[mv_it]])) x[mv_it] <- list(unlist(modifier[as.character(mv_it)])) # handling missing data properly
+    for (mv_it in seq_along(modifier)) 
+      if ( is.null(x[[mv_it]])) x[mv_it] <- 
+          list(.unlist(modifier[as.character(mv_it)])) # handling missing data properly
   }
   x
 }
@@ -143,10 +145,11 @@ if (FALSE) {  ## DOC:
     u_list[u_names] <- rep(NaN,length(u_names))
     u_list <- relist(u_list,parlist)
     return(.rmNaN(u_list)) ## removes attributes
-  } else return(parlist) ## DHGLM where all parameters are fixed.
+  } else return(parlist) 
 }
 
 remove_from_parlist <- function(parlist, removand=NULL, rm_names=names(unlist(removand))) {
+  if (is.null(parlist)) return(NULL)
   type <- attr(parlist,"type")
   if ( ! is.null(type)) type <- .remove_from_cP(type, u_names=rm_names)
   structure(.remove_from_cP(parlist,u_names=rm_names),

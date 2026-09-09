@@ -87,25 +87,33 @@
   ## Prior to optimization the family parameters may not be assigned, so: 
   orifamfam <- family$family
   if (orifamfam %in% c("negbin1","negbin2")) {
-    if (variable_rdispar <- inherits(substitute(shape, env=environment(family$aic)),"call")) family <- 
+    if (variable_rdispar <- .is_fampar_missing(family=family, fampar="shape")) family <- 
         Poisson(family$link, trunc=environment(family$aic)$trunc) # equiv to negbin with minimal dispersion
   } else if (orifamfam=="beta_resp") {
-    if (variable_rdispar <- inherits(substitute(prec, env=environment(family$aic)),"call")) { # only if beta_prec not assigned
+    if (variable_rdispar <- .is_fampar_missing(family=family, fampar="prec")) { # only if beta_prec not assigned
       loc_link <- family$link
       family <- beta_resp(link=loc_link, prec=1e4) 
     }
   } else if (orifamfam=="betabin") {
-    if (variable_rdispar <- inherits(substitute(prec, env=environment(family$aic)),"call")) { # only if beta_prec not assigned
+    if (variable_rdispar <- .is_fampar_missing(family=family, fampar="prec")) { # only if beta_prec not assigned
       loc_link <- family$link
       family <- betabin(link=loc_link, prec=1e4) # well that's ~binomial except that deviance() returns an number for it while it returns NULL for a binomial fit 
     } # else use original family with fixed prec. The test case is bbin_llmm_fix. 
   } else if (orifamfam=="COMPoisson") {
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
-    if (variable_rdispar <- inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) # only if COMP_nu not assigned
+    if (variable_rdispar <- .is_fampar_missing(family=family, fampar="nu")) family <- poisson(loc_link) # only if COMP_nu not assigned
     # old _F I X M E__ : much time is spent on inits for glm when nu<1
-    # if (inherits(nuchk <- substitute(nu, env=environment(family$aic)),"call") || nuchk >0.25) family <- poisson(loc_link)
+    # if (.is_fampar_missing(family=family, fampar= "nu") # force any stop() || nuchk >0.25) family <- poisson(loc_link)
     # : This helps for he GLM but not much otherwise. Other ideas ?
+  } else if (orifamfam=="tweedie") {
+    if (.is_fampar_missing(family=family,fampar="p")) {
+      assign("p",1.5,envir=environment(family$aic)) # ____F I X M E____ less arbitrary choices ? 
+      # + remove these assignments after the glm fit ? they might hide bugs (but same for other fam pars ?)
+    }
+    if ( get("q_missing", environment(family$aic), inherits = FALSE)) {
+      assign("q",0,envir=environment(family$aic))
+    } 
   }
   # Given that overdisp is relative to 'prec'=1e4 above, 
   # some of the code below is designed to return e4 when overdisp=0.
@@ -127,7 +135,7 @@
         family$zero_truncated) 
       )) X.pv <- matrix(1,ncol=1, nrow=nrow(X.pv))
   n_lambda <- sum(attr(processed$ZAlist,"Xi_cols"))
-  if (locfamfam %in% c("Gamma","gaussian")) {lam_fac <- 1/(n_lambda+1L)} else lam_fac <- 1/n_lambda
+  if (locfamfam %in% c("Gamma","gaussian","tweedie")) {lam_fac <- 1/(n_lambda+1L)} else lam_fac <- 1/n_lambda
   
   resu <- new.env(parent=environment(.calc_inits_by_xLM)) 
   delayedAssign("overdisp", {
@@ -284,7 +292,7 @@
         # in mv cases the benefits of promises in .calc_inits_by_xLM() return value are lost (__F I X M E___):
         beta_eta[col_range] <- new_mvlist[[mv_it]]$beta_eta
         lambdas[mv_it] <- new_mvlist[[mv_it]]$lambda
-        if (processed$families[[mv_it]]$family %in% c("gaussian","Gamma")) {
+        if (processed$families[[mv_it]]$family %in% c("gaussian","Gamma","tweedie")) {
           new_phi_ests[[mv_it]] <- new_mvlist[[mv_it]]$phi_est
         } else new_phi_ests[[mv_it]] <- 1 # no impact anyway?
       }
@@ -297,8 +305,8 @@
                                            lambda=exp(mean(log(lambdas))) # scalar
       )
     } else {
-      if (! is.null(processed$X_off_fn)) {
-        X.pv <- environment(processed$X_off_fn)$X_off
+      if ( .has_X_off_betas(processed)) {
+        X.pv <- environment(processed$X_off_Xb_fn)$X_fixed
       } else X.pv <- processed$AUGI0_ZX$X.pv
       processed$envir$inits_by_xLM <- .calc_inits_by_xLM(processed, X.pv=X.pv) # univariate response case: 
                                       # returns an environment with promises for deviance-dependent elements

@@ -42,10 +42,11 @@ spaMM_boot <- function(object, simuland, nsim, nb_cores=NULL,
   # we have to convert them to a list, and ultimately to use do.call()
   if (is.null(control.foreach$.combine)) control.foreach$.combine <- "rbind"
   wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE) # dopar
-  boot_samples$bootreps <- wrap_parallel(newresp = boot_samples$bootreps, nb_cores = nb_cores, # wrap_parallel() is typically dopar()
-                                         fn = simuland, fit_env = fit_env,   
-                                         control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
-                                         showpbar = showpbar, ...) 
+  boot_samples$bootreps <- wrap_parallel(# wrap_parallel() is typically dopar()
+    newresp = boot_samples$bootreps, nb_cores = nb_cores, 
+    fn = simuland, fit_env = fit_env,   
+    control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
+    showpbar = showpbar, ...) 
   return(boot_samples)
 }
 
@@ -179,238 +180,244 @@ spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
   } else stop('No successful result? use .errorhandling = "pass" to confirm; and see warning for one possible cause.')
 }
 
-# fn more generic than spaMM_boot: there is no call to other spaMM fns such as simulate(object, .) so this acts as a general wrapper for 
-# foreach or pbapply, and not specifically for bootstrap computations.
-dopar <- local({
+.warn_doSNOW_once <- local({
   doSNOW_warned <- FALSE
-  function(newresp, fn, nb_cores=NULL, fit_env, 
-           control=list(), 
-           cluster_args=NULL,
-           debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
-           pretest_cores=NULL, 
-           ... # passed to fn... unless captured by pbapply (in which case 'simplify' may have a distinct effect).
-  ) {
-    if (is.list(fit_env)) fit_env <- list2env(fit_env)
-    cluster_args <- .set_cluster_type(cluster_args, nb_cores) # PSOCK vs FORK
-    nb_cores <- cluster_args$spec
-    if (debug. && nb_cores>1L ) debug. <- 1L 
-    assign("debug.", debug., environment(fn))
-    if (is.null(dim(newresp))) newresp <- matrix(seq(newresp),ncol=newresp,nrow=1) # assuming newresp is an integer
-    nsim <- ncol(newresp)
-    time1 <- Sys.time() 
-    if (nb_cores>1L) {
-      if ( ! is.null(iseed) ) {
-        ori <- RNGkind("L'Ecuyer-CMRG")
-        set.seed(iseed)
-      }
-      if (cluster_args$type=="FORK") {
-        if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
-        if (is.null(mc.preschedule <- control$mc.preschedule)) mc.preschedule <- TRUE 
-        has_progressr <- ("progressr" %in% loadedNamespaces())
-        seq_nr <- seq_len(nsim)
-        if (has_progressr) {
-          # progressor is the only progress function that 'works' with mclapply
-          # although not with load-balancing (mc.preschedule=FALSE)
-          # Here we use the default (no balancing), and it is the steps with max value shown below that are reported.  
-          prog_fn <- get("progressor", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-          with_fn <- get("with_progress", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-          with_fn({
-            p <- prog_fn(steps=ceiling(nsim/nb_cores))
-            p_fn <- function(it, ...) { # it OK for mclapply... not for apply on a matrix
-              res <- fn(newresp[,it], ...)
-              p() # p() call necessary for actual progress report 
-              res
-            }
-            bootreps <- try(
-              parallel::mclapply(seq_nr, FUN = p_fn, mc.silent=mc.silent, mc.cores=nb_cores,
-                                 mc.preschedule = mc.preschedule)
-            )
-          })
-          
-        } else {
-          .warn_once_progressr()
+  function() {
+    if ( ! doSNOW_warned) {
+      message("If the 'doSNOW' package were attached, better load-balancing might be possible (at the expense of control of RNG).")
+      doSNOW_warned <<- TRUE
+    } 
+  }
+})
+
+# fn more generic than spaMM_boot, and called by the latter: 
+# there is no call to other spaMM fns such as simulate(object, .) so this acts as a general wrapper for 
+# foreach or pbapply, and not specifically for bootstrap computations.
+dopar <- function(newresp, fn, nb_cores=NULL, fit_env, 
+         control=list(), 
+         cluster_args=NULL,
+         debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
+         pretest_cores=NULL, 
+         ... # passed to fn... unless captured by pbapply (in which case 'simplify' may have a distinct effect).
+) {
+  if (is.list(fit_env)) fit_env <- list2env(fit_env)
+  cluster_args <- .set_cluster_type(cluster_args, nb_cores) # PSOCK vs FORK
+  nb_cores <- cluster_args$spec
+  if (debug. && nb_cores>1L ) debug. <- 1L 
+  if ( ! environmentIsLocked(environment(fn))) assign("debug.", debug., environment(fn))
+  if (is.null(dim(newresp))) newresp <- matrix(seq(newresp),ncol=newresp,nrow=1) # assuming newresp is an integer
+  nsim <- ncol(newresp)
+  time1 <- Sys.time() 
+  if (nb_cores>1L) {
+    if ( ! is.null(iseed) ) {
+      ori <- RNGkind("L'Ecuyer-CMRG")
+      set.seed(iseed)
+    }
+    if (cluster_args$type=="FORK") {
+      if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
+      if (is.null(mc.preschedule <- control$mc.preschedule)) mc.preschedule <- TRUE 
+      has_progressr <- ("progressr" %in% loadedNamespaces())
+      seq_nr <- seq_len(nsim)
+      if (has_progressr) {
+        # progressor is the only progress function that 'works' with mclapply
+        # although not with load-balancing (mc.preschedule=FALSE)
+        # Here we use the default (no balancing), and it is the steps with max value shown below that are reported.  
+        prog_fn <- get("progressor", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+        with_fn <- get("with_progress", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+        with_fn({
+          p <- prog_fn(steps=ceiling(nsim/nb_cores))
+          p_fn <- function(it, ...) { # it OK for mclapply... not for apply on a matrix
+            res <- fn(newresp[,it], ...)
+            p() # p() call necessary for actual progress report 
+            res
+          }
           bootreps <- try(
-            parallel::mclapply(seq_nr, FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores)
+            parallel::mclapply(seq_nr, FUN = p_fn, mc.silent=mc.silent, mc.cores=nb_cores,
+                               mc.preschedule = mc.preschedule)
           )
-        }
-        if (identical(control$.combine,"rbind")) {
-          bootreps <- do.call(rbind,bootreps)
-        } else bootreps <- do.call(cbind,bootreps)
-      } else { # PSOCK
-        cl <- do.call(parallel::makeCluster, cluster_args) # note that _this_ line would make sense for fork clusters too. BUT
-        # ... the foreach = dot args combination may not work for FORK type. Only pbapply would work with makeCluster+FORK, 
-        # but pbmcapply is a better way to get a pb one a fork cluster as [pb]mclapply have better load balancing than pbapply. 
-        # has_doSNOW <- ("package:doSNOW" %in% search()) # result of library()
-        has_doSNOW <- ("doSNOW" %in% loadedNamespaces()) # result of library() or requireNamespace()
-        if (has_doSNOW) {
-          # loading (?) the namespace of 'snow' changes the *parent* RNG state (as well as sons' ones)! so we save and restore it 
-          R.seed <- get(".Random.seed", envir = .GlobalEnv) # save parent RNG state
-          rdS_fn <- get("registerDoSNOW", asNamespace("doSNOW"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-          do.call(rdS_fn,list(cl=cl)) # this is what makes foreach see it and perform parallel computations
-          assign(".Random.seed", R.seed, envir = .GlobalEnv) # restore parent RNG state
-          if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
-          #
-          # if (cluster_args$type == "PSOCK") {
-            if (is.environment(fit_env)) parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env) 
-            pb_char <- "P"
-          # } else pb_char <- "F"
-          # A first foreach_blob for a first dopar before defining the progress bar (otherwise we see a progress bar on this dopar)
-          i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
-          foreach_blob <- foreach::foreach(i=1:nb_cores)
-          #if (cluster_args$type == "PSOCK") {
-            abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
-            if (is.function(pretest_cores)) pretest_cores(fn, cl)
-          #}
-          # define the progress bar:
-          barstyle <- eval(spaMM.getOption("barstyle"))
-          progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char=pb_char)
-          # :where opts are needed to define a second foreach_blob
-          foreach_args <- list( 
-            i = 1:nsim, 
-            .inorder = TRUE, .packages = "spaMM", 
-            .errorhandling = "remove", ## use "pass" to see problems
-            .options.snow = progrbar_setup["progress"],
-            .final = .dopar.final.doSNOW
-          )
-          foreach_args[names(control)] <- control # replaces the above defaults by user controls
-          foreach_blob <- do.call(foreach::foreach,foreach_args) 
-          if (TRUE) {
-            fn_dots <- list(...)
-            for (st in names(fn_dots)) {
-              # Add an enclosing quote():
-              if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
-            }
-            bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots))))
-          } else {
-            # Standard passing of the dots with foreach does not seem to work. (good test is the doSNOW case nested within test-LRT-boot.R)
-            # bootreps <- try(foreach::`%dopar%`(foreach_blob, fn(newresp[, i], ...)))
-          }
-          # the try() is useful if the user interrupts the dopar, in which case it allows close(pb) to be run. (? But doSNOW appear to close the nodes asynchronously?)
-          foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
-          parallel::stopCluster(cl)
-          #
-          if (foreach_args[[".errorhandling"]]=="remove" && is.null(bootreps)) {
-            cat(cli::style_bold(paste0(
-              "Hmmm. It looks like all parallel processes failed. Maybe rerun spaMM_boot() \n",
-              "with  ' control.foreach=list(.errorhandling=\"stop\") '  to diagnose the problem.\n"
-            )))
-          } else if (foreach_args[[".errorhandling"]]=="stop" && inherits(bootreps,"try-error")) {            
-            # foreach alters the condition message => seel '\"' after 'could not find'
-            if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
-              firstpb <- strsplit(condmess,"could not find")[[1]][2]
-              firstpb <- strsplit(firstpb,"\"")[[1]][2]
-              cat(cli::style_bold(paste0(
-                "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
-                "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
-              )))
-            } else cat(cli::style_bold(condmess))
-          }
-          #
-          if (showpbar) close(progrbar_setup$pb)
-        } else { # no doSNOW
-          if ( ! doSNOW_warned) {
-            message("Note: If the 'doSNOW' package were attached, better load-balancing might be possible.")
-            doSNOW_warned <<- TRUE
-          } 
-          pb_char <- "p"
-          parallel::clusterCall(cl, Sys.setenv, LANG = "en")
-          if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
-          packages2export <- control$.packages
-          if (is.null(packages2export)) packages2export <- "spaMM"
-          parallel::clusterCall(cl,
-                                function(packages) {for (p in packages) library(p, character.only = TRUE)}, 
-                                packages2export)
-          if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
-          
-          # in that case, ## We will use pbapply, with argument cl=cl; 
-          # Given no doSNOW, a direct call to foreach would require doParallel::registerDoParallel(cl)
-          # or doFuture::registerDoFuture(). 
-          # There are fake solutions suggesting a progress bar can be set up with doParallel, 
-          # but it actually progresses only after all the processes have been run
-          # (proposed examples have too short processes for this to be apparent).
-          # So ultimately... we need doFuture, ( => see distinct wrapper).
-          # and current we use pbapply with an ad hoc treatment for combining the results 
-          
-          if (is.function(pretest_cores)) pretest_cores(fn, cl)
-          if (showpbar) {
-            pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
-          } else pbopt <- pboptions(type="none") 
-          #try() so that an interrupt does not prevent running stopCluster():
-          bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
-          parallel::stopCluster(cl)
-          pboptions(pbopt)
-          if (inherits(bootreps,"try-error")) {
-            if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
-              firstpb <- strsplit(condmess,"\"")[[1]][2]
-              cat(cli::style_bold(paste0(
-                "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
-                "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
-              )))
-            } else cat(cli::style_bold(condmess))
-          }
-          # LRT -> spaMM_boot -> eval_replicate with debug.=TRUE and not doSNOW can return more elaborate objects in case of error.
-          # But these should not be diagnosed in this generic function.
-          if (identical(control$.combine,"rbind")) bootreps <- t(bootreps) # this means the pbapply version handles cbind or rbind but not other 
-        } # has_doSNOW ... else
-      } # FORK ... else
-      if ( ! is.null(iseed) ) do.call("RNGkind", as.list(ori)) # reste to state pre-parallel computation
-    } else { ## nb_cores=1L
-      pb_char <- "s"
-      if (FALSE) {
+        })
+        
+      } else {
+        .warn_once_progressr()
+        bootreps <- try(
+          parallel::mclapply(seq_nr, FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores)
+        )
+      }
+      if (identical(control$.combine,"rbind")) {
+        bootreps <- do.call(rbind,bootreps)
+      } else bootreps <- do.call(cbind,bootreps)
+    } else { # PSOCK
+      cl <- do.call(parallel::makeCluster, cluster_args) # note that _this_ line would make sense for fork clusters too. BUT
+      # ... the foreach = dot args combination may not work for FORK type. Only pbapply would work with makeCluster+FORK, 
+      # but pbmcapply is a better way to get a pb one a fork cluster as [pb]mclapply have better load balancing than pbapply. 
+      # has_doSNOW <- ("package:doSNOW" %in% search()) # result of library()
+      has_doSNOW <- ("doSNOW" %in% loadedNamespaces()) # result of library() or requireNamespace()
+      if (has_doSNOW) {
+        # loading (?) the namespace of 'snow' changes the *parent* RNG state (as well as sons' ones)! so we save and restore it 
+        R.seed <- get(".Random.seed", envir = .GlobalEnv) # save parent RNG state
+        rdS_fn <- get("registerDoSNOW", asNamespace("doSNOW"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+        do.call(rdS_fn,list(cl=cl)) # this is what makes foreach see it and perform parallel computations
+        assign(".Random.seed", R.seed, envir = .GlobalEnv) # restore parent RNG state
+        if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
+        #
+        # if (cluster_args$type == "PSOCK") {
+        if (is.environment(fit_env)) parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env) 
+        pb_char <- "P"
+        # } else pb_char <- "F"
+        # A first foreach_blob for a first dopar before defining the progress bar (otherwise we see a progress bar on this dopar)
+        i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
+        foreach_blob <- foreach::foreach(i=1:nb_cores)
+        #if (cluster_args$type == "PSOCK") {
+        abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
+        if (is.function(pretest_cores)) pretest_cores(fn, cl)
+        #}
+        # define the progress bar:
+        barstyle <- eval(spaMM.getOption("barstyle"))
+        progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char=pb_char)
         # :where opts are needed to define a second foreach_blob
         foreach_args <- list( 
-          i = 1:ncol(newresp), 
-          .combine = "cbind", 
+          i = 1:nsim, 
           .inorder = TRUE, .packages = "spaMM", 
-          .errorhandling = "remove" ## use "pass" to see problems
+          .errorhandling = "remove", ## use "pass" to see problems
+          .options.snow = progrbar_setup["progress"],
+          .final = .dopar.final.doSNOW
         )
-        
         foreach_args[names(control)] <- control # replaces the above defaults by user controls
-        
-        if (showpbar) { # optionally wrap the combine function with progress bar code
-          barstyle <- eval(spaMM.getOption("barstyle"))
-          
-          .combine <- foreach_args$.combine
-          if (inherits(.combine,"character")) .combine <- get(.combine)
-          
-          progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char=pb_char)
-          combine_with_pb <- function(nsim, pb){
-            count <- 0
-            force(pb)
-            function(...) {
-              count <<- count + length(list(...)) - 1L
-              setTxtProgressBar(pb, count)
-              flush.console()
-              cbind(...) # this can feed into .combine option of foreach
-            }
-          } # returns a function that increments the bar then actually combines.
-          foreach_args$.combine <- combine_with_pb(nsim, pb=progrbar_setup$pb)
-        } 
-        
         foreach_blob <- do.call(foreach::foreach,foreach_args) 
-        
-        fn_dots <- list(...)
-        # for (st in names(fn_dots)) {
-        #   # Add an enclosing quote():
-        #   if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
-        # }
-        bootreps <- try(foreach::`%do%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots)))) 
-        # the try() is useful if the user interrupts the %do%, in which case it allows close(pb) to be run.
-        
+        if (TRUE) {
+          fn_dots <- list(...)
+          for (st in names(fn_dots)) {
+            # Add an enclosing quote():
+            if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
+          }
+          bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots))))
+        } else {
+          # Standard passing of the dots with foreach does not seem to work. (good test is the doSNOW case nested within test-LRT-boot.R)
+          # bootreps <- try(foreach::`%dopar%`(foreach_blob, fn(newresp[, i], ...)))
+        }
+        # the try() is useful if the user interrupts the dopar, in which case it allows close(pb) to be run. (? But doSNOW appear to close the nodes asynchronously?)
+        foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
+        parallel::stopCluster(cl)
+        #
+        if (foreach_args[[".errorhandling"]]=="remove" && is.null(bootreps)) {
+          cat(cli::style_bold(paste0(
+            "Hmmm. It looks like all parallel processes failed. Maybe rerun spaMM_boot() \n",
+            "with  ' control.foreach=list(.errorhandling=\"stop\") '  to diagnose the problem.\n"
+          )))
+        } else if (foreach_args[[".errorhandling"]]=="stop" && inherits(bootreps,"try-error")) {            
+          # foreach alters the condition message => seel '\"' after 'could not find'
+          if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
+            firstpb <- strsplit(condmess,"could not find")[[1]][2]
+            firstpb <- strsplit(firstpb,"\"")[[1]][2]
+            cat(cli::style_bold(paste0(
+              "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+              "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
+            )))
+          } else cat(cli::style_bold(condmess))
+        }
+        #
         if (showpbar) close(progrbar_setup$pb)
-      } else { # CURRENT version using pbapply
+      } else { # no doSNOW
+        .warn_doSNOW_once() 
+        pb_char <- "p"
+        parallel::clusterCall(cl, Sys.setenv, LANG = "en")
+        if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
+        packages2export <- control$.packages
+        if (is.null(packages2export)) packages2export <- "spaMM"
+        parallel::clusterCall(cl,
+                              function(packages) {for (p in packages) library(p, character.only = TRUE)}, 
+                              packages2export)
+        if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
+        
+        # in that case, ## We will use pbapply, with argument cl=cl; 
+        # Given no doSNOW, a direct call to foreach would require doParallel::registerDoParallel(cl)
+        # or doFuture::registerDoFuture(). 
+        # There are fake solutions suggesting a progress bar can be set up with doParallel, 
+        # but it actually progresses only after all the processes have been run
+        # (proposed examples have too short processes for this to be apparent).
+        # So ultimately... we need doFuture, ( => see distinct wrapper).
+        # and current we use pbapply with an ad hoc treatment for combining the results 
+        
+        if (is.function(pretest_cores)) pretest_cores(fn, cl)
         if (showpbar) {
           pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
         } else pbopt <- pboptions(type="none") 
-        bootreps <- pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=NULL, ...)
+        #try() so that an interrupt does not prevent running stopCluster():
+        bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
+        parallel::stopCluster(cl)
         pboptions(pbopt)
-        if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
-      }
+        if (inherits(bootreps,"try-error")) {
+          if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
+            firstpb <- strsplit(condmess,"\"")[[1]][2]
+            cat(cli::style_bold(paste0(
+              "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+              "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
+            )))
+          } else cat(cli::style_bold(condmess))
+        }
+        # LRT -> spaMM_boot -> eval_replicate with debug.=TRUE and not doSNOW can return more elaborate objects in case of error.
+        # But these should not be diagnosed in this generic function.
+        if (identical(control$.combine,"rbind")) bootreps <- t(bootreps) # this means the pbapply version handles cbind or rbind but not other 
+      } # has_doSNOW ... else
+    } # FORK ... else
+    if ( ! is.null(iseed) ) do.call("RNGkind", as.list(ori)) # reste to state pre-parallel computation
+  } else { ## nb_cores=1L
+    pb_char <- "s"
+    if (FALSE) {
+      # :where opts are needed to define a second foreach_blob
+      foreach_args <- list( 
+        i = 1:ncol(newresp), 
+        .combine = "cbind", 
+        .inorder = TRUE, .packages = "spaMM", 
+        .errorhandling = "remove" ## use "pass" to see problems
+      )
+      
+      foreach_args[names(control)] <- control # replaces the above defaults by user controls
+      
+      if (showpbar) { # optionally wrap the combine function with progress bar code
+        barstyle <- eval(spaMM.getOption("barstyle"))
+        
+        .combine <- foreach_args$.combine
+        if (inherits(.combine,"character")) .combine <- get(.combine)
+        
+        progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char=pb_char)
+        combine_with_pb <- function(nsim, pb){
+          count <- 0
+          force(pb)
+          function(...) {
+            count <<- count + length(list(...)) - 1L
+            setTxtProgressBar(pb, count)
+            flush.console()
+            cbind(...) # this can feed into .combine option of foreach
+          }
+        } # returns a function that increments the bar then actually combines.
+        foreach_args$.combine <- combine_with_pb(nsim, pb=progrbar_setup$pb)
+      } 
+      
+      foreach_blob <- do.call(foreach::foreach,foreach_args) 
+      
+      fn_dots <- list(...)
+      # for (st in names(fn_dots)) {
+      #   # Add an enclosing quote():
+      #   if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
+      # }
+      bootreps <- try(foreach::`%do%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots)))) 
+      # the try() is useful if the user interrupts the %do%, in which case it allows close(pb) to be run.
+      
+      if (showpbar) close(progrbar_setup$pb)
+    } else { # CURRENT version using pbapply
+      if (showpbar) {
+        pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
+      } else pbopt <- pboptions(type="none") 
+      bootreps <- pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=NULL, ...)
+      pboptions(pbopt)
+      if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
     }
-    cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 
-    return(bootreps)
   }
-})
+  cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 
+  return(bootreps)
+}
+
 
 
 .init_cores <- local({
@@ -431,12 +438,7 @@ dopar <- local({
           assign(".Random.seed", R.seed, envir = .GlobalEnv) # loading (?) the namespace of 'snow' changes the global RNG state!
           fn <- get("registerDoSNOW", asNamespace("doSNOW"))
           do.call(fn,list(cl=cores_info$cl)) 
-        } else {
-          if ( ! doSNOW_warned) {
-            message("If the 'doSNOW' package were attached, better load-balancing might be possible (at the expense of control of RNG).")
-            doSNOW_warned <<- TRUE
-          } 
-        }
+        } else .warn_doSNOW_once()
       } else cores_info$has_doSNOW <- FALSE
     }
     return(cores_info)

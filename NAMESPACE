@@ -17,14 +17,14 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", "extractAIC", "step",
            "terms.formula", "var", "sd", "weights", "glm.fit",".lm.fit", "lm.wfit", "qbeta",
            "nobs", ## bc spaMM defines an HLfit method, although I do not currently use it
-           "hatvalues", ## bc spaMM defines an HLfit method, 
+           "hatvalues", "sigma", ## bc spaMM defines an HLfit method, 
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", 
            "na.omit", "na.exclude", "na.pass",
            "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
            "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula", 
-           "contrasts<-", "delete.response","toeplitz")
+           "contrasts<-", "delete.response","toeplitz", "rmultinom")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail", "head")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -34,7 +34,6 @@ importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diag
 importFrom("proxy", "dist", "pr_DB")
 importFrom("reformulas", "inForm", "replaceForm")
 importFrom("Rcpp", "evalCpp")
-importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
 importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", 
            "getCovariate", "logDet", "recalc", "VarCorr")
 importFrom("pbapply", "pbapply", "pblapply", "pboptions", "pbreplicate")
@@ -85,6 +84,7 @@ S3method(ranef, HLfit)
 S3method(fitted, HLfitlist)
 S3method(residuals, HLfit)
 S3method(df.residual, HLfit)
+S3method(sigma, HLfit)
 S3method(weights, HLfit)
 S3method(hatvalues, HLfit)
 S3method(plot, HLfit)
@@ -103,10 +103,12 @@ S3method(print, predictor)
 S3method(print, arglist)
 S3method(print, ranef)
 S3method(print, spaMM_predictions)
+S3method(print, spaMM_simulations)
 S3method(print, corr_family)
 S3method(print, bootci4print)
 S3method(print, singeigs)
 S3method(update, HLfit)
+S3method(update, pois4mlogit)
 S3method(vcov, HLfit)
 S3method(MaternCorr, default)
 S3method(MaternCorr, dsCMatrix)

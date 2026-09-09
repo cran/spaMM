@@ -21,6 +21,9 @@
 }
 
 # a specialized version of glm, which further constructs the response value internally; the formula has no lhs 
+# model=TRUE is still required bc predict.glm(phi_fit, newdata = locdata, type = "response") -
+# ...-> model.matrix(object) ->...-> model.frame.glm(object, ...)  otherwise tries to create one from the
+# phi_fit $call (which is not a in a suitable form form that anyway)
 .calc_dispGammaGLM <- function (formula, 
             dev.res, ## info not in the 'data' argument;
             # In the case where there was a prior_lam_fac is the 'design' for non-ranCoef (wei-1|.), the unique_lambda was obtained by
@@ -37,10 +40,10 @@
             control, 
             #try = FALSE, 
             ## more args from glm() def:
-            subset, ##  not used but rethink.
-            model = TRUE, ## whether to return the mf, cf end of code
-            x = FALSE, ## whether to return the design matrix, cf end of code
-            y = TRUE, ## whether to include y... idem 
+            # subset, ##  not used 
+            model = TRUE, ## whether to return the mf, cf comment above
+            x = FALSE, ## whether to return the design matrix
+            y = TRUE, ## whether to include y...
             contrasts = NULL,
             method="glm.fit",
             ...) {
@@ -51,7 +54,8 @@
   Y <- exp(.sanitize_eta_log_link(log(Y), max=30,y=Y)) # previous two lines important for the y=Y argument, which is itself important.
   #
   mf <- match.call(expand.dots = FALSE)
-  m <- match(c("formula", "data", "subset", "weights", "na.action", "offset","X"), names(mf), 0L)
+  m <- match(c("formula", "data", #"subset", 
+               "weights", "na.action", "offset","X"), names(mf), 0L)
   mf <- mf[c(1L, m)]
   mf$drop.unused.levels <- TRUE
   mf[[1L]] <- quote(stats::model.frame) 

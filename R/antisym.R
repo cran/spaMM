@@ -3,7 +3,8 @@ antisym <- function() {
   oldZlevels <- NULL
   
   initialize <- function(Zmatrix, ...) {
-    oldZlevels <<- colnames(Zmatrix)
+    oldZlevels <<- unique(colnames(Zmatrix)) # in case of composite ranef, Af() requires unique values
+    #  to construct a 'unique' A block that will be automatically bdiag()'ed elsewhere. 
   }
   
   Af <- function(newdata, 
@@ -16,10 +17,10 @@ antisym <- function() {
       rhs <- term[[2L]][[3L]]
       txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in .get_terms_info()
       RHS_info <- .as_factor(txt=txt,mf=newdata, type=parent.env(environment())$levels_type) # 'levels_type' as provided there by .preprocess_corrFamily
-      # it is the same level tpe that .cacl_Zmatrix uses for corrFamily types
+      # it is the same level type that .calc_Zmatrix uses for corrFamily types
       Zlevels <- levels(RHS_info$factor)
     }
-    Z2Ablob <- .dyad_Z2A(Zlevels, ord_pairs=TRUE) # orde_pairs different from ranGCA
+    Z2Ablob <- .dyad_Z2A(Zlevels, ord_pairs=TRUE) # ord_pairs different from ranGCA
     Z2A <- Z2Ablob$Z2A
     Afactor <- Z2Ablob$Afactor
     Alevels <- levels(Z2Ablob$Afactor) # order determined in .dyadZ2A. See comments there before trying to change.

@@ -9,8 +9,9 @@
 \description{
 Fits GL(M)Ms as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001). It may be called on its own but is now better seen as a backend for the main fitting function \code{fitme} (or \code{fitmv} for multivariate-response models),
   
-  On its own, \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where X is the design matrix of fixed effects and Z is a design matrix of random effects (typically an incidence matrix with 0s and 1s, but not necessarily). Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
-  Estimation of the latter parameters is performed by a form of fit of debiased residuals, which allows fitting a structured-dispersion model (Smyth et al. 2001).  However, evaluation of the debiased residuals can be slow in particular for large datasets. For models without structured dispersion, it is then worth using the \code{\link{fitme}} function. Ths function (as well as \code{\link{corrHLfit}}) can optimize the likelihood of \code{HLfit} fits for different given values of the dispersion parameters (\dQuote{outer optimization}), thereby avoiding the need to estimate debiased residuals. 
+  On its own, \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where X is the design matrix of fixed effects and Z is a design matrix of random effects (typically an incidence matrix with 0s and 1s, but not necessarily).   The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity.   
+  
+  Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. Fitting structured-dispersion model is performed by a form of fit of corrected residuals (Smyth et al. 2001). These corrected residuals are also used to estimate a single \eqn{\phi} value. However, evaluation of the corrected residuals can be slow in particular for large datasets. Then, for model without structured dispersion, \code{\link{fitme}} should be faster.  
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
@@ -58,7 +59,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
   \item{control.glm}{
     List of parameters controlling calls to \code{glm}-\dQuote{like} fits, passed to \code{glm.control}; e.g.\cr 
-    \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details. \code{glm}-\dQuote{like} fits may be performed as part of mixed-effect model fitting procedures, in particular to provide initial values (possibly using \code{\link{llm.fit}} for non-GLM families), and for \dQuote{inner} estimation of dispersion parameters.  
+    \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details. \code{glm}-\dQuote{like} fits (possibly using \code{\link{llm.fit}} for non-GLM families) may be performed as part of mixed-effect model fitting procedures, in particular to provide initial values for the different estimated parameters.  
   }
 
   \item{init.HLfit}{

@@ -54,7 +54,7 @@ and \code{rdisPars} for more complex residual-dispersion parameters. See the spe
 
 \code{get_ranPars(.,which="corrPars")} returns a (possibly nested) list of correlation parameters (or NULL if there is no such parameter). Top-level elements correspond to the different random effects. The list has a \code{"type"} attribute having the same nested-list structure and describing whether and how the parameters where fitted: \code{"fix"} means they where fixed, not fitted; \code{"var"} means they were fitted by \code{HLfit}'s specific algorithms; \code{"outer"} means they were fitted by a generic optimization method. 
 
-\code{get_ranPars(.,which="lambda")} returns a vector of variance values, one per random effect, including both fixed, \dQuote{outer}- and \dQuote{inner}-optimized ones. The variances of random-coefficients terms with correlation parameters are not included.
+\code{get_ranPars(.,which="lambda")} returns a vector of variance values, one per random effect, including both fixed, \dQuote{outer}- and \dQuote{inner}-estimated ones (see \code{\link{inner-vs-outer}}). The variances of random-coefficients terms with correlation parameters are not included.
 
 \code{get_ranPars(.,which="outer_lambda")} returns only \dQuote{outer}-optimized variance parameters, ignoring those fitted by \code{HLfit}'s specific algorithms. 
 

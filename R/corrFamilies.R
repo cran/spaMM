@@ -107,9 +107,11 @@ ARp <- function(p=1L, fixed=NULL, corr=TRUE, tpar=1/(1+seq(p))) {
   }
   
   make_new_corr_lists <- function(newLv_env, which_mats, ranFix, newZAlist, new_rd, old_rd, ...) { 
+    # intriguing: neither get_predVar() nor simulate appear to call this fn. 
+    # (in composite case, .make_new_corr_mats_rhs_composite() is called).
     char_rd <- as.character(old_rd)
     parvec <- .fill_parvec(parvec=ranFix$corrPars[[char_rd]], fixed=fixed, npar=p)
-    newlevels <- colnames(newZAlist[[new_rd]])
+    newlevels <- colnames(newZAlist[[new_rd]]) # might these be repeated? (but see above comment) and then column selection below may not be OK? (several more instances)
     newrange <- range(as.integer(newlevels))
     levelrange <- range(c(oldZrange,newrange))   
     # Qmat <- calc_Qmat_ARp(parvec=parvec, newlevels=newlevels)
@@ -229,7 +231,7 @@ ranGCA <- function() { # Z has O(nlevels^2) cols and A has O(nlevels) cols. No n
   oldZlevels <- NULL
 
   initialize <- function(Zmatrix, ...) {
-    oldZlevels <<- colnames(Zmatrix)
+    oldZlevels <<- unique(colnames(Zmatrix))
   }
   
   Af <- function(newdata, 
@@ -353,7 +355,7 @@ diallel <- function(tpar=0.25, fixed=NULL, public=NULL) {
   
   initialize <- function(Zmatrix, ...) { # called before $Af()
     
-    oldZlevels <<- oldZlevels <- colnames(Zmatrix)
+    oldZlevels <<- oldZlevels <- unique(colnames(Zmatrix))
     
     splitord <- .calc_splitord(oldZlevels)
     

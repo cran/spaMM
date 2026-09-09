@@ -6,7 +6,8 @@ HLfit_body <- function(processed,
          etaFix=list() ## beta, v_h (or even u_h)
 ) {
   processed$envir$ranFix <- fixed # for diagnostics reported by div_info() (seek '$ranFixes') [_F I X M E_ rethink] 
-  ranFix <- .post_process_respfamilies(processed$family, ranFix=fixed, families=processed$families) ## assign 'extra' COMPoisson or negbin pars and cleans ranFix of them
+  ranFix <- .post_process_respfamilies(processed$family, ranFix=fixed, 
+                                       families=processed$families) ## assign 'extra' family or dispersion pars and cleans ranFix of them
   # next line to be called before we extract anything (lambda, ranCoefs... ) from ranFix:
   ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   verbose <- processed$verbose
@@ -101,19 +102,12 @@ HLfit_body <- function(processed,
     # u_h <- v_h <- numeric(0)
     init.lambda <- NULL
   }
-  ###
-  ## Initial estimate for beta  (etaFix does NOT act directly in .wrap_IRLS -> .solve_IRLS...)
-  ###
-  if ( ! is.null(processed$X_off_fn)) { # (__F I X M E___?) currently X_off_fn does not allow partial beta's (with potential mess with initial beta_eta )
-    beta_eta <- numeric(0) 
-    #    both X_off and etaFix$beta are scaled here (check sur .p4m_by_outer_beta)
-    processed$off <- off <- processed$X_off_fn(etaFix$beta) # .solve_IRLS_as_ZX() uses processed$off
-    # AUGI0_ZX$X.pv must correspondingly have been reduced by .preprocess
-  } else {
-    off <- processed$off
-    beta_eta <- .get_init_beta(processed, pforpv, init.HLfit) # (note that this correctly avoids is.null(beta_eta) ***when*** pforpv=0) 
-                                                              # _F I X M E__ what do we exactly need for LMMs (?) 
-  }
+  
+  off <- .get_off(processed, new_betaFix=etaFix$beta) # (updated) processed$off copy; .solve_IRLS_as_ZX() uses processed$off
+  
+  ## Initial estimate for beta (Not including any etaFix parameter) ####
+  beta_eta <- .get_init_beta(processed, pforpv, init.HLfit) # (correctly avoids is.null(beta_eta) ***when*** pforpv=0) 
+  
   ######### missing Initial estimates for mu, phi, lambda by GLM ####################
   if ( is.null(beta_eta) ||  # occurs when pforpv>0 and .get_init_beta() did not find anything
        .anyNULL(phi_est) || anyNA(init.lambda) ) { 
@@ -137,11 +131,11 @@ HLfit_body <- function(processed,
       beta_eta[parmcol] <- intervalInfo$init ## already appropriately scaled if X.pv has been scaled
     }  
     ###
-    ## predictor from initial values. When there an etaFix, it is here in the 'off'set, and the dims of X.pv and beta_eta are here correspondingly reduced.
+    ## predictor from initial values. When there an etaFix, it should have been included in 'off', and the dims of X.pv and beta_eta are here correspondingly reduced.
     if (nrand) { # (models[["eta"]]=="etaHGLM") {
       ## Initial estimate for u_h, v_h 
       v_h <- intervalInfo$init_v_h
-      if (is.null(v_h)) v_h <- .initialize_v_h(processed, etaFix=etaFix, init.HLfit=init.HLfit) ## checks init.HLfit$v_h
+      if (is.null(v_h)) v_h <- .initialize_v_h(processed, v_h=etaFix$v_h, init.HLfit=init.HLfit) ## checks init.HLfit$v_h
       eta <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h)
     } else  eta <- off +drop(processed$AUGI0_ZX$X.pv %*% beta_eta) ## no iteration hence no updating  ## FREQS
     ## conversion to mean of response variable (COUNTS for binomial)
@@ -153,7 +147,7 @@ HLfit_body <- function(processed,
         intervalInfo$parmcol_X <- parmcol 
       }
     }
-    maxit.mean <- .maxit.mean(nrand, pforpv, etaFix, LMMbool, intervalInfo, 
+    maxit.mean <- .maxit.mean(nrand, pforpv, etaFix$v_h, LMMbool, intervalInfo, 
                               # for inner ranCoef estim [eg, HLfit3 example with family=Gammalog)] no leverages needed => std_dev_res_needed_4_inner_estim is FALSE 
                               # yet if there are inner_ranCoefs and only inner estim, not outer, is used, iter_mean_dispVar seems appropriate. 
                               # => second condition on which_inner_ranCoefs: [not a strict check of no outer estime but probably equivalent in practice]
@@ -265,7 +259,8 @@ HLfit_body <- function(processed,
     return(res)    ########################   R E T U R N
   } else if (identical(processed$return_only,"confint_bound")) {
     res <- list(APHLs=APHLs)
-    res <- .add_unscaled_X.pv_fixef(res=res, processed=processed, beta_eta=loopout_blob$beta_eta, etaFix=etaFix)
+    res <- .add_unscaled_X.pv_fixef(res=res, beta_eta=loopout_blob$beta_eta, etaFix=etaFix, # assumed resp. scaled and unscaled
+                                    processed=processed)  ## => returns FIXEF, UNSCALED X
     return(res)    ########################   R E T U R N fixef + APHLs
   }
   
@@ -279,16 +274,17 @@ HLfit_body <- function(processed,
   #  "fix" and "outer" parameters are given these types by .get_refit_args() after the optimization call, 
   # then HLfit called again and we reach this point.
   #  This means ranFix gets its type from there *if* properly retained by .canonizeRanPars() 
-  #  Then we add inner-optimized parameters, with "var" type added by .get_CorrEst_and_RanFix()
+  #  Then we add inner-optimized parameters, with "var" type added by .make_CorrEst_and_RanFix()
   if ( ! is.null(corr_est) && ! is.null(init.HLfit$corrPars)) corr_est <- list(corrPars=relist(loopout_blob$corr_est$rho,init.HLfit$corrPars)) ## not yet spaMM 3.0
   # Canonical, and inherits all info about outer-optimized corrPars through HLfit's ranFix argument:
   
-  CorrEst_and_RanFix <- .get_CorrEst_and_RanFix(ranFix, corr_est) # corr_est parameters are inner-estimated and of type "var"
+  CorrEst_and_RanFix <- .make_CorrEst_and_RanFix(ranFix, corr_est) # corr_est parameters are inner-estimated and of type "var"
   how <- list(spaMM.version=packageVersion("spaMM"),
-                  MME_method=.get_MME_method(loopout_blob$auglinmodblob, HL=HL),
-                  switches=c(augZXy_cond=processed$augZXy_cond, ADFun=processed$ADFun,
-                             use_spprec_QR=.spaMM.data$options$use_spprec_QR),
-                  obsInfo=processed$how$obsInfo )
+              MME_method=.get_MME_method(loopout_blob$auglinmodblob, HL=HL),
+              switches=c(augZXy_cond=processed$augZXy_cond, ADFun=processed$ADFun,
+                         use_spprec_QR=.spaMM.data$options$use_spprec_QR),
+              obsInfo=processed$how$obsInfo,
+              algebra=processed$how$algebra)
   
   res <- list(
     APHLs=APHLs,   ## LIKELIHOODS
@@ -322,7 +318,8 @@ HLfit_body <- function(processed,
     CorrEst_and_RanFix=CorrEst_and_RanFix,
     how=how)
   
-  res <- .add_unscaled_X.pv_fixef(res=res, processed=processed, beta_eta=loopout_blob$beta_eta, etaFix=etaFix)  ## FIXEF, UNSCALED X
+  res <- .add_unscaled_X.pv_fixef(res=res, beta_eta=loopout_blob$beta_eta, etaFix=etaFix, # assumed resp. scaled and unscaled
+                                  processed=processed)  ## => returns FIXEF, UNSCALED X
   
   if (is.null(processed$family) || processed$family$family %in% c("binomial","betabin")) { # null for mv case
     res$BinomialDen <- BinomialDen # we could put it in all cases...

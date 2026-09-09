@@ -8,6 +8,8 @@ Information matrix
 Computes by numerical derivation the observed information matrix for (ideally) all parameters for mean response model, that is, the matrix of second derivatives of negative log likelihood. 
 The default value of the \code{which} argument shows all classes of parameters that should be handled (except for PQL/L fits: see Details), including random-effect parameters (\code{lambda}, \code{\link{ranCoefs}}, \code{\link{corrPars}}, and \code{\link{hyper}}), residual dispersion parameters (\code{phi}, \code{NB_shape} for \code{\link{negbin1}} and \code{\link{negbin2}}, and \code{beta_prec} for \code{\link{beta_resp}} and \code{\link{betabin}}), and fixed-effect coefficients (\code{beta}).
 
+Approximate covariance matrices of parameters estimates can be deduced from the inverse of the information matrix. Inverses of blocks of this matrix provide asymptotic covariance matrices given the values of (nuisance) parameters excluded from a given block: these covariances calculations ignore the additional variance stemming from the uncertainty in the nuisance parameter values. For example, the inverse of the block for fixed-effect coefficients should contain variances corresponding to the standard errors traditionally reported in tables of fixed effects (see Examples). 
+
 The function calls algorithms from \pkg{numDeriv} and share their limitations. Notably, they may request a re-fit of the model with some parameters fixed at values that are out of the allowed ranges. This can be controlled by the \code{method.args} argument, passed through the \dots to these algorithms (see Examples). 
 
 PQL/L fits raise specific problems, as do other fits by methods maximizing two different likelihood approximations for different subsets of parameters (see Details).
@@ -42,7 +44,7 @@ numInfo(fitobject, transf = FALSE, which = NULL, check_deriv = TRUE,
   are highlighted in output (see Value). This will highlight nearly-singular information matrices, but also those with large negative eigenvalues.
   }
   \item{verbose}{
-Boolean: whether to print (as a list) the estimates of the parameters for which the Hessian will be computed, additional information about possibly ignored parameters, possible misuse of REML fits, and a (sort of) progress bar if the procedure is expected to last more than a few seconds.
+Boolean: whether to print (as a list) the estimates of the parameters for which the information matrix will be computed, additional information about possibly ignored parameters, possible misuse of REML fits, and a (sort of) progress bar if the procedure is expected to last more than a few seconds.
 }
   \item{refit_hacks}{
   list of arguments; its name anticipates that it might allow hazardous manipulations in a later version of \pkg{spaMM}. But currently only the innocuous element \code{verbose} of the list will be taken into account. Notably, \code{refit_hacks=list(verbose=c(TRACE=TRUE))} can be used to give information on parameter values used in the computation of numerical derivatives.
@@ -68,15 +70,16 @@ Otherwise a matrix is returned, with an \code{eigvals} attribute if \code{sing} 
 data("wafers")
 lmmfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),data=wafers)
 numinfo <- numInfo(lmmfit)
-(SEs <- sqrt(diag(solve(numinfo))))
-#
-# => beta SEs here equal to conditional SEs shown by fit summary.
-# Other SEs can be compared to the approximate ones 
-# for log(phi) and log(lambda), given by 
-#
-# update(lmmfit, control=list(refit=TRUE))
-#
-# => 1118*0.5289 and 10840*0.1024 to compare SEs with vs. without log-transformation.  
+covmat <- solve(numinfo[-(1:2),-(1:2)])
+(cond.SEs <- sqrt(diag(covmat))) # = SEs for fixed effects in the summary()
+
+(SEs <- sqrt(diag(solve(numinfo)))) 
+# => SEs[-(1:2)] here, *but not generally*, equivalent to cond.SEs.
+# SEs[1:2] are those of lambda and phi; they can be compared 
+# to the more approximate ones, for log(phi) and log(lambda), given by 
+# > update(lmmfit, control=list(refit=TRUE))
+# These SEs translate to 1118*0.5289 ~ 591.3... for lambda and 
+# 10840*0.1024 ~ 1110 for phi, while numInfo() gives 735.9 and 1120, respectively.
 
 data("blackcap")
 maternfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap) 

@@ -55,6 +55,9 @@
   return(pd)
 }
 
+# From Matrix 1.6-2, "Methods for generic functions rbind2, cbind2, %*%, %&%, crossprod, and tcrossprod determine the class of the result using more strict rules, designed to avoid “surprising” coercions where possible. Notably, operations involving RsparseMatrix now return an RsparseMatrix in more cases. TsparseMatrix and diagonalMatrix may be handled as CsparseMatrix or as RsparseMatrix, depending on context. "
+# Maybe some old as.matrix() coertions were previously useful. 
+# But now I can remove some of then with great gains. 
 .calc_cAIC_pd_from_sXaug <- function(object) {
   if (is.matrix(beta_cov_info <- object$envir$beta_cov_info) || ## matrix is old format, should be a list now
       is.null(tcrossfac_beta_v_cov <- beta_cov_info$tcrossfac_beta_v_cov)) {
@@ -73,9 +76,16 @@
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(X_ori) ) {
     M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, X_ori), as_mat=TRUE)
-    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.safe_ZtWZwrapper(X_ori,H_w.resid)))) 
-    # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
+    if (.spaMM.data$options$Matrix_old) {
+      Md2clikdvb2 <- rbind2(cbind2(as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid)), M12), 
+                            cbind2(t(M12), as.matrix(.safe_ZtWZwrapper(X_ori,H_w.resid)))) 
+      message("If this step was slow, updating the Matrix package to a version >=1.6-2 might be helpful.")
+    } else { # AIC(bigranefs) showed the gain  of removing the as.matrix()s.            
+      Md2clikdvb2 <- rbind2(cbind2(.safe_ZtWZwrapper(ZAL,H_w.resid), M12), 
+                            cbind2(t(M12), .safe_ZtWZwrapper(X_ori,H_w.resid))) 
+    }
+    # Old comments:
+    # .ZtWZwrapper(ZAL...) may take time
   } else {
     Md2clikdvb2 <-  as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid))
   }
@@ -84,6 +94,8 @@
   return(pd)
 }
 
+# Here, using qr.Md2hdbv2$pivot implies that qr() was run on a base matrix.
+# So as.matrix() may remain necessary unless further changes are made.
 .calc_cAIC_pd_others <- function(X.pv, ZAL, w.resid, d2hdv2, blockSize=1000L) {
   if ( ncol(X.pv) ) { ## the projection matrix for the response always includes X even for REML!
     hessnondiag <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, X.pv))
@@ -181,7 +193,8 @@
     p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
   } else p_phi <- sum(.unlist(dfs[["p_fixef_phi"]])) # .unlist() for mv
   names_est_ranefPars <- unlist(.get_methods_disp(object))  
-  fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu","beta_prec"))
+  fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu","beta_prec",
+                                                        "Tw_index","Tw_link"))
   if (length(fam_disp_parsnames)) {
     p_GLM_family <- length( # compatible with mv:
       .unlist(.get_outer_inits_from_fit(object, keep_canon_user_inits = FALSE)[fam_disp_parsnames]))
@@ -305,11 +318,7 @@ DoF <- function(object) {
     dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q, rhs) # don't forget '-'
   } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse 
     # This case happens at least in my ressp devel example (tiny ranCoefs spprec)
-    if (inherits(d2hdv2_info,"dsCMatrix")) {  
-      if (.spaMM.data$options$Matrix_old) { 
-        d2hdv2_info < as(d2hdv2_info, "dgCMatrix")
-      } else d2hdv2_info <- as(d2hdv2_info, "generalMatrix")
-    } 
+    if (inherits(d2hdv2_info,"dsCMatrix")) d2hdv2_info <- as(d2hdv2_info, "generalMatrix")
     dvdloglamMat <- d2hdv2_info %*% neg.d2f_dv_dloglam 
   }
   # I returned as.matrix(dvdloglamMat) a long time ago, and found it terribly inefficient in bigranefs case; 
@@ -550,7 +559,7 @@ DoF <- function(object) {
     } else Gmat <- precmat + ZtwrZ  
     invG_ZtW <- tryCatch(solve(Gmat, t(wrZ)),error=function(e) e)
     if (inherits(invG_ZtW,"simpleError")) { ## but that should be well behaved when precmat is.
-      invG <- ginv(as.matrix(Gmat)) ## FIXME quick patch at least
+      invG <- .ginv(as.matrix(Gmat)) ## FIXME quick patch at least
       invG_ZtW <- .tcrossprod(invG, wrZ)
     }  
     RES <- list(n_x_r=wrZ, r_x_n=invG_ZtW)
@@ -672,11 +681,21 @@ DoF <- function(object) {
 
 ## Aggregate info on corrpars, inner-estimated and inner-fixed.
 ## $corrPars is only for info in messages() and return value, (?!)
-.get_CorrEst_and_RanFix <- function(ranFix, ## has "fix", "outer", and also "var" values ! code corrently assumes "var" <=> corr_est
+.make_CorrEst_and_RanFix <- function(ranFix, ## has "fix", "outer", and also "var" values ! code corrently assumes "var" <=> corr_est
                                     corr_est 
 ) {
   # When fitting function was HLCor, the type attribute has not been added to the corrPars
-  if (is.null(attr(ranFix,"type"))) attr(ranFix,"type") <- .relist_rep("fix", ranFix)
+  if (is.null(attr(ranFix,"type"))) {
+    rFtype <- .relist_rep("fix", ranFix)
+    # HLCor may have been called through fitme/fitmv with inner estimation of lambda...
+    # Test case is first fitmv_body fit for BbyP_sp: initvec is NULL, inner estim of lambda
+    # get_fittedPars -> ... ->  .get_ranPars_notPhi() finally gets the correct info from lambda.object$type.
+    # but get_ranPars gets info from $corrEst_and_ranFix which gets info from here
+    # This means we need to distinguish inner from fix here.
+    rFtype["lambda"] <- .modify_list(rFtype["lambda"], 
+                                     relist("inner",ranFix["lambda"])[is.na(ranFix["lambda"])])
+    attr(ranFix,"type") <- rFtype
+  }
   if ( ! is.null(corr_est)) {
     ranFix <- structure(.modify_list(ranFix,corr_est), 
                         type=.modify_list(attr(ranFix,"type"),.relist_rep("var",corr_est)))

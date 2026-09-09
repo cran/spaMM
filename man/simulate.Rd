@@ -12,6 +12,8 @@
   From an HLfit object, \code{simulate.HLfit} function generates new samples given the estimated fixed effects 
   and dispersion parameters. Simulation may be unconditional (the default, useful in many applications of parametric bootstrap), or conditional on the predicted values of random effects, or may draw from the conditional distribution of random effects given the observed response. Simulations may be run for the original sampling design (i.e., original values of fixed-effect predictor variables and of random-effect levels, including spatial locations if relevant), or for a new design as specified by the \code{newdata} argument. 
   
+The \code{simulate(\var{multivariate-response fit})} return value will contain \code{NA} elements when information is missing to predict and simulate these elements, while this is so neither in the univariate case nor for \code{predict} results. This goes together with differences in the format of the \code{data} element in the fitted object (see Value in \code{\link{fitmv}}). In both cases, the \code{simulate} result is directly usable in \code{\link{update_resp}} and suitable for standard bootstrap computations, with no need for additional user input. \code{simulate(\var{multivariate-response fit}, newdata=\var{newdata})} may also contain \code{NA}s (see Details).  
+  
   \code{simulate4boot} is a wrapper around \code{simulate.HLfit} that can be used to precompute the bootstrap samples to be used by \code{\link{spaMM_boot}} or \code{\link{spaMM2boot}} through their \code{boot_samples} argument (and is called internally by these functions when \code{boot_samples} is NULL). 
   
   \code{simulate_ranef} will only simulate and return a vector of random effects, more specifically some elements of the \bold{b} vector appearing in the standard form \code{offset}+ \bold{X}\eqn{\beta} + \bold{Z b} for the linear predictor.
@@ -21,7 +23,7 @@
                          type = "marginal", re.form, conditional = NULL, 
                          verbose = c(type=TRUE,
                                      showpbar=eval(spaMM.getOption("barstyle"))), 
-                         sizes = if (is.null(newdata)) object$BinomialDen, 
+                         sizes = if (is.null(newdata)) get_drawSizes(object, p4m="M"), 
                          resp_testfn = NULL, phi_type = "predict", 
                          prior.weights = if (is.null(newdata)) object$prior.weights, 
                          variances=list(), ...)
@@ -52,14 +54,14 @@ simulate_ranef(object, which=NULL, newdata = NULL, nsim = 1L)
   See Details for the definition of the default when \code{newdata} are provided. For multivariate-response fits, this is a list with one element per submodel, each element being a vector whose size is the number of response levels to be simulated for each submodel (the \code{object$prior.weights} provides an example). 
 }
 \item{sizes}{
-  A vector of sample sizes to simulate in the case of a binomial or \code{betabin} fit. See Details for the definition of the default when \code{newdata} are provided. For multivariate-response fits, the \code{sizes} argument should contain elements for response levels for all submodels whatever their response families (e.g. for submodels with families and response levels \code{poisson: 3} and \code{binomial: 2}, respectively, the \code{sizes} vector should contain 5 elements, e.g. 1 1 1 5 10, only the last two of which having nontrivial meaning).  
+  A vector of sample sizes to simulate in the case of a binomial, \code{betabin} of multinomial fits. See Details for the definition of the default when \code{newdata} are provided. For multivariate-response fits, the \code{sizes} argument should contain elements, for response levels that can be predicted and simulated (see Detaisl for handling of missing information), for all submodels whatever their response families (e.g. for submodels with families and response levels \code{poisson: 3} and \code{binomial: 2}, respectively, the \code{sizes} vector should contain 5 elements, e.g. 1 1 1 5 10, only the last two of which having nontrivial meaning).  
 }
 \item{re.form}{ formula for random effects to condition on. Default behaviour depends on the \code{type} argument. The joint default is the latter's default, i.e., unconditional simulation. \code{re.form} is currently ignored when 
 \code{type="predVar"} %also (ranef|response) but this type is not mentioned in the doc
 (with a warning). Otherwise, \code{re.form=NULL} conditions on all random effects (as \code{type="residual"} does), and \code{re.form=NA} conditions on none of the random effects (as \code{type="marginal"} or \code{re.form=~0} do).  
 }
   \item{type}{
-    character string specifying which uncertainties are taken into account in the linear predictor and notably in the random effect terms. Whatever the \code{type}, the residual variance is always accounted in the simulation output. \code{"marginal"} accounts for the marginal variance of the random effect (and, by default, also for the uncertainty in fixed effects); \code{"predVar"} accounts for the conditional distribution of the random effects given the data (see Details); and \code{"residual"} should perhaps be \code{"none"} as no uncertainty is accounted in the linear predictor: the simulation variance is only the residual variance of the fitted model.
+    character string specifying which uncertainties are taken into account in the linear predictor and notably in the random effect terms. Whatever the \code{type}, the residual variance is always accounted in the simulation output. \code{"marginal"} accounts for the marginal variance of the random effect; \code{"predVar"} accounts for the conditional distribution of the random effects given the data (and, by default, also for the uncertainty in fixed effects: see Details); and \code{"residual"} should perhaps be \code{"none"} as no uncertainty is accounted in the linear predictor: the simulation variance is only the residual variance of the fitted model.
   }
   \item{conditional}{
     Obsolete and will be deprecated. Boolean; TRUE and FALSE are equivalent to \code{type="residual"} and \code{type="marginal"}, respectively. 
@@ -71,7 +73,7 @@ simulate_ranef(object, which=NULL, newdata = NULL, nsim = 1L)
   NULL, or a function that tests a condition which simulated samples should satisfy. This function takes a response vector as argument and return a boolean (TRUE indicating that the sample satisfies the condition). 
   }
   \item{phi_type}{
-    Character string, either \code{"predict"} or one of the values possible for \code{type}. This controls the residual variance parameter \eqn{\phi}. The default is to use predicted \eqn{\phi} values from the fit, which are the fitted \eqn{\phi} values except when a structured-dispersion model is involved together with non-NULL \code{newdata}. However, when a structured-dispersion model is involved, it is also possible to simulate new \eqn{\phi} values, and for a mixed-effects structured-dispersion model, the same types of simulation controlled by \code{type} for the mean response can be performed as controlled by \code{phi_type}. For a fixed-effects structured-dispersion model, these types cannot be distinguished, and any \code{phi_type} distinct from \code{"predict"} will imply simulation under the fixed-effect model (see Examples). 
+    Character string, either \code{"predict"} or one of the values possible for \code{type}. This controls the residual variance parameter \eqn{\phi}. The default is to use predicted \eqn{\phi} values from the fit, which are the fitted \eqn{\phi} values except when a structured-dispersion model is involved together with non-NULL \code{newdata}. Simulating residual variation for \eqn{\phi} is a dubious concept and is no longer a documented option. However, when a mixed-effect dispersion model is involved, it is still possible to simulate new values of the predictor for \eqn{\phi} values, and for such mixed models, the same types of simulation controlled by \code{type} for the mean response can be performed as controlled by \code{phi_type}.  
 }
 \item{variances}{
   Used when \code{type="predVar"}: see Details. 
@@ -87,6 +89,12 @@ Controls display of progress bar. See \code{\link{barstyle}} option for details.
 }  
 }
 \details{
+If the original data \code{\var{myData}}, to which a model was fitted, contained missing information (missing predictor or response values in some lines), the format of the \code{simulate} results will depend whether a multivariate response model was fitted or not: 
+
+\bold{univariate case}: \code{simulate(\var{fitme result})} will contain only numbers for informative lines and no \code{NA}s;  \code{simulate(\var{fitme result}, newdata=\var{result's}$data)} will have the same structure; and \code{simulate(\var{fitme result}, newdata=\var{myData})} should have additional values for lines of data with missing (only) response values, and still no \code{NA}s.
+
+\bold{multivariate case}: \code{simulate(\var{fitmv result})} will contain numbers for informative lines and \code{NA}s for other lines; while both  \code{simulate(\var{fitmv result}, newdata=\var{result's}$data)} and \code{simulate(\var{fitmv result}, newdata=\var{my data})} will contain NA for values that cannot be predicted due to missing predictors (but will contain simulated values otherwise, irrespective of the absence of response values). The \code{sizes} argument, when used, should match the non-NA values (hence differentvalues might need to be specified whether \code{newdata} is NULL or not).
+
 \code{type="predVar"} accounts for the uncertainty of the linear predictor, by drawing new values of the predictor in a multivariate gaussian distribution with mean and covariance matrix of prediction. In this case, the user has to provide a \code{variances} argument, passed to \code{predict}, which controls what goes into this covariance matrix. For example, with \code{variances=list(linPred=TRUE,disp=TRUE)}), the covariance matrix takes into account the joint uncertainty in the fixed-effect coefficients and of any random effects given the response and the point estimates of dispersion and correlation parameters (\code{"linPred"} variance component), and in addition accounts for uncertainty in the dispersion parameters (effect of \code{"disp"} variance component as further described in \code{\link{predict.HLfit}}).  The total simulation variance is then the response variance. Uncertainty in correlation parameters (such a parameters of the Matern family) is not taken into account. The \code{"linPred"} uncertainty is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation. 
 
 \code{type="(ranef|response)"} can be viewed as a special version of \code{type="predVar"} where\cr 
@@ -99,11 +107,11 @@ There are cases where simulation without a \code{newdata} argument may give resu
 When \code{newdata} are provided but new values of \code{prior.weights} or \code{sizes} are missing, new values of these missing arguments are guessed, and warnings may be issued depending on the kind of guess made for response families dependent on such arguments. The \code{prior.weights} values used in the fit are re-used without warning when such values were identical (generally, unit) for all response values, and labelled as such in the \code{object$prior.weights}. Unit weights will be used otherwise, with a warning. Unit binomial sizes will be used, with a warning, whenever there are \code{newdata}.  
 }
 \value{
-  \code{simulate.HLfit} returns a vector (if nsim=1) or a matrix with \code{nsim} columns, each containing simulated responses (or simulated random effects, for \code{simulated_ranef()}). For multivariate-response simulations, an \code{nobs} attribute gives the number of responses for each submodel if no \code{resp_testfn} was applied.
+  \code{simulate.HLfit} returns a vector (if nsim=1) or a matrix with \code{nsim} columns, each containing simulated vectors of responses (or simulated random effects, for \code{simulated_ranef()}). For multivariate-response simulations, each vector may contain \code{NA} elements when some information is missing (see Details), and an \code{nobs} attribute gives the number of non-NA responses for each submodel if no \code{resp_testfn} was applied.
   
   \code{simulate4boot} returns a list with elements 
     \describe{
-    \item{bootreps}{the result of \code{simulate.HLfit} as a matrix with \code{nsim} columns;}
+    \item{bootreps}{the result of \code{simulate.HLfit} as a matrix with \code{nsim} columns, one for each simulated response vector;}
     \item{RNGstate}{the state of \code{.Random.seed} at the beginning of the sample simulation.}  
   }
 
@@ -121,7 +129,15 @@ simulate(HLC,nsim=2)
 data("wafers")
 hl <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
             resid.model = ~ X3+I(X3^2) ,data=wafers)
-simulate(hl,type="marginal",phi_type="simulate",nsim=2)
+# 'phi_type' matters only for mixed models:            
+simulate(hl,type="marginal", phi_type="anything", nsim=2)
 simulate_ranef(hl,nsim=2)
+
+## Using the returned 'RNGstates' to reproduce sample simulation: 
+s1 <- simulate4boot(hl, nsim=3)
+assign(".Random.seed", pos = .GlobalEnv, value = s1$RNGstates)
+s2 <- simulate4boot(hl, nsim=3)
+identical(s1$bootreps, s2$bootreps) # TRUE
+
 }
 \keyword{ datagen }

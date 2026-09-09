@@ -16,7 +16,8 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
     weights <- rep.int(1, nobs)
   if (is.null(offset)) 
     offset <- rep.int(0, nobs)
-  if (family$family=="COMPoisson") {
+  famfam <- family$family
+  if ((is_COMP <- famfam=="COMPoisson")) {
     muetaenv <- NULL
     variance <- function(mu) {family$variance(mu,muetaenv=muetaenv)}
     # dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
@@ -76,7 +77,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
         eta <- offset + as.vector(if (NCOL(x) == 1L) {x * start} else {x %*% start})
       }
     } else eta <- family$linkfun(mustart)
-    if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta) # In each case were this bit of code is run,
+    if (is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta) # In each case were this bit of code is run,
     # The fact that we have redefined locally variance, dev.resids, and for "loglambda" link also linkinv and mu.eta,
     # means that generic calls to these functions will use will use muetaenv when appropriate. This is so, for example, for the next line of code.
     mu <- linkinv(eta)
@@ -127,7 +128,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
       #   eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu) 
       # }
       eta <- .sanitize_eta(eta,y=y, family=family)
-      if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+      if (is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
       mu <- linkinv(eta)
       dev <- start
       if (control$trace) 
@@ -149,7 +150,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
           start <- (start + coefold)/2
           eta <- drop(x %*% start)
           eta <- eta + offset
-          if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+          if (is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
           mu <- linkinv(eta)
           dev <- start
         }
@@ -173,7 +174,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
           start <- (start + coefold)/2
           eta <- drop(x %*% start)
           eta <- eta + offset
-          if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+          if (is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
           mu <- linkinv(eta)
         }
         boundary <- TRUE
@@ -198,12 +199,12 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
       warning("glm.fit: algorithm stopped at boundary value", 
               call. = FALSE)
     eps <- 10 * .Machine$double.eps
-    if (family$family == "binomial") {
+    if (famfam == "binomial") {
       if (any(mu > 1 - eps) || any(mu < eps)) 
         warning("glm.fit: fitted probabilities numerically 0 or 1 occurred", 
                 call. = FALSE)
     }
-    if (family$family == "poisson") {
+    if (famfam == "poisson") {
       if (any(mu < eps)) 
         warning("glm.fit: fitted rates numerically 0 occurred", 
                 call. = FALSE)

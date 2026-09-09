@@ -20,11 +20,9 @@ if ( ! exists("doSeeMe")) doSeeMe <- spaMM.getOption("doSeeMe") # in principle p
   FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
                                    testthat::expect_true(crit<1e-05) ), silent=TRUE)
   doSeeMe(FIXME) 
-  cat(cli::col_yellow("Warning expected here:"))
   (p1 <- predict(compAR1fitsp))
   (p2 <- predict(compAR1fitspc, newdata=compAR1fitsp$data))
   (p3 <- predict(compAR1fitdec, newdata=compAR1fitsp$data))
-  cat(cli::col_yellow("Warning expected here:"))
   (p4 <- predict(compAR1fitsp, newdata=compAR1fitsp$data)) 
   (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
   FIXME <- testthat::test_that(paste0(
@@ -288,9 +286,7 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
   (p2d <- predict(zut1d, newdata=zut1d$data))
   (pVd <- get_predVar(zut1d))
   (pVd <- get_predVar(zut1d, newdata=zut1d$data,variances=list(cov=F)))
-  # cat(cli::col_yellow("Warning expected here:"))
   (p1s <- predict(zut1s))
-  cat(cli::col_yellow("Warning expected here:"))
   (p2s <- predict(zut1s, newdata=zut1s$data)) 
   (pVs <- get_predVar(zut1s))
   (pVs <- get_predVar(zut1s, newdata=zut1s$data,variances=list(cov=F)))

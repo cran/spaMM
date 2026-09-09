@@ -3,13 +3,13 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
                          intervals = "predVar", indiv=FALSE, verbose=NULL, ...) {
   verbose <- .modify_list(list(na_once=TRUE), verbose)
   was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
-  if (inherits(object,"fitme") && is.null(submodel)) 
+  if (inherits(object,"fitmv") && is.null(submodel)) 
     stop("'submodel' argument required for multivariate-response fits.")
   
   if (!focal_var %in% colnames(newdata)) {
     stop("'focal_var' is not found in the data.")
   }
-  ori_values <- newdata[, focal_var,drop=TRUE] # drop[] bc tibbles do not automatically drop 
+  ori_values <- newdata[, focal_var,drop=TRUE] # [,drop] bc tibbles do not automatically drop 
   ori_values <- na.omit(ori_values)
   if (is.character(ori_values)) ori_values <- factor(ori_values)
   if (is.logical(ori_values)) {
@@ -58,14 +58,12 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
                     ...)
     CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!... as this would modify the argument of predict()
     if ( ! is.null(submodel)) {
-      cumnobs <- cumsum(c(0L,attr(pred,"nobs")))
-      minmax <- cumnobs[submodel+c(0L,1L)]+c(1L,0L)
-      predrange <- seq((minmax[1L]),minmax[2L])
-      pred <- pred[predrange,,drop=FALSE]
-      # if (is.null(CIs)) {
-      #   CIs <- matrix(NA_real_, ncol=2,nrow=1) # was a fix for result from pois4mlogit but no longer necess
-      # } else 
-        CIs <- CIs[predrange,,drop=FALSE]
+      cumnobs <- cumsum(c(0L,attr(pred,"nobs"))) 
+      predrange <- .subrange(cumnobs, submodel)
+      minmax <- range(predrange)
+      pred <- attr(pred,"mv")[[submodel]]
+      dim(pred) <- c(length(pred),1L)
+      CIs <- CIs[predrange,,drop=FALSE]
       attr(resu,"range") <- minmax
     }
     if (indiv) {
@@ -114,14 +112,18 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
       resp <- resp[yrange] #   8 values
     }
     if (inherits(object,"pois4mlogit")) {
-      mnsizes <- object$p4m_info$multinom_info$mnsizes # 10 including one NA
+      mnsizes <- object$p4m_info$multinom_info[["mnsizes"]] # 10 including one NA
       mnsizes <- mnsizes[object$p4m_info$multinom_info$mnpos_in_template[,submodel]] # mnsizes of the 8 fitted values
       resp <- resp/mnsizes
-      if (is.null(ylab)) {
+    }
+    if (is.null(ylab)) {
+      if (inherits(object,"pois4mlogit")) {
         form <- formula.HLfit(object,which="")[[submodel]]
         ylab <- paste("frequency(",form[[2L]],")")
-      }
-    } else if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2L]])
+      } else if (inherits(object,"fitmv")) {
+        form <- formula.HLfit(object,which="")[[submodel]]
+        ylab <- paste(form[[2L]])
+      } else ylab <- paste(formula.HLfit(object,which="")[[2L]])}
   }
   if (is.null(ylim)) ylim <- stats::quantile(resp, c(0.025, 0.975))
   rgb.args <- as.list(rgb.args)
