@@ -3,14 +3,13 @@
 \alias{predict.pois4mlogit}
 \alias{update.pois4mlogit}
 \alias{reshape2long}
-%- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Fit multinomial logit models % and multivariate-response models including them.
 }
 \description{
 \code{pois4mlogit} is a procedure that fits a multinomial logit model by calling \code{fitmv} to fit multivariate \code{poisson(log)} surrogate models, according to the following logic. In the (mixed or not) multinomial logit model, the probabilities \eqn{p_{ic}} of the different categories (or \code{types}) \eqn{c=1,...,C} for the \eqn{i}th multinomial draw \eqn{(n_{i1},...,n_{iC})} are of the form 
 \deqn{p_{ic}=\frac{e^{\eta_{ic}}}{\sum_{c=1}^C e^{\eta_{ic}}}} 
-where each \eqn{\eta_{ic}} is a linear predictor. By contrast, the denominator makes \eqn{\log(p_{ic})} non-linear. This type of model can can be fitted as a Poisson non-linear mixed-effect model (e.g., Chen & Kuo, 2001). \pkg{spaMM} does not have general procedures for fitting non-linear mixed-effect models, but its current procedures for GLMMs have been hacked to fit this specific model, and this includes the use of an iteratively updated offset term (see Details for more information). The correctness of the procedure can be verified for binomial data by comparison to a standard binomial GLMM fit (see Examples). 
+where each \eqn{\eta_{ic}} is a linear predictor (a sum of fixed and random effects as considered by other fitting functions, including all forms allowed by \code{fitmv} in particular). By contrast, the denominator makes \eqn{\log(p_{ic})} non-linear. This type of model can can be fitted as a Poisson non-linear mixed-effect model (e.g., Chen & Kuo, 2001). \pkg{spaMM} does not have general procedures for fitting non-linear mixed-effect models, but its current procedures for GLMMs have been hacked to fit this specific model, and this includes the use of an iteratively updated offset term (see Details for more information). The correctness of the procedure can be verified for binomial data by comparison to a standard binomial GLMM fit (see Examples). 
 
 In a \code{pois4mlogit} call, the \code{formula} for each type of the multinomial response must contain a term \code{offset(.dynoffset)} that declares the above-defined offset term, in addition to the terms specifying each type-specific \eqn{\eta_{.c}}. The values of this offset for all \eqn{i} are iteratively updated between successive calls to surrogate Poisson multivariate-response GLMMs, each fitted using \code{fitmv}. 
 
@@ -56,7 +55,7 @@ Character vector. Controls initiation of the next \code{fitmv} call from the res
 If \code{"v_h"} is included, the previous \code{fitmv} result is used to provide initial values for the random effects. If \code{"fixef"} is included, the previous \code{fitmv} result is used to provide initial values for the fixed effects.
 }
 \item{to.long}{
-Boolean; for optional reformatting of the data (see Details and Examples).
+Boolean; for optional reformatting of the data. Maybe no longer useful (see Details).
 }
 \item{control}{
 list; passed to \code{\link{fitmv}}, but may also contain extra elements intrinsic to \code{pois4mlogit}, as shown in its default value. These elements are currently for development purposes. 
@@ -76,11 +75,8 @@ Integer: maximum number of iteration of iterative algorithm.
   \item{tol}{
 Numeric: tolerance thresholds for determining convergence. For development purposes, not documented.
 }
-%  \item{fac}{
-%Numeric: a control parameter of the iterative algorithm. The default value is better to avoid convergence issues. Higher values may speed up the fit but may also increase the chance of non-convergence, particularly those above 1.5. 
-%}
   \item{initfn}{
-function: a function that returns initial values. Currently for development purposes. % ____F I X M E____
+function: a function that returns initial values. Currently for development purposes, and may become deprecated in the future. % ____F I X M E____
 }
   \item{progress}{
 Boolean or numeric: whether to print information about number of iterations, and (if \code{progress>1L}) about each iteration. Negative values suppress convergence warnings.
@@ -96,7 +92,7 @@ The \bold{standard errors for fixed-effect coefficients} shown in the summary of
 
 Missing data are handled. This includes the detection and correct handling of cases where (i) a multinomial draw is uninformative because only one type has full information (i.e., response value and all required predictor variables); and (ii) a multinomial draw is informative about some but not all types. In that case, the basic form of the model for a multinomial draw still holds for the relative counts of these types.  
 
-When \code{to.long=TRUE}, the surrogate Poisson  model is fitted to data specified in a long form where each multinomial draw of size \eqn{s_i} is described as \eqn{s_i} multinomial draws of size 1 (so that each Poisson submodel is fitted to a response vector of 0s and 1s). In this long format, counts for the different response types still form different columns (here containing only 0 or 1) of the \code{data}. This format is not needed (and not memory-efficient) but is available for comparison, as it was used by Chen & Kuo (2001). The utility function \code{reshape2long} can also be used to convert the original data frame to the long format. 
+When \code{to.long=TRUE}, the surrogate Poisson  model is fitted to data specified in a long form where each multinomial draw of size \eqn{s_i} is described as \eqn{s_i} multinomial draws of size 1 (so that each Poisson submodel is fitted to a response vector of 0s and 1s). In this long format, counts for the different response types still form different columns (here containing only 0 or 1) of the \code{data}. The utility function \code{reshape2long} can also be used to convert the original data frame to the long format. This format was used by Chen & Kuo (2001), but currently it is not needed, and it is not memory-efficient. 
 
 %Some control of initial values for (\dQuote{outer-optimized}) random-effect parameters over iterations is possible. However, the following non-default options are presumably very inefficient and should be considered only when the default option fails to provide appropriate results. The \emph{next-init default}, defined in the documentation of the \code{next_inits} argument, can be modified as follows: if \code{"ranPars"} is absent but \code{"init"} is present in the \code{next_inits} vector, this default is modified by the user-provided \code{init} value. If both \code{"ranPars"} and \code{"init"} are absent from the \code{next_inits} vector, user-provided \code{init} values are not used but their names define the elements from the next-init default that are retained in the initial values of the next \code{fitmv} call (thus, other elements are dropped and their initial values will \bold{not} be given by results of the previous \code{fitmv}).
 }
@@ -108,7 +104,7 @@ Chen, Z. and Kuo, L. (2001) A note on the estimation of the multinomial logit mo
 effects. The American Statistician 55, 89-95. \url{https://www.jstor.org/stable/2685993}
 }
 \seealso{
-\code{vignette("multinomial-logit", package = "spaMM")} for more examples. This vignette illustrates in particular how to use the following \code{fitmv} arguments, also  handled by \code{pois4mlogit}, to describe relationships between model terms from different sub-models:
+\code{vignette("multinomial-logit", package = "spaMM")} for more examples. On an example used notably by Chen & Kuo, this vignette illustrates in particular how to use the following \code{fitmv} arguments, also  handled by \code{pois4mlogit}, to describe relationships between model terms from different sub-models:
 \code{\link{mv}} and \code{\link{aliases}} syntaxes for random effects, and \code{\link{X2X}} for fixed effects. 
 }
 \examples{
@@ -185,8 +181,5 @@ if (spaMM.getOption("example_maxtime")>0.65) {
 
 # Have a look at the 'See also' section for useful features 
 # not illustrated in the present examples. 
-% ____F I X M E____ illustrate 'aliases'?
-
-
 }
 

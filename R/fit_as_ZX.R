@@ -508,8 +508,10 @@
       rescue_nbr <- 0L
       prev1_rescued <- FALSE
     } else which_LevMar_step <- "v_b" 
-    old_relV_beta <- NULL # ____F I X M E____ rethink following alternative later:
-    # old_relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta) # perhaps minor changes in logL values (cf compar logLik(onb1) to older result)
+    old_relV_beta <- NULL 
+    # Using instead:
+    # old_relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta)
+    # impacts the c(0.02427526, 0.04343179)-fitci test.
     not_moving <- FALSE
     damped_WLS_blob <- NULL
     d_relV_b_tol <- processed$spaMM_tol$d_relV_b_tol 

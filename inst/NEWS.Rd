@@ -3,6 +3,31 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.7.17}{  
+\subsection{BROKEN LINKS}{
+\itemize{
+\item The gitlab server that hosted the reference page for the package has been closed and replaced.
+}
+}
+\subsection{FUTURE COMPATIBILITY ISSUES}{
+\itemize{
+\item C++ code adjusted to be compatible with future use of Eigen 5.0.1 by RcppEigen package.
+}
+}
+\subsection{NEW FEATURES}{
+\itemize{
+\item More efficient (and presumably less buggy) 'confint' method for multinomial-logit fits.
+\item New argument 'keep_fixed' of fixef() extractor method for objects returned by spaMM fitting functions. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Fits could fail if a precision matrix was provided for a corrMatrix term, as a result of changes in the previous version. 
+\item Bug that made the Levenberg-Marquardt-like algorithm occasionally converge less fast. 
+\item Spurious warnings that could occur in DHGLMs, as a result of changes in the previous version.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.7.0}{  
 \subsection{NEW FEATURES, except those specific to multinomial-logit fits}{
 \itemize{
@@ -22,7 +47,7 @@
 \item some fits may be substantially faster (50 to 100-fold in some cases). 
 \item simulate() and bootstrap procedures based on it may be expected to work, except possibly for some esoteric options.
 \item numInfo() can now compute information matrices from these fits. 
-\item confint() can now compute intervals for fixed effects from these fits. This may be prohibitively slow, and is awaiting a few tweaks. 
+\item confint() can now compute intervals for fixed effects from these fits. This may be frustratingly slow. 
 \item Fit summaries more correctly report estimated random-effects parameters previous shown as 'fixed'.
 \item Experimental check to detect unidentifiable random effect components.
 }
@@ -39,7 +64,7 @@
 \item Simulation of fitted multivariate-response models whose original data had missing information could fail in many ways. This is now expected to work, except possibly for some esoteric options.
 \item An 'A' matrix (as 'covStruct' attribute) could be ignored in multivariate-response models when the random effect was not a corrFamily or another correlated random effect (hence was only a group term or random-coefficient term).
 \item predict() from multivariate-response models with some zero-truncated families could still fail.
-\item predict() from multivariate-response models with an 'X2X' argument returned incorrect values for submodels with a single regressor variable (e.g., only a intercept.
+\item predict() from multivariate-response models with an 'X2X' argument returned incorrect values for submodels with a single regressor variable (e.g., only an intercept).
 \item Multivariate-response GLMs (as contrasted to the more obviously useful multivariate-response mixed-models) could not be fitted using observed information matrix, when this matrix differs from the expected one (i.e., for non-canonical link). This was not much of a problem, given that this was not the default method, and that this changes only the shown standard errors: see User-Level Changes.
 }
 }
@@ -52,7 +77,7 @@
 \subsection{USER-LEVEL CHANGES}{
 \itemize{
 \item For GLMs, the default has changed from using the expected information matrix to the observed one ins some computations (for mixed-effect models, this change has been done in version 4.0.0). This does not change point estimates, and changes their reported SEs only when the link is non-canonical. See help("method") for further information.
-\item The simulate(<multivariate-response fit>) return value will now contain NA elements when nformation is missing to predict and simulate these elements. 
+\item The simulate(<multivariate-response fit>) return value will now contain NA elements when information is missing to predict and simulate these elements. 
 \item The matrix returned by model.matrix(<fit object>) now has row names.
 \item Results of PQL[/L] or REML fits by fitme() or fitmv() to small data sets may be slightly different from past versions. This is because the "outer optimization" method is now more systematically preferred in the PQL/REML cases, where its results are expected to differ from those using the "inner iterations" method for fitting dispersion parameters (see Details of help("inner-vs-outer")).  
 \item The colnames of the random-coefficient covariance matrix shown in model summaries, and of correlation columns in VarCorr output, have been modified.

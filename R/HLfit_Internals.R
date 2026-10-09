@@ -323,13 +323,20 @@ if (FALSE) {
 #   rC_blob_longLvMatrix
 # }
 
-# Experimental: aim is to provide implicitly an SPD matrix that satisfy partially-fixed ranCoefs
-# and can be used to fix non-SPD matrices in .singular_fixed().
-# This is implicit, as the function returns the pattern of fixed values rather 
-# than the matrix. .singular_fixed() receives the fixed values in a more 
-# convenient format than the implicit matrix, as elements of the matrix to be corrected.
-# Here the candidate implicit matrix is tested for PDness, and NULL may be returned
-# if the candidate is not PD (hence the experimental nature: no otther fix is tried).
+# Called by .preprocess() -> .process_ranCoefs() to give ranCoefs_blob$fixedCorrs,
+# a list of _pattern_ CORR matrices which say which CORR elements of a ranCoef vector 
+# are fixed in a fit (0|1 correlation values; it has '1' on diagonal positions).
+# .singular_fixed() can then fix an input non-SPD matrix 
+# (which contains candidate values of both the fixed and fitted elements),
+# using the info given by the pattern matrix.
+# 
+# A distinct _template_ matrix is first constructed: it has
+# '0' elements for fitted correlation values; it has '1' on the diag;
+# and other elements represent fixed correlations. This template matrix 
+# is tested for PDness, and NULL may be returned if it is not PD
+# (implying a problematic pattern of fixed correlations). 
+# No further fix is tried in this case, so this is perhaps not the most general 
+# way to handle problematic constraints (___F I X M E___?).
 .provide_fixedCorr <- function(rancoef, Xi_ncol) {
   var_ones <- is.na(rancoef)
   if (any(var_ones) && any( ! var_ones)) {
@@ -344,12 +351,16 @@ if (FALSE) {
       fixeds <- .C_calc_cov_from_ranCoef(ranCoef=fixeds, 
                                          Xi_ncol=Xi_ncol)
       return(fixeds) # 0|1 matrix indicating fixed correlations
-    } # ____F I X M E___ more general solution to regularize under constraints?
+    } 
   }
   NULL
 }
 
-.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, use_tri_CORREL) {
+# Does NOT internally updates processed$ranCoefs_blob.
+# It is called by .preprocess to create processed$ranCoefs_blob, including info about
+# fixed ranCoefs; then called to update a local copy of ranCoefs_blob with info about 
+# local values of estimated ranCoefs.
+.process_ranCoefs <- function(processed, ranCoefs, use_tri_CORREL) {
   ranCoefs_blob <- processed$ranCoefs_blob # may be NULL -> a list will be created
   ZAlist <- processed$ZAlist 
   exp_ranef_types <- attr(ZAlist,"exp_ranef_types")
@@ -1305,7 +1316,7 @@ if (FALSE) {
 # simulate() is no longer called on a resid-fit object of class "glm".
 spaMM_Gamma <- function (link = "inverse") {
   mc <- match.call()
-  if (is.null(mc$link)) .warn_once_link_Gamma()
+  if (missing(link)) .warn_once_link_Gamma()
   linktemp <- substitute(link) ## does not evaluate
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp) ## converts to char the unevaluated expression
@@ -1608,7 +1619,10 @@ spaMM_Gamma <- function (link = "inverse") {
   } else if (famfam == "COMPoisson" && family$link =="loglambda") {
     # this should be consistent with poisson(log) when nu=1, except that we may wish to avoid the computational burden of large eta values
     if ( ! is.numeric(COMP_nu <- substitute(nu, env = environment(family$aic)))) COMP_nu <- 1 
-    eta <- .sanitize_eta_log_link(eta, max=max, y=y, nu=COMP_nu) ## will use log(mu) ~ eta/nu for large eta and small nu
+    # (higher COMP_nu allow higher eta's, given that log(mu) ~ eta/nu for large eta and small nu)
+    # Setting nu=1 in the following computation regardless of the true nu
+    # had bad side effects in the optim() test in test-COMPoisson.
+    eta <- .sanitize_eta_log_link(eta, max=max, y=y, nu=COMP_nu)
   } else if (family$link=="inverse") {
     if (famfam=="Gamma") {
       etamin <- sqrt(.Machine$double.eps)
@@ -2868,12 +2882,12 @@ spaMM_Gamma <- function (link = "inverse") {
             invCoo <- .makelong(invC,longsize=ncol(lmatrix),kron_Y=kron_Y) # (no template arg && NULL kron_Y) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
           } else if (inherits(lmatrix,"dCHMsimpl")) { # # before any test on type, because dCHMsimpl has a @type slot
             invCoo <- tcrossprod(as(lmatrix,"CsparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
-          } else if (type == "from_AR1_specific_code")  {
-            invCoo <- crossprod(solve(lmatrix)) # cost of a sparse triangular solve.
+          } else if (type == "cholU_UUt")  {
+            invCoo <- crossprod(solve(lmatrix)) # triangular solve. Reconstructs original precmat not kept in fit object.
           } else if (type == "from_Q_CHMfactor")  {
             invCoo <- tcrossprod(as(attr(lmatrix,"Q_CHMfactor"),"CsparseMatrix")) ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
-          } else if (type %in% c("cholL_LLt","t(Matrix::chol)"))  { # Rmatrix upper tri in both case => suitable for chol2inv
-            Rmatrix <- t(lmatrix)
+          } else if (type %in% c("cholL_LLt","t(Matrix::chol)"))  { 
+            Rmatrix <- t(lmatrix) # Rmatrix upper tri in both case => suitable for chol2inv
             if (attr(lmatrix,"need_gmp")) {
               # control$fix_predVar controls what do do when there is a near singularity identified by "need_gmp".
               # In some cases it would be OK to use gmp, but not for large matrices => the default is thus to use ginv().
@@ -3547,7 +3561,7 @@ spaMM_Gamma <- function (link = "inverse") {
 }
 
 .post_process_v_h_LMatrices <- function(next_LMatrices, v_h, u_h, processed, 
-                                        ZAlist=processed$ZAlist, ranCoefs_blob, 
+                                        ZAlist=processed$ZAlist, 
                                     cum_n_u_h=processed$cum_n_u_h) { 
   strucList <- vector("list", length(ZAlist))
   for (rd in seq_len(length(ZAlist))) {
@@ -3617,7 +3631,7 @@ spaMM_Gamma <- function (link = "inverse") {
         #
         # Add descriptor of the correlation model necessary to predict with new data:
         #
-        if (processed$ranCoefs_blob$is_composite[rd]) {
+        if (processed$ranCoefs_blob$is_composite[rd]) { 
           # nothing to do yet
           ## # ___TAG___ code potentially needed here  to extend composite ranefs beyond corrMatrix
           
@@ -3651,7 +3665,7 @@ spaMM_Gamma <- function (link = "inverse") {
       }
     } 
   }
-  return(list(strucList = structure(strucList, isRandomSlope=ranCoefs_blob$isRandomSlope),## isRandomSlope is boolean vector
+  return(list(strucList = structure(strucList, isRandomSlope=processed$ranCoefs_blob$isRandomSlope),## isRandomSlope is boolean vector
               v_h = structure(v_h, u_h= structure(u_h, cum_n_u_h=cum_n_u_h)))) ## cum_n_u_h  duplicates info in lambda object. But it's handy.)) 
 }
 
@@ -3805,7 +3819,11 @@ spaMM_Gamma <- function (link = "inverse") {
   CHMupdate
 }
 
-# Cholesky-based version of QR-based algo of Moré 77
+# Cholesky-based version of QR-based algo of Moré 77.
+# Look for 'XD_CHM_info_v_h' to see context of use.
+# "LevMar_step_v_h" calls:
+# (1) .sXaug....(., which=="XD_CHM_info_v_h") evaluates 'XD_CHM_info_v_h' promise with $template_CHM
+# (2) .damping_to_solve_CHM() use the template.
 .damping_to_solve_CHM <- function(XD_CHM_info=NULL,
                                   dampDpD, rhs=NULL, .drop=TRUE) { 
   if (.drop) rhs <- drop(rhs) ## 1-col m/Matrix to vector ## affects indexing below but the result of the chol2inv line is always Matrix
@@ -3821,8 +3839,9 @@ spaMM_Gamma <- function (link = "inverse") {
 
 
 # Older Moré algo. Cf my notes on the paper.
-.damping_to_solve_QR <- # _____F I X M E_____ reduce further its usage?
-  function(X, XDtemplate=NULL, 
+.damping_to_solve_QR <- # now limited to dbeta
+  function(X, # needed if XDtemplate is NULL, and then must be a *crossfactor* 
+           XDtemplate=NULL, 
            dampDpD, rhs=NULL,method="QR", .drop=TRUE, warn.=TRUE) { 
   if (.drop) rhs <- drop(rhs) ## 1-col m/Matrix to vector ## affects indexing below but the result of the chol2inv line is always Matrix
   if (method=="QR") { ## seems always true
@@ -4819,7 +4838,7 @@ spaMM_Gamma <- function (link = "inverse") {
                                            ZAlist=processed$ZAlist, LMatrices, lambdaType=attr(init.lambda,"type"))
   
   strucBlob <- .post_process_v_h_LMatrices(next_LMatrices=LMatrices, v_h=v_h, u_h=u_h,
-                                           processed=processed, ranCoefs_blob=ranCoefs_blob) 
+                                           processed=processed) #, ranCoefs_blob=ranCoefs_blob) 
   res$strucList <- strucBlob$strucList
   res$v_h <- strucBlob$v_h
   # $lambda is a vector that NO LONGER contains lambdas for ranCoefs (too confusing, the more so as they are often 1)

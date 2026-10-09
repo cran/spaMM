@@ -248,7 +248,7 @@
                                 NULL)
       init <- unlist(trTemplate)
       if (paste(lc[[1]])=="HLCor") { HLcallfn_obj <- "HLCor.obj" } else HLcallfn_obj <- "HLfit.obj"
-      .assignWrapper(anyObjfnCall.args$processed,
+      .eval_into(anyObjfnCall.args$processed,
                      paste0("return_only <- \"confint_bound\""))
       optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp, objfn.extras=LUarglist,
                             objfn_locoptim=objfn, # uses posforminimiz in its definition 
@@ -257,7 +257,7 @@
                             anyHLCor_obj_args=anyObjfnCall.args,
                             control=list(optimizer=spaMM.getOption("optimizer")), # important to avoid use of optimize()
                             verbose=FALSE) 
-      .assignWrapper(anyObjfnCall.args$processed,
+      .eval_into(anyObjfnCall.args$processed,
                      paste0("return_only <- NULL"))
       # We need an optimizer with control of the initial value (hence not optimize());
       # otherwise the optimizer may never find a value of the nuisance pars that results in a focal parameter value 
@@ -477,7 +477,7 @@
       ranefParsList <- relist(ranefParsVec,trTemplate)
       if (length(.unlist(trTemplate$trRanCoefs)) &&
           (length(LUarglist[["user.lower"]]$ranCoefs) || length(LUarglist[["user.upper"]]$ranCoefs))
-      ) ranefParsList  <- .apply_transformed_box_constr(fix=ranefParsList, skeleton=trTemplate, 
+      ) ranefParsList  <- .apply_transformed_box_constr(fix=ranefParsList, skeleton=NULL,
                                                         user.lower=LUarglist[["user.lower"]], 
                                                         user.upper=LUarglist[["user.upper"]], transf=TRUE)
       
@@ -547,12 +547,12 @@
       init.HLfit <- list()
       if ((! is.null(oldparvec)) && 
           abs(oldparvec-parvec)[1] < thresh_old[1]) {
-        beta <- na.omit(fixef(opt_env$locfit))
+        beta <- na.omit(fixef(opt_env$locfit, keep_fixed = FALSE))
         beta <- beta[names(beta) !=parm]
         init.HLfit$fixef <- beta
       } else if ((! is.null(bestparvec)) &&
                  abs(bestparvec-parvec)[1] < thresh_old[1]) {          
-          beta <- na.omit(fixef(opt_env$bestfit))
+          beta <- na.omit(fixef(opt_env$bestfit, keep_fixed = FALSE))
           beta <- beta[names(beta) !=parm]
           init.HLfit$fixef <- beta
       } # else no init beta
@@ -561,7 +561,7 @@
           all(abs(oldparvec-parvec)[-1] < thresh_old[-1])) {
         init.HLfit$v_h <- ranef(opt_env$locfit, type="bare.init")
       } else if ((! is.null(bestparvec)) &&
-                 abs(bestparvec-parvec)[-1] < thresh_old[-1]) {          
+                 all(abs(bestparvec-parvec)[-1] < thresh_old[-1])) {          
         init.HLfit$v_h <- ranef(opt_env$bestfit, type="bare.init")
       } # else no init v_h
       init.HLfit

@@ -834,7 +834,7 @@ COMPoisson <- function(nu, link = "loglambda") {
   } else {
     if (inherits(nuch <- substitute(nu),"character") ||
         (inherits(nuch,"name") && inherits(nu, "function")) # "name" is for e.g. COMPoisson(log)
-        # (but testing only "name" would catch e.g. COMPoisson(nu=nu) )
+        # (but testing only "name" would catch e.g. COMPoisson(nu=nu) ) -> case below.
     ) { 
       if (inherits(nuch,"character")) nuch <- paste0('"',nuch,'"')
       errmess <- paste0('It looks like COMPoisson(',nuch,') was called, which absurdly means COMPoisson(nu=',nuch,
@@ -842,7 +842,7 @@ COMPoisson <- function(nu, link = "loglambda") {
       stop(errmess)
     }
     # When 'nu' is recognized as as call, we eval it so it is no longer recognized as a call by .calc_optim_args()
-    if (inherits(nuch,"call")) nu <- eval(nuch, parent.frame()) 
+    if (inherits(nuch,c("call","name"))) nu <- eval(nuch, parent.frame()) 
   }
   
   linktemp <- substitute(link) # if link was char LHS is char ; else deparse will create a char from a language object 

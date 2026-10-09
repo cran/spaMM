@@ -1,7 +1,6 @@
 \name{HLfit}
 \alias{HLfit}
 \alias{REMLformula}
-\alias{Beta-distribution-random-effects}
 \alias{Beta}
 \alias{prior.weights}
 \alias{rand.family}

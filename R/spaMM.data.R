@@ -1,7 +1,7 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
   F_I_X_M_E=FALSE,
-  dec2spp=FALSE, ## to choose "spprec" instead of "decorr" in .determine_spprec() (____F I X M E____rethink?)
+  dec2spp=FALSE, ## to choose "spprec" in some case where "decorr" would otherwise be selected (*see help("algebra")*)
   obsInfo=TRUE, # setting it to >1L will enforce use of obs algo in cases not needed, such as fixed-effect models.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE) as controlled by next two options:
@@ -47,7 +47,7 @@
                         ), 
   # cf also spaMM_tol
   use_G_dG=TRUE, # meaningful only for spprec
-  spprec_LevM_D="1", # form of the perturbation of Md2hdv2 in .calc_G_dG() (alternatives are "colSums" or "rowSums")
+  spprec_LevM_D="Q", # form of the perturbation of Md2hdv2 in .calc_G_dG() (alternatives are "colSums" or "rowSums")
   #
   Utri_chol_method="RcppEigen", # 
   USEEIGEN=TRUE, # Whether to use the Eigen C++ library for some matrix computations. The source code should be consulted for further information. 

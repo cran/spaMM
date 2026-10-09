@@ -19,6 +19,10 @@
   fix_ranCoefs
 }
 
+# * Result of same class as input.
+# * If input 'fix' is list, fix <- relist(fix,skeleton) is invalid.
+# Hence if input is list, skeleton should not be provided;
+# or else, code should be modified to operate conditionally on types of 'fix' and 'skeleton'.
 .apply_transformed_box_constr <- function(fix, # vector or structured list, depending on matching 'skeleton' arg.
                                           skeleton, # NULL or a proper template 
                                           user.lower, user.upper,
@@ -31,7 +35,6 @@
   if (transf) for (st in names(fix$trRanCoefs)) {
     fix$trRanCoefs[[st]] <- .ranCoefsFn(ranCoefs[[st]], rC_transf = .spaMM.data$options$rC_transf) 
   } else fix$ranCoefs <- ranCoefs
-  # result of same class as input: 
   if ( ! is.null(skeleton)) fix <- unlist(fix) 
   fix
 }
@@ -298,7 +301,6 @@
   } else stop("Unhandled optimizer")
 
   # nned to retransform the result of the optimization as they were transformed in the objective function
-  # (____F I X M E___ precompute the test?)
   if (length(.unlist(anyHLCor_obj_args$skeleton$trRanCoefs)) &&
       (length(objfn.extras[["user.lower"]]$ranCoefs) || length(objfn.extras[["user.upper"]]$ranCoefs))) {
     ranCoefs <- .canonizeRanPars(optPars["trRanCoefs"],rC_transf = .spaMM.data$options$rC_transf, 

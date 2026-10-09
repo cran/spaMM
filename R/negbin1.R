@@ -23,7 +23,7 @@ negbin1 <- function (shape, link = "log", trunc=-1L) {
     }
     # When 'shape' is recognized as as call to some function, 
     # we eval it so it is no longer recognized as a call by .is_fampar_missing()
-    if (inherits(shch,"call")) shape <- eval(shch, parent.frame()) 
+    if (inherits(shch,c("call","name"))) shape <- eval(shch, parent.frame()) 
   }
   
   linktemp <- substitute(link)

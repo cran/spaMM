@@ -48,6 +48,13 @@ if ( ! exists("doSeeMe")) doSeeMe <- spaMM.getOption("doSeeMe") # in principle p
   FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for ARp(time|time, p=1): crit= ",signif(crit,4)," >1e-05"),
                                    testthat::expect_true(crit<1e-05) ), silent=TRUE)
   doSeeMe(FIXME) 
+  
+  # Warnings, bc the ranCoef covmat is nearly singular, are suppressed:
+  pred_sp <- suppressWarnings(get_predVar(compAR1fitsp))
+  pred_spc <- suppressWarnings(get_predVar(compAR1fitspc))
+  pred_dec <- suppressWarnings(get_predVar(compAR1fitdec))
+  testthat::expect_true(max(abs(range(pred_sp-pred_spc)))<9e-6)  
+  testthat::expect_true(max(abs(range(pred_sp-pred_dec)))<9e-6)  
 }
 
 { # Same with Matern

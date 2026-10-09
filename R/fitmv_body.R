@@ -116,7 +116,7 @@ fitmv_body <- function(processed,
     anyHLCor_obj_args$skeleton <- structure(init.optim,
                                             type=relist(rep("fix",length(initvec)),init.optim))
   }
-  .assignWrapper(anyHLCor_obj_args$processed,
+  .eval_into(anyHLCor_obj_args$processed,
                  paste0("return_only <- \"",proc1$objective,"APHLs\""))
   if (length(initvec)) {
     augZXy_phi_est <- NULL ## the value assumed by later code when augZXy was not used  
@@ -131,7 +131,7 @@ fitmv_body <- function(processed,
       time2 <- Sys.time()
       if (use_SEM) {
         if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
-          .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
+          .eval_into(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
         } ## else default visible in SEMbetalambda
         ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
         loclist <- list(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
@@ -208,8 +208,8 @@ fitmv_body <- function(processed,
   }
   #
   # not local to anyHLCor_obj_args$processed: change processed globally
-  .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
-  .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
+  .eval_into(HLCor.args$processed,"return_only <- NULL") 
+  .eval_into(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
   hlcor <- do.call(HLcallfn,HLCor.args) # recomputation post optimization, or only computation if length(initvec)=0, or the HLCorcall ####
   if (is.call(hlcor)) {
     if (length(initvec)) {

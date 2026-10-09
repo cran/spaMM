@@ -47,6 +47,8 @@ In this example, the data represent purchases of four yogurt brands by a panel o
 
 ``` r
 chk <- try(load("saved-fits/Iyogurt.rda", envir=globalenv()),silent=TRUE)
+#> Warning in readChar(con, 5L, useBytes = TRUE): impossible d'ouvrir le fichier compressé
+#> 'saved-fits/Iyogurt.rda', cause probable : 'No such file or directory'
 if (inherits(chk,"try-error")) {
   if (requireNamespace("Ecdat",quietly=TRUE)) {
     data(Yogurt,package="Ecdat") 
@@ -106,6 +108,8 @@ To fit the model, we add a `offset(.dynoffset)` term to each submodel formula. T
 
 ``` r
 chk <- try(load("saved-fits/fefit.rda", envir=globalenv()),silent=TRUE)
+#> Warning in readChar(con, 5L, useBytes = TRUE): impossible d'ouvrir le fichier compressé
+#> 'saved-fits/fefit.rda', cause probable : 'No such file or directory'
 if (inherits(chk,"try-error")) { 
   fefit <- pois4mlogit(
       submodels=list(
@@ -117,24 +121,14 @@ if (inherits(chk,"try-error")) {
       types=c("Iyoplait","Idannon","Iweight","Ihiland"),
       X2X= x2xfixed,
       progress=1
-  )}
+  )
+  save(fefit, file="saved-fits/fefit.rda")
+}
+#> Error:
+#> ! objet 'x2xfixed' introuvable
 fefit
-#> formula_1: Iyoplait ~ offset(.dynoffset) + 1 + feat.yoplait + price.yoplait
-#> formula_2: Idannon ~ offset(.dynoffset) + 1 + feat.dannon + price.dannon
-#> formula_3: Iweight ~ offset(.dynoffset) + 1 + feat.weight + price.weight
-#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland
-#> Estimation of fixed effects by ML.
-#> Families: 1--4 : multinomial-logit
-#>  ------------ Fixed effects (beta) ------------
-#>               Estimate Cond. SE t-value
-#> (Intercept)_1   4.4502  0.11187  39.782
-#> (Intercept)_2   3.7156  0.09084  40.905
-#> (Intercept)_3   3.0744  0.09375  32.793
-#> feat            0.4914  0.07983   6.156
-#> price          -0.3666  0.01057 -34.677
-#>  ------------- Likelihood values  -------------
-#>                         logLik
-#> logL               : -2656.888
+#> Error:
+#> ! objet 'fefit' introuvable
 ```
 This result matches the fixed-effect fit in @ChenK01, where the `price` variable was scaled differently. 
 
@@ -151,6 +145,8 @@ For exposition, we first consider a minimal random-effect model, indeed the one 
   Iyogurt$suby <- "yoplait"
   
 chk <- try(load("saved-fits/rdInt.rda", envir=globalenv()),silent=TRUE)
+#> Warning in readChar(con, 5L, useBytes = TRUE): impossible d'ouvrir le fichier compressé
+#> 'saved-fits/rdInt.rda', cause probable : 'No such file or directory'
 if (inherits(chk,"try-error")) { 
   rdInt <- pois4mlogit(
   submodels=list(
@@ -161,7 +157,9 @@ if (inherits(chk,"try-error")) {
   data=Iyogurt, 
   types=c("Idannon","Ihiland","Iweight","Iyoplait"),
   aliases=list(BRAND=c("subd","subh","subw","suby"))
-)}
+  )
+  save(rdInt, file="saved-fits/rdInt.rda")
+}
 ```
 The `aliases` value implies that the grouping variable `BRAND` takes the value of the variable `subh` in the second submodel, i.e. the value `"hiland"`. By the same effect, it takes value `"weight"` in the third and `"yoplait"` in the fourth. The `BRAND` term is thus interpreted as a factor taking three different level for three submodels. `BRAND` is **not** a variable present in the `data`,
 and if it were present, it would be ignored by the fitting procedure.
@@ -202,6 +200,8 @@ x2xmixed <- genX2X(list("(Intercept)_1"="(Intercept)_1",
 
 ``` r
 chk <- try(load("saved-fits/mmfit6var.rda", envir=globalenv()),silent=TRUE)
+#> Warning in readChar(con, 5L, useBytes = TRUE): impossible d'ouvrir le fichier compressé
+#> 'saved-fits/mmfit6var.rda', cause probable : 'No such file or directory'
 if (inherits(chk,"try-error")) { 
   mmfit6var <- pois4mlogit(
   submodels=list(
@@ -215,40 +215,16 @@ if (inherits(chk,"try-error")) {
   upper=list(ranCoefs=list("1"=c(10,0.90,0.90,10,0.90,10))), 
   lower=list(ranCoefs=list("1"=c(1e-4,-0.90,-0.90,1e-4,-0.90,1e-4))), 
   progress=0)
+  save(mmfit6var, file="saved-fits/mmfit6var.rda")
 } 
+#> Error:
+#> ! objet 'x2xmixed' introuvable
 mmfit6var
-#> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.weight + 
-#>     price.weight
-#> formula_2: Idannon ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.dannon + 
-#>     price.dannon
-#> formula_3: Iyoplait ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + 
-#>     feat.yoplait + price.yoplait
-#> formula_4: Ihiland ~ offset(.dynoffset) + 0 + feat.hiland + price.hiland
-#> Estimation of ranCoefs by ML (p_v approximation of logL).
-#> Estimation of fixed effects by ML (p_v approximation of logL).
-#> Families: 1--4 : multinomial-logit
-#>  ------------ Fixed effects (beta) ------------
-#>               Estimate Cond. SE t-value
-#> (Intercept)_1   0.6957  0.42258   1.646
-#> (Intercept)_2   3.2931  0.29866  11.026
-#> (Intercept)_3   4.0050  0.38039  10.529
-#> feat            0.9613  0.18001   5.340
-#> price          -0.4399  0.03949 -11.140
-#>  --------------- Random effects ---------------
-#> Family: gaussian( link = identity ) 
-#>          --- Random-coefficients Cov matrices:
-#>  Group Term  Var.   Cor.1 Cor.2
-#>     id .mv1    10              
-#>     id .mv2 4.931 -0.2729      
-#>     id .mv3 6.521  0.2205  -0.9
-#> # of obs per submodel: 2412 2412 2412 2412;
-#> # of groups: id, 100 
-#>  ------------- Likelihood values  -------------
-#>                         logLik
-#> logL       (p_v(h)): -1257.917
+#> Error:
+#> ! objet 'mmfit6var' introuvable
 ```
 
-This takes some time to fit  (4748.31s in this particular run for the vignette). One reason is that the Laplace approximation of the likelihood appears to be maximal for infinite values of some of the variances (as may also occur in binomial fits of binary data), and for extreme values of some correlation parameters, which contribute to make the correlation matrix near-singular and hampers the fitting algorithms. Indeed, it is the reason why `upper` and `lower` value were set in the above fit, and both one variance and a correlation are at bounds of the allowed ranges in the above fit. Fitting by a different likelihood approximation may circumvent some of problems, as in the following fit with `method="PQL/L"` [@RoussetF14]: 
+This takes some time to fit  (448.4s in this particular run included in this vignette). One reason is that the Laplace approximation of the likelihood appears to be maximal for infinite values of some of the variances (as may also occur in binomial fits of binary data), and for extreme values of some correlation parameters, which contribute to make the correlation matrix near-singular and hampers the fitting algorithms. Indeed, it is the reason why `upper` and `lower` value were set in the above fit, and both one variance and a correlation are at bounds of the allowed ranges in the above fit. Fitting by a different likelihood approximation may circumvent some of problems, as in the following fit with `method="PQL/L"` [@RoussetF14]: 
 
 ``` r
 chk <- try(load("saved-fits/mmfit6varPQL.rda", envir=globalenv()),silent=TRUE)
@@ -266,6 +242,7 @@ mmfit6varPQL <- pois4mlogit(
   lower=list(ranCoefs=list("1"=c(1e-4,-0.9,-0.9,1e-4,-0.9,1e-4))),
   progress=0, 
   method="PQL/L")
+  save(mmfit6varPQL, file="saved-fits/mmfit6varPQL.rda")
 }
 mmfit6varPQL
 #> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3) | id) + feat.weight + 
@@ -280,28 +257,28 @@ mmfit6varPQL
 #> Families: 1--4 : multinomial-logit
 #>  ------------ Fixed effects (beta) ------------
 #>               Estimate Cond. SE t-value
-#> (Intercept)_1   1.3923  0.42873   3.248
-#> (Intercept)_2   3.1919  0.30306  10.532
-#> (Intercept)_3   3.9714  0.38914  10.206
-#> feat            0.9102  0.17954   5.070
-#> price          -0.4172  0.03864 -10.797
+#> (Intercept)_1   1.3945  0.42963   3.246
+#> (Intercept)_2   3.1941  0.30199  10.577
+#> (Intercept)_3   3.9730  0.39066  10.170
+#> feat            0.9100  0.17954   5.068
+#> price          -0.4173  0.03864 -10.799
 #>  --------------- Random effects ---------------
 #> Family: gaussian( link = identity ) 
 #>          --- Random-coefficients Cov matrices:
 #>  Group Term  Var.   Cor.1 Cor.2
-#>     id .mv1 11.18              
-#>     id .mv2 5.162 -0.3592      
-#>     id .mv3 7.263  0.3356  -0.9
+#>     id .mv1 11.26              
+#>     id .mv2 5.104 -0.3669      
+#>     id .mv3 7.365  0.3482  -0.9
 #> # of obs per submodel: 2412 2412 2412 2412;
 #> # of groups: id, 100 
 #>  ------------- Likelihood values  -------------
 #>                         logLik
-#>        h-likelihood: -1299.611
-#> logL       (p_v(h)): -1259.736
+#>        h-likelihood: -1299.637
+#> logL       (p_v(h)): -1259.728
 ```
 
 
-which still takes 2230.53s in this particular run.
+which still takes 274.21s in this particular run.
 
 ## Fits with random-effect term included in 4 submodels
 These fits appear better:
@@ -323,6 +300,7 @@ if (inherits(chk,"try-error")) {
     lower=list(ranCoefs=list("1"=c(1e-4,-0.9,-0.9,-0.9,1e-4,-0.9,-0.9,1e-4,-0.9,1e-4))),
     progress=0, 
     method="PQL/L")
+  save(mmfit6varPQL4, file="saved-fits/mmfit6varPQL4.rda")
 }
 mmfit6varPQL4
 #> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
@@ -338,25 +316,25 @@ mmfit6varPQL4
 #> Families: 1--4 : multinomial-logit
 #>  ------------ Fixed effects (beta) ------------
 #>               Estimate Cond. SE t-value
-#> (Intercept)_1   1.8220  0.45243   4.027
-#> (Intercept)_2   3.7140  0.35748  10.389
-#> (Intercept)_3   4.5326  0.41946  10.806
-#> feat            0.7820  0.18226   4.290
-#> price          -0.4224  0.03893 -10.848
+#> (Intercept)_1   1.8691  0.44638   4.187
+#> (Intercept)_2   3.7139  0.35601  10.432
+#> (Intercept)_3   4.5666  0.41195  11.085
+#> feat            0.7806  0.18151   4.301
+#> price          -0.4199  0.03863 -10.870
 #>  --------------- Random effects ---------------
 #> Family: gaussian( link = identity ) 
 #>          --- Random-coefficients Cov matrices:
-#>  Group Term  Var.    Cor.1    Cor.2   Cor.3
-#>     id .mv1    10                          
-#>     id .mv2 3.119  -0.3632                 
-#>     id .mv3 4.865 -0.02403     -0.9        
-#>     id .mv4 3.083   0.1504 -0.07356 0.01671
+#>  Group Term  Var.     Cor.1   Cor.2  Cor.3
+#>     id .mv1 7.944                         
+#>     id .mv2 4.423    -0.429               
+#>     id .mv3 3.057  -0.01875 -0.8948       
+#>     id .mv4 3.154 -0.001631  0.1381 -0.175
 #> # of obs per submodel: 2412 2412 2412 2412;
 #> # of groups: id, 100 
 #>  ------------- Likelihood values  -------------
 #>                         logLik
-#>        h-likelihood: -1357.663
-#> logL       (p_v(h)): -1243.389
+#>        h-likelihood: -1363.229
+#> logL       (p_v(h)): -1242.451
 ```
 
 ``` r
@@ -374,6 +352,7 @@ if (inherits(chk,"try-error")) {
     upper=list(ranCoefs=list("1"=c(15,0.9,0.9,0.9,15,0.9,0.9,15,0.9,15))), 
     lower=list(ranCoefs=list("1"=c(1e-4,-0.9,-0.9,-0.9,1e-4,-0.9,-0.9,1e-4,-0.9,1e-4))),
     progress=0)
+    save(mmfit6var4, file="saved-fits/mmfit6var4.rda")
 }
 mmfit6var4
 #> formula_1: Iweight ~ offset(.dynoffset) + 1 + (0 + mv(1, 2, 3, 4) | id) + 
@@ -389,29 +368,29 @@ mmfit6var4
 #> Families: 1--4 : multinomial-logit
 #>  ------------ Fixed effects (beta) ------------
 #>               Estimate Cond. SE t-value
-#> (Intercept)_1   2.7881  0.66057   4.221
-#> (Intercept)_2   5.2864  0.53249   9.928
-#> (Intercept)_3   6.9131  0.59190  11.679
-#> feat            0.7690  0.18471   4.163
-#> price          -0.4217  0.03911 -10.781
+#> (Intercept)_1   2.7882  0.66339   4.203
+#> (Intercept)_2   5.2942  0.53499   9.896
+#> (Intercept)_3   6.9212  0.59325  11.667
+#> feat            0.7691  0.18474   4.163
+#> price          -0.4217  0.03912 -10.780
 #>  --------------- Random effects ---------------
 #> Family: gaussian( link = identity ) 
 #>          --- Random-coefficients Cov matrices:
-#>  Group Term     Var.  Cor.1  Cor.2   Cor.3
-#>     id .mv1    12.11                      
-#>     id .mv2       15 0.2516               
-#>     id .mv3 0.008317   -0.9 -0.635        
-#>     id .mv4       15 0.1677 0.5884 -0.3894
+#>  Group Term     Var.   Cor.1   Cor.2   Cor.3
+#>     id .mv1    12.17                        
+#>     id .mv2       15  0.2491                
+#>     id .mv3 0.007531 -0.8195 -0.7591        
+#>     id .mv4       15  0.1618  0.5841 -0.4544
 #> # of obs per submodel: 2412 2412 2412 2412;
 #> # of groups: id, 100 
 #>  ------------- Likelihood values  -------------
 #>                         logLik
-#> logL       (p_v(h)): -1242.368
+#> logL       (p_v(h)): -1242.388
 ```
 
 
 These fits take more time (
-1924.18s and 27351.77s, respectively), in particular because there are 10 covariance parameters to be fitted, instead of 6 previously (and the Laplace ML fit again has variances and correlation estimates at bounds of allowed range). This is a bit painful, but will not be the case in all applications. With nearly singular covariance matrices, different runs of the same model on the same computer can even give different results (and take more time), due to instability of some floating-point computations in this case.
+858.57s and 9916.84s, respectively), in particular because there are 10 covariance parameters to be fitted, instead of 6 previously (and the Laplace ML fit again has variances and correlation estimates at bounds of allowed range). This is a bit painful, but will not be the case in all applications. With nearly singular covariance matrices, different runs of the same model on the same computer can even give different results (and take more time), due to instability of some floating-point computations in this case.
 
 # References {-}
 

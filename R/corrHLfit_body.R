@@ -67,12 +67,12 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   anyHLCor_obj_args$skeleton <- structure(init.optim, 
                                           moreargs=moreargs, ## moreargs is a list over ranefs 
                                           type=relist(rep("fix",length(initvec)),init.optim) )
-  .assignWrapper(anyHLCor_obj_args$processed,
+  .eval_into(anyHLCor_obj_args$processed,
                    paste0("return_only <- \"",proc1$objective,"APHLs\""))
   use_SEM <- (!is.null(processedHL1) && processedHL1=="SEM"  && length(lower))
   if (use_SEM) {
     if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
-      .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
+      .eval_into(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
     } ## else default visible in SEMbetalambda
     ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
     iterateSEMSmooth <- get("iterateSEMSmooth",envir = asNamespace("probitgem"), inherits=FALSE)
@@ -115,8 +115,8 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info, moreargs=moreargs)
   HLCor.args$fixed <- ranPars_in_refit
   # not local to anyHLCor_obj_args$processed: change processed globally
-  .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
-  .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
+  .eval_into(HLCor.args$processed,"return_only <- NULL") 
+  .eval_into(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
   hlcor <- do.call("HLCor",HLCor.args) ## recomputation post optimization (or only computation, if length(lower)=0)
   #
   if (is.call(hlcor)) { 

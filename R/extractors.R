@@ -4,33 +4,41 @@
   u_h    
 }
 
+# Must return a crossfac, see kron_Y <- crossprod(.inv_Lmatrix(kron_Y...
+# The basic idea being forwardsolve(lmatrix being  "cholL_LLt")
 .inv_Lmatrix <- function(lmatrix, type=attr(lmatrix,"type"), regul.threshold) {
   invlmatrix <- NULL
   if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type, because dCHMsimpl has a @type slot
     invlmatrix <- t(as(lmatrix, "CsparseMatrix"))
-  } else if (type == "from_AR1_specific_code")  {
-    invlmatrix <- solve(lmatrix) # cost of solve sparse triangular matrix
-    invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
   } else if (type == "from_Q_CHMfactor")  {
     invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"CsparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
     invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
   } else if (type == "cholL_LLt")  {
     condnum <- kappa(lmatrix,norm="1")
     if (condnum<1/regul.threshold) {
-      invlmatrix <- tryCatch(forwardsolve(lmatrix,diag(ncol(lmatrix))),error=function(e) e)
+      invlmatrix <- tryCatch(forwardsolve(lmatrix,diag(ncol(lmatrix))),error=function(e) e) # lower-tri
       if (inherits(invlmatrix,"simpleError")) invlmatrix <- NULL
     }
-    if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
+    if (is.null(invlmatrix)) { # reached from example("bboptim", package = "blackbox")
+      # Rmatrix <- t(lmatrix) # replaced by next line 4.7.1 (upper-tri) as in final case
+      Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
+    }
+  } else if (type == "cholU_UUt")  {
+    invlmatrix <- solve(lmatrix) # cost of solve {triangular matrix that, in .calc_Lunique_for_correl_algos(), 
+    # was Matrix::chol(cov_info_mat$matrix))} ($matrix being prec mat, not kept).
+    invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
   } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
     condnum <- kappa(lmatrix,norm="1")
     if (condnum<1/regul.threshold) {
-      decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+      decomp <- attr(lmatrix, type) ## of corr matrix !
       if ( all(abs(decomp$d) > regul.threshold) ) {
         invlmatrix <-  tryCatch(.ZWZt(decomp$u,sqrt(1/decomp$d)),error=function(e) e) ## try() still allowing for no (0) regul.threshold; not useful ?
         if (inherits(invlmatrix,"simpleError")) invlmatrix <- NULL
       }
     }
-    if (is.null(invlmatrix)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
+    if (is.null(invlmatrix)) { # no example (even in "extrallong" and "priviate" tests)
+      Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
+    }
   }
   #
   if (is.null(invlmatrix)){
@@ -350,12 +358,17 @@ print.ranef <- function(x, max.print=40L, ...) {
   options(oldopt)
 }
 
-fixef.HLfit <- function(object, na.rm=NULL, ...) {
+fixef.HLfit <- function(object, na.rm=NULL, keep_fixed=TRUE, ...) {
   object <- .getHLfit(object)
+  beta <- object$fixef
+  if ( ! keep_fixed) {
+    varnames <- colnames(model.matrix(object))
+    beta <- beta[varnames]
+  }
   if (is.null(na.rm)) na.rm <- (object$models[["eta"]]=="etaHGLM")
   if (na.rm) {
-    na.omit(object$fixef)
-  } else object$fixef    
+    na.omit(beta)
+  } else beta    
 }
 
 fixef.HLfitlist <- function(object, na.rm=NULL, ...) {
@@ -855,9 +868,18 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
   return(loctable)
 } 
 
-.VarCorr_as_lmer <- function(x, sigma=1, ...) { # ____F I X M E____ needs more testing
+# lme4:::VarCorr.merMod() sets useSc <- !isGLMM(x)
+# The test identical(attr(object$models,"GLMMbool"), TRUE) is possible.
+# in spaMM GLMMbool implies Gaussian ranefs so Poisson-Gamma mixture is NOT GLMM.
+# while LMMbool is defined as (famfam=="gaussian" && family$flags$canonicalLink ), 
+# which seems to better correspond to lme4's !isGLMM(x).
+# eg, fm <- glmer(Reaction ~ Days + (1|Subject), sleepstudy, family=gaussian(log))
+# isGLMM(fm) is TRUE
+#
+# seek VarCorr(sp1, format="merMod") for test.
+.VarCorr_as_lmer <- function(x, sigma=1, ...) {
   if ( ! is.null(lambda.object <- x$lambda.object)) { # possibly always true...
-    grpnames <- names(attr(x$ZAlist,"Xi_cols")) # ___F I X M E___ more standard location?
+    grpnames <- names(attr(x$ZAlist,"namesTerms")) 
     resu <- vector("list", length(grpnames))
     if (nrand <- length(grpnames)) {
       names(resu) <- grpnames
@@ -884,7 +906,7 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
     if ( ! is.null(phi_info)) {
       attr(resu,"sc") <- sqrt(phi_info$Variance[[1]]) 
     }
-    attr(resu,"useSc") <- (family(x)$family=="gaussian") # ____F I X M E____ Quick&D
+    attr(resu,"useSc") <- identical(attr(x$models,"LMMbool"), TRUE) # cf comment above.
   } else resu <- list()
   class(resu) <- c("VarCorr.merMod") # so that lme4() print() and as.data.frame() methods will work. 
   resu

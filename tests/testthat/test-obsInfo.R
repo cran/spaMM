@@ -40,9 +40,6 @@ testthat::expect_equal(logLik(foo), c(P_v=-1224.65219293 ))
                  method=c("ML","obs"),
                  data=wafmv))
   testthat::expect_true(diff(range(logLik(me1)+logLik(me2),logLik(zut1)))<1e-5)
-  # ____F I X M E____ if I set spaMM.options(prefer_LLM_nosigns_CHM_H=TRUE)
-  # the zut1 fit is affected (different lambda, distinctively poor logL. Maybe a numerical
-  # issue for vanishing lambda, but worth double checking)
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) 
   update_resp(zut1,newresp = simulate(zut1))

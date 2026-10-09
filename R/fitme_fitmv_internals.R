@@ -6,11 +6,10 @@
   fixtyp[is.na(ufixed)] <- "outer"
   # so that ranPars_in_refit will have apparently conflicting info such as "outer" "fix"   "outer" on $ranCoefs$`1` and "outer" "outer" "outer" on $trRanCoefs$`1`
   # so we use the presence of both ranCoefs and trRanCoefs to distinguish the user setting and the internal optim over 3 params
-  ranPars_in_refit <- structure(.modify_list(fixed,optPars), # hummm there is a .merge_fixed() function. ____F I X M E____?
-                                type=.modify_list(relist(fixtyp,fixed), #attr(fixed,"type"),
-                                                  .relist_rep("outer",optPars)))
-  ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info,moreargs=moreargs)
-  
+  ranPars_in_refit <- .merge_fixed_fitted(fixed, optPars, hyper_info=processed$hyper_info,
+                                          fixed_type=relist(fixtyp,fixed),
+                                          fitted_type=.relist_rep("outer",optPars),
+                                          moreargs=moreargs)
   if ( ! is.null(trRanCoefs <- optPars$trRanCoefs)) {
     ranCoefs <- .partially_fix_trRancoefs(trRanCoefs, constraints=fixed$ranCoefs, return_tr=FALSE)
     # hack: ranCoefs needed below even if constraints are NULL in which case .partially_fix_trRancoefs() wraps .ranCoefsInv()

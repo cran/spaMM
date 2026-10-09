@@ -163,6 +163,9 @@
       .A_update(Amat=Amat, tPmat=tPmat, input_ZA=input_ZA, RRsP=RRsP)
     # ZA update:
     ZA <- input_ZA %*% tPmat
+    attr(ZA,"LHS_levels") <- attr(input_ZA,"LHS_levels")
+    attr(ZA,"namesTerm") <- attr(input_ZA,"namesTerm")
+    attr(ZA,"which_mv") <- attr(input_ZA,"which_mv")
     attr(ZA,"is_incid") <- attr(input_ZA,"is_incid")
     attr(ZA,"RHS_info") <- attr(input_ZA,"RHS_info") # cannot be modified by tPmat in composite case at least
     processed$ZAlist[[rd]] <- ZA
@@ -218,12 +221,11 @@
       Lunique[] <- attr(Lunique,"symsvd")$u   ## "[] <- " keeps attributes... except for Matrix...
     }
   } else if (inherits(cov_info_mat,"precision")) { ## cov_info_mat must exist
-    ##  warning("Presumably inefficient computation in .calc_Lunique_for_correl_algos(). PLease contact the maintainer.")
-    # This never occurred in the long tests [until *], presumably bc precision matrices are converted to corr mat
-    # before reaching this point. 
-    # But again, this does not happen in the tests...
-    # [ * ... until a test has been added, forcing ARp to be fitted by CORR algos. => cf test-composite.R]
     Lunique <- solve(Matrix::chol(cov_info_mat$matrix)) # tcrossfac; no need for an environment storing chol_Q since the sparse matrix already does this.
+    attr(Lunique,"type") <- "cholU_UUt" # upper triangular tcrossfac of the cov mat. 
+    # Lunique may be in dense storage if prec mat was in dense storage.
+    # This case is little tested, having resurfaced with change in spprec selection + 
+    # revised test-adjacency-corrMatrix.R tests.
   } else {
     if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
     if (inherits(cov_info_mat,"dist")) {cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)} ## else full matrix may be a COV matrix with non-unit diag
@@ -565,7 +567,7 @@
           #   AUGI0_ZX_envir$precisionFactorList[[rd]] <- list(chol_Q=t(t_chol_Q), # Linv
           #                                                    Qmat=sparse_Qmat)
           #   Lunique <- solve(t_chol_Q) # that is super slow compared to using .Lunique_info_from_Q_CHM with represents the LMatrix as a CHMfactor !!
-          #   attr(Lunique, "type") <- "from_AR1_specific_code"
+          #   attr(Lunique, "type") <- "from_AR1_specific_code" # may have become type "cholU_UUt" of more general usage.
           #   attr(Lunique,"corr.model") <- corr_type
           #   ####   attr(Lunique,"ranefs") <- paste(c(spatial_term)) ## essentiel pour la construction de ZAL! ## paste(c()) handles very long RHS
           #   AUGI0_ZX_envir$LMatrices[[rd]] <- Lunique

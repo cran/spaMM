@@ -98,7 +98,7 @@ See the \code{test} directory of the package for many additional examples of \pk
 See \code{\link{fitmv}} for multivariate-response models. 
 
 Specific information for installation of \pkg{spaMM} dependencies from source may be found at\cr
-\url{https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref#installation}. % nlopt glpk GSL
+\url{https://gitlab.in2p3.fr/francois.rousset/spamm-ref#installation}. % nlopt glpk GSL
 
 }
 

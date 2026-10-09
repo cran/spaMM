@@ -149,11 +149,11 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   if ("hyper" %in% names(HLCorcall$fixed)) {
     # then some of the steps performed by HLCor.obj in the original unconstrained fit 
     # are not performed when generating the HLCorcall with fixed params
-    # notably .merge_fixed() -> .expand_hyper()
+    # notably .merge_fixed_fitted() -> .expand_hyper()
     HLCorcall$fixed <- .expand_hyper(HLCorcall$fixed, HLCorcall$processed$hyper_info,
                                      moreargs=.get_moreargs(outer_object)) 
   }
-  .assignWrapper(HLCorcall$processed,"verbose['getCall'] <- NA")
+  .eval_into(HLCorcall$processed,"verbose['getCall'] <- NA")
   return(HLCorcall)
 }
 

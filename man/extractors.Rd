@@ -66,7 +66,7 @@ Functions to extract various components of a fit.
 \method{logLik}{HLfit}(object, which, ...)
 \method{fitted}{HLfit}(object, ...)
 \method{coef}{HLfit}(object, ...)
-\method{fixef}{HLfit}(object, na.rm=NULL, ...)
+\method{fixef}{HLfit}(object, na.rm=NULL, keep_fixed = TRUE, ...)
 \method{ranef}{HLfit}(object, type = "correlated", ...)
 \method{print}{ranef}(x, max.print = 40L, ...)
 \method{deviance}{HLfit}(object, ...)
@@ -87,7 +87,8 @@ get_drawSizes(object,p4m="P")
   \item{which}{* For \code{logLik}, the name of the element of the \code{APHLs} list to return (see Details for any further possibility). The default depends on the fitting method. In particular, if it was REML or one of its variants, the default is to return the log restricted likelihood (exact or approximated).\cr
   * For \code{getDistMat}, an integer, to select a random effect from several for which a distance matrix may be constructed.\cr
   * For \code{formula}, by default the model formula with non-expanded \code{multIMRF} random-effect terms is returned, while for \code{which=""} a formula with \code{multIMRF} terms expanded as \code{IMRF} terms is returned.}
-  \item{na.rm}{Whether to include NA values for missing coefficients of rank-deficient model matrices. Default is to exclude them for mixed models and to include them for other ones. See Details for the underlying reason.}
+  \item{na.rm}{Boolean: whether to include NA values for missing coefficients of rank-deficient model matrices. Default is to exclude them for mixed models and to include them for other ones. See Details for the underlying reason.}
+  \item{keep_fixed}{Boolean: whether to include values of coefficients that were fixed (by element \code{beta} of argument \code{etaFix}) in the fit \code{object}.}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{\rho} and returns unscaled distance.}
   \item{x}{For \code{print.ranef}: the return value of \code{ranef.HLfit}.}
   \item{max.print}{Controls \code{options("max.print")} locally.}

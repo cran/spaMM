@@ -14,7 +14,7 @@ beta_resp <- function (prec, link = "logit") {
       stop(errmess)
     }
     # When 'prec' is recognized as as call, we eval it so it is no longer recognized as a call by .calc_optim_args()
-    if (inherits(shch,"call")) prec <- eval(shch, parent.frame()) 
+    if (inherits(shch,c("call","name"))) prec <- eval(shch, parent.frame()) 
   }
   
   linktemp <- substitute(link)

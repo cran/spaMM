@@ -28,7 +28,6 @@
 \alias{.crossprod}
 \alias{.dispFn}
 \alias{.dispInv}
-\alias{.evalWrapper}
 \alias{.is_spprec_fit}
 \alias{.modify_list}
 \alias{.nuFn}

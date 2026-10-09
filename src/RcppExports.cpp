@@ -173,13 +173,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // RcppMatrixCb2
-Eigen::SparseMatrix<double> RcppMatrixCb2(Eigen::MappedSparseMatrix<double>& matrix1, Eigen::MappedSparseMatrix<double>& matrix2);
+Eigen::SparseMatrix<double> RcppMatrixCb2(Eigen::Map<Eigen::SparseMatrix<double>>& matrix1, Eigen::Map<Eigen::SparseMatrix<double>>& matrix2);
 RcppExport SEXP _spaMM_RcppMatrixCb2(SEXP matrix1SEXP, SEXP matrix2SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Eigen::MappedSparseMatrix<double>& >::type matrix1(matrix1SEXP);
-    Rcpp::traits::input_parameter< Eigen::MappedSparseMatrix<double>& >::type matrix2(matrix2SEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::SparseMatrix<double>>& >::type matrix1(matrix1SEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::SparseMatrix<double>>& >::type matrix2(matrix2SEXP);
     rcpp_result_gen = Rcpp::wrap(RcppMatrixCb2(matrix1, matrix2));
     return rcpp_result_gen;
 END_RCPP

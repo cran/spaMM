@@ -20,7 +20,7 @@ if (spaMM.getOption("example_maxtime") > 2) {  # test eg of code for partially f
   hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 
                  rand.family=inverse.Gamma(log), resid.model=list(formula=~cycle+(1|specimen),fixed=list(lambda=0.666))   )
   # and with partially-fixed ranCoefs in the residual dispersion model:
-  hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 
+  dhglmrC <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 
                  rand.family=inverse.Gamma(log), resid.model=list(formula=~cycle+(cycle|specimen),
                                                                   fixed=list(ranCoefs=list("1"=c(NA,-0.5,NA))))   )
 }

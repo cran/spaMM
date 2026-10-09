@@ -499,7 +499,7 @@
   } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
     # # use the fallback type, currently "data_order"; 
     # but "seq_len" has been used in post-fit calls before major revision 
-    # so this could be tried again (____F I X M E____; permuted newdata tests important here)
+    # so this could be tried again (_TODO_; permuted newdata tests important here)
   }
   levels_type
 }

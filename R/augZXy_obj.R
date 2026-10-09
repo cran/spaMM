@@ -14,7 +14,7 @@
       ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
       nobs <- length(processed$y) ## before prior.weights is evaluated
       sparse_precision <- processed$is_spprec
-      # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .preprocess_augZXy() 
+      # Updates *a local copy* of processed$ranCoefs_blob which itself contains no globally fixed ranCoefs as this has been excluded by .preprocess_augZXy() 
       ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs=.getPar(ranFix,"ranCoefs"), ## may be NULL, 
                                          use_tri_CORREL=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
       LMatrices <- processed$AUGI0_ZX$envir$LMatrices

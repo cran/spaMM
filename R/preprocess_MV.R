@@ -204,6 +204,7 @@
                                   is_incid=is_incid,
                                   RHS_info=RHS_info, # RHS_info (here coming from one matrix) may not be appropriate for all models
                                   LHS_levels=LHS_levels)
+    # !!! I should make sure that .A_ZA_update() does not lose attributes.
     namesTerms[ran_it] <- attr(Zlistori,"namesTerms")[ori] # namesTerms is a *named* list... but pathetically that does not copy the name
     names(namesTerms)[ran_it] <- names(attr(Zlistori,"namesTerms")[ori])
     type_attr[ran_it] <- attr(attr(Zlistori,"exp_ranef_terms"),"type")[ori]
@@ -805,6 +806,18 @@
   
   merged <- list2env(list(envir=list2env(list(), parent=environment(HLfit))))
   
+  if (identical(control.HLfit$getFromTheDepths,"surrogate_info")) { 
+    has_dynoffset <- sapply(lapply(predictors,.DEPARSE),
+                            grepl, pattern="offset(.dynoffset)", fixed=TRUE)
+    surrogate_info <- list(
+      has_dynoffset=has_dynoffset, 
+      validPrownames=validrownames, # list of vectors of strings
+      # is_fixefM=length(ZAlist)==0L,
+      vec_nobs=vec_nobs # valid for poisson fit; cf .get_multinom_info() for use.
+    ) 
+    .sendFromTheDepths(surrogate_info=surrogate_info, class="spaMM.FTD.SI")
+  }
+
   main_terms_info <- list(
     Y=Ys, 
     fixef_off_terms=fixef_off_termsS,
@@ -858,7 +871,6 @@
   merged_X.Re <- .merge_Xs(NULL, unmerged[[1L]][["X.Re"]], mv_it=1L, REML=TRUE)
   vec_ncol_X <- integer(nmodels)
   vec_ncol_X[1L] <- ncol(merged_X)
-  validrownames[[1L]] <- rownames(unmerged[[1L]][["data"]])
   obsInfo <- unmerged[[1L]][["how"]][["obsInfo"]]
   # Recursive updating:
   for (mv_it in (seq_len(nmodels-1L)+1L)) {
@@ -909,19 +921,6 @@
     rdispar_models[[mv_it]] <- p_i[["models"]][["rdispar"]]
   }
   .check_mv_in_submodels(ZAlist)
-  
-  if (identical(control.HLfit$getFromTheDepths,"surrogate_info")) { # ____F I X M E____ assemble the info much earlier in this fn?
-    has_dynoffset <- sapply(lapply(predictors,.DEPARSE),
-                            grepl, pattern="offset(.dynoffset)", fixed=TRUE)
-    surrogate_info <- list(
-      has_dynoffset=has_dynoffset, 
-      validPrownames=validrownames, # list of vectors of strings
-      # is_fixefM=length(ZAlist)==0L,
-      vec_nobs=vec_nobs # valid for poisson fit; cf .get_multinom_info() for use.
-    ) 
-    .sendFromTheDepths(surrogate_info=surrogate_info, class="spaMM.FTD.SI")
-  }
-  
   
   attr(data,"validrownames") <- validrownames
   merged[["data"]] <- data

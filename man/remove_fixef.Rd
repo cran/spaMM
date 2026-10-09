@@ -33,7 +33,7 @@ Boolean: whether to keep the offsets in the returned formula.
 \details{
 The following toy example explains the results with a non-default \code{nofixef}:\cr
 \preformatted{
-  form <- ~ offset() + a*b + (1|grp)
+  form <- ~ offset(o) + a*b + (1|grp)
   remove_fixef(form, "a:b", nofixef=form)
 }
 which gives \code{~1 + a + b + offset(o) + a * b + (1 | grp)}.

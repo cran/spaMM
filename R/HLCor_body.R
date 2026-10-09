@@ -209,13 +209,15 @@ HLCor_body <- function(processed, ## single environment
 }
 
 # Called by HLCor.obj():
-.merge_fixed <- function(fixed, ranefParsList, skeleton, processed, HLCor.call) {
-  fixed <- .modify_list(fixed, ranefParsList) # merges variable and fixed params, 
+.merge_fixed_fitted <- function(fixed, fitted, hyper_info,
+                                fixed_type=attr(fixed,"type"),
+                                fitted_type=attr(fitted,"type"),
+                                moreargs=attr(fitted,"moreargs")) {
+  fixed <- .modify_list(fixed, fitted) # merges variable and fixed params, 
   # but result may be messy (lambda+trLambda... corrFamily parameters in wrong order...) it will be
   # HLfit|HLCor_body -> .canonizeRanPars 's task to put this in order.
-  rpType <- .modify_list(attr(fixed,"type"),attr(skeleton,"type"))
-  moreargs <- attr(skeleton,"moreargs")
-  fixed <- .expand_hyper(fixed, processed$hyper_info,moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
+  rpType <- .modify_list(fixed_type, fitted_type)
+  fixed <- .expand_hyper(fixed, hyper_info, moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
   # => failing to expand leads to unconstrained optimization
   # removed 'ranPars$resid' code here [ v3.5.52
   attr(fixed,"type") <- rpType
@@ -272,7 +274,8 @@ HLCor_body <- function(processed, ## single environment
       HLCor.call$etaFix$beta <- beta
     }
   }
-  HLCor.call$fixed <- .merge_fixed(HLCor.call$fixed, ranefParsList, skeleton, processed, HLCor.call)
+  HLCor.call$fixed <- .merge_fixed_fitted(HLCor.call$fixed, fitted=ranefParsList, 
+                                          hyper_info=processed$hyper_info)
   # 'fixed' may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
   HLCor.call[[1L]] <- processed$HLCor

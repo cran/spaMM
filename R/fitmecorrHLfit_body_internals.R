@@ -103,17 +103,27 @@
   parlist <- .reformat_corrPars(parlist, corr_families=corr_families)
 }
 
-.reformat_init_lambda_with_NAs <- function(init_lambda, nrand, default=NA) {
-  if ( ! is.null(init_lambda)) {
-    if (length(init_lambda)==nrand) {
-      ## According to help(ranPars), the lambda's should be indexed "1",... and presumably init.optim to
-      # but they may also be taken from a previous fit and will have complex names (eg test-dhglm) 
-      names(init_lambda) <- seq_len(nrand) ## erases complex names
-    } else { 
-      warning("'init' value may be ignored as its length\n does no match the number of random effects.", immediate. = TRUE)
-      lambda <- structure(rep(default,nrand),names=seq_len(nrand)) ## default=NA implies that fitme will outer optimize them
-      lambda[names(init_lambda)] <- init_lambda ## the lambda's should be indexed "1",...
-      if (length(lambda)>nrand) stop("length(lambda)>nrand: case not handled")
+## According to help(ranPars), the lambda's should be indexed "1",... and presumably init.optim too
+## lambda=c("2"=1) is in the API.
+## .reformat_lambda() standardize them and init_lambda should presumably be a standardized vector.
+# but they may also be taken from a previous fit, have complex names (eg test-dhglm),
+# and not have values for ranCoefs (eg, dhglmrC)
+.reformat_init_lambda_with_NAs <- function(init_lambda, nrand, 
+                                           default=NA, ## default=NA implies that fitme will outer optimize them
+                                           pos) {
+  if ( length(init_lambda)) {
+    if (length(init_lambda)==nrand) { # cleanly reformatted user-level, OR possibly messy internal value.
+      names(init_lambda) <- seq_len(nrand) ## erases complex names of possibly messy internal value
+    } else { # internal, presumably, with possibly complex names. 
+      lambda <- structure(rep(default,nrand),names=seq_len(nrand)) 
+      if (length(init_lambda)==length(pos)) { # dhglmrC
+        lambda[pos] <- init_lambda
+        # lambda[names(init_lambda)] <- init_lambda would work if the names of init_lambda were really controlled
+      } else {
+        warning("'init' value may be ignored as its length\n does not match relevant random effects.", immediate. = TRUE)
+        lambda[names(init_lambda)] <- init_lambda ## the lambda's should be indexed "1",... to be taken into account
+        if (length(lambda)>nrand) stop("length(lambda)>nrand: case not handled")
+      }
       init_lambda <- lambda
     }
   } else init_lambda <- structure(rep(default,nrand),names=seq_len(nrand))
@@ -784,7 +794,7 @@
   } else not_inner_phi <- FALSE ## complex phi model, we weed inner optim
   if (not_inner_phi) {
     if (is.null(init.optim$phi) || is.na(init.optim$phi)) { 
-      init.optim$phi <- .get_inits_by_xLM(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
+      init.optim$phi <- .get_inits_by_xLM(processed, init.optim=init.optim)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
       # if init.optim$phi too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
     }  
   } else {
@@ -798,15 +808,17 @@
 # .calc_optim_args_mv() - .calc_optim_args() - .more_init_optim(proc_it, processed) -
 #  .init_optim_outer_phiGLM(proc1) for a submodel - .get_res_inits_by_xLM('processed'=proc1) here, 
 #
-# ____F I X M E____ I could also try to extend this logic to not-phiGLM residual-disp models
+# I also implemented this logic to not-phiGLM residual-disp models,
+# = Algos for outer estim of residual dispersion params *exist*.
 # In that case the .init_rdisPars() call (providing $scaled_X) should be followed by 
-# a call to .get_res_inits_by_xLM().
-# The context would be 
+# a call to .get_res_inits_by_xLM(). The context is (virtually) 
 # .calc_optim_args_mv() - .calc_optim_args() - 
 #   [.calc_init.optim_family_par() instead of .more_init_optim()] -
 # .init_rdisPars() followed by .get_res_inits_by_xLM()
-.get_res_inits_by_xLM <- function(processed) {
-  resxlm <- .get_inits_by_xLM(processed)$resxlm 
+#
+# BUT these algos are not used/routinely tested, as further explained on def of .init_optim_outer_phiGLM.
+.get_res_inits_by_xLM <- function(processed, init.optim) {
+  resxlm <- .get_inits_by_xLM(processed,init.optim=init.optim)$resxlm 
   ##
   ..res_sq <- resxlm$residuals^2
   XX <- (processed$family$resid.model$scaled_X)
@@ -819,6 +831,10 @@
 }
 
 # attempt to define an initial value for outer phiGLM
+# Note the current restriction to gaussian() response family.
+# This is reached in SEM's iterateSEMSmooth -> ... but outer_rdisp is still determined
+# to be FALSE. So .get_res_inits_by_xLM() is not called.
+# = Algos for outer estim of residual dispersion params exist but are not used/routinely tested.
 .init_optim_outer_phiGLM <- function(processed, init.optim, nrand, 
                                      reasons_for_outer, # may depend on option 'allow_outer_phiGLM'
                                      rdisp) {
@@ -842,10 +858,10 @@
     if (NCOL(XX)) {
       if (is.null(init.optim$rdisPars)) { 
         ## if NULL user init (which must therefore be complete if present)
-        ## the next line no longer works bc the 'xLM' ignores the residual-dispersion formula, fitting only a Intercept for dispersion
+        ## the next line no longer works bc the 'xLM' ignores the residual-dispersion formula, fitting only an Intercept for dispersion
         # init.optim$rdisPars <- .get_inits_by_xLM(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
         ## => quick patch implemented in .get_res_inits_by_xLM()
-        coefs <- .get_res_inits_by_xLM(processed)
+        coefs <- .get_res_inits_by_xLM(processed, init.optim)
         init.optim$rdisPars <- setNames(coefs/(nrand+1L), colnames(XX))
       } else init.optim$rdisPars <- .scale(XX, init.optim$rdisPars)
     }
@@ -856,8 +872,10 @@
   return(list(not_inner_rdisp=outer_rdisp, init.optim=init.optim))
 }
 
-.eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h, For) {
-  nrand <-  length(processed$ZAlist)
+# 'init.optim': ultimately passed to .calc_inits_by_xLM(), cf comment on the latter.
+.eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h, For, init.optim=NULL) {
+  ZAlist <- processed$ZAlist
+  nrand <-  length(ZAlist)
   if (is.null(processed$main_terms_info$Y)) { ## for resid model
     if (For=="optim") { 
       guess_from_glm_lambda <- 0.1 ## (FIXME ad hoc) Cannot let it NA as this will be ignored by further code, namely
@@ -865,7 +883,7 @@
       #                               init.optim$lambda <- optim_lambda_with_NAs[!is.na(optim_lambda_with_NAs)]
     } else guess_from_glm_lambda <- NA
   } else {
-    inits_by_xLM <- .get_inits_by_xLM(processed) 
+    inits_by_xLM <- .get_inits_by_xLM(processed, init.optim=init.optim) 
     if (For=="optim") { 
       guess_from_glm_lambda <- inits_by_xLM$lambda*(3L*nrand)/((nrand+1L)) # +1 for residual
     } else guess_from_glm_lambda <- inits_by_xLM$lambda*(3L*nrand+2L)/((nrand+1L)) # +1 for residual  ## old code was *5/(nr+1) ## f i x m e super ad hoc
@@ -876,7 +894,8 @@
   corr_types <- processed$corr_info$corr_types
   for (rd in stillNAs) { ## fam_corrected_guess for each ranef in stillNAs
     if ( ! is.null(processed$families)) {
-      which_mv <- attr(processed$ZAlist[[rd]],"which_mv")
+      which_mv <- attr(ZAlist[[rd]],"which_mv")
+      nrand_ <- max(sapply(attr(ZAlist,"map_rd_mv")[which_mv], length)) # max # of ranefs in relevant submodels
       # trunc_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="zero_truncated")) 
       link_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="link")) 
       link_[link_=="loglambda"] <- "log" 
@@ -896,9 +915,10 @@
         link_[abs(q_)<0.05] <- "log"
         link_[abs(q_-1)< 0.05] <- "identity"
       }
+      nrand_ <- nrand
     }
     if (is.null(ZAL)) {
-      ZA <- processed$ZAlist[[rd]]
+      ZA <- ZAlist[[rd]]
     } else if (inherits(ZAL,"ZAXlist")) {
       ZA <- ZAL@LIST[[rd]]
       if (inherits(ZA,c("ZA_QCHM","ZA_Kron"))) ZA <- ZA$ZA
@@ -912,7 +932,7 @@
     #if (corr_types[it]=="AR1") ZA_corrected_guess <- log(1.00001+ZA_corrected_guess) ## ad hoc fix but a transformation for ARphi could be better FIXME
     fam_corrected_guess <- 
       .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, q_=q_,
-                                For=For, processed=processed, nrand=nrand)
+                                For=For, processed=processed, nrand=nrand_)
     init_lambda[rd] <- .preprocess_valuesforNAs(lcrandfamfam_rd=lcrandfamfam[rd], 
                                                 link_rd=rand.families[[rd]]$link, init.lambda=fam_corrected_guess)
   }
@@ -930,9 +950,10 @@
   if (proc1$augZXy_cond || 
       anyNA(init.optim$lambda) || # NA or NaN in user's explicit lambda
       other_reasons_for_outer_lambda) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
-    optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
+    pos <-  seq_len(nrand)[! ranCoefs_blob$isRandomSlope]
+    optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA, pos=pos)
     ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
-    optim_resid_lambda_with_NAs <- .reformat_init_lambda_with_NAs(proc1$envir$ranPars$lambda, nrand=nrand, default=NA)
+    optim_resid_lambda_with_NAs <- .reformat_init_lambda_with_NAs(proc1$envir$ranPars$lambda, nrand=nrand, default=NA, pos=pos)
     is_NA_simplelambda <- is.na(lFix) & 
       is.na(optim_resid_lambda_with_NAs) & 
       (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
@@ -940,7 +961,8 @@
     which_NA_simplelambda <- which(is_NA_simplelambda) ## exclude random slope whether set or not
     # :so that which_NA_simplelambda indexes the NA's but not the NaN's (user's explicit lambda=NaN)
     if (length(which_NA_simplelambda)) { 
-      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim") #calls .get_inits_by_xLM 
+      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim",
+                                             init.optim = init.optim) #calls .get_inits_by_xLM 
                     # and .calc_fam_corrected_guess (with arguments handling mv families)
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
       fixand <- is_NA_simplelambda & attr(proc1$rand.families,"is_gammaId")
@@ -1000,7 +1022,7 @@
                            processed$models[['phi']] == "")
   ranCoefs_blob <- processed$ranCoefs_blob
   is_MixedM <- ( ! is.null(ranCoefs_blob) )
-  if (is_MixedM) {
+  if (is_MixedM && ! processed$CONTROL$p4m_boo_use_proc) { 
     var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set) # vector !
     has_corr_pars <- length(corr_types[ ! is.na(corr_types)])
   } else var_ranCoefs <- has_corr_pars <- FALSE
@@ -1345,8 +1367,9 @@
           length(rC.Fix_rd)==length(rC.ini_rd) # context: If user provided init values for 
           # 3 variables coefs while rC.Fix_rd is of length 6 (3 NA, 3 fix),
           # the 2nd condition is FALSE, avoiding mis-writing.
-          # This new condition allows inits to be given as 3 or (3+3NA) values in this case, 
-          # which looks nice but not carefully thought  ____F I X M E____ rethink. 
+          # This new condition allows inits for 'diagFamily' 
+          # to be given as 3 or (3+3NA) values in this case,
+          # given that fixed values have the same format.
           ) {
         init.optim$ranCoefs[[char_rd]] <- 
           rC.ini_rd[is.na(rC.Fix_rd)] # keeps only variable ones in lambda-positions

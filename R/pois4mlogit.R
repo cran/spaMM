@@ -315,19 +315,24 @@ reshape2long  <- function(data, types) {
 
 # Use missing() systematically to avoid confusion because some of the reset values may be NULL.
 #
-# processed$port_env is what allows communication between HLfit_body() calls within a fitme call()
-#
 # (2) inits_by_xLM: not quite sure whether to reinit it if port_env info is missing 
 #
-# (3) Reinit processed$port_env$objective, otherwise the (irrelevant) final logL 
-# of the previous fitme_body with different .dynoffset would control further updating:
+# (3) processed$port_env is what allows communication between HLfit_body() calls within a fitme call().
+# => Always reinit processed$port_env$objective, otherwise the (irrelevant) final logL 
+# of the previous fitmv_body with different .dynoffset wihtin .p4m_by_iters would control further updating.
+# It is also irrelevant accross .p4m_by_iters() calls.
+# => Always reinit processed$port_env$port_fit_values, 
+# otherwise cf .get_init_beta: the values would be used irrespective of the logL value, 
+# **and init_HLfit (see 4) would be ignored**, with negative effects on the 'clinics' test.
 #
-# (4) init_HLfit is a 'fitmv' specificity to handle preprocessed init.HLfit accounting for mv specificities.
-# fitmv uses   mc[["init.HLfit"]] <- merged$"init_HLfit" # we is a single copy in any usage
-# Either the processed is not recycled or it is recycled and fitmv_body() is directly called.
+# (4) init_HLfit is a preprocessed version of init.HLfit:
+# (cf processed$init_HLfit <-  .preprocess_init.HLfit(init.HLfit, corr_info) in univariate-resp fits;
+#  a merged version here) 
+# fitmv uses   mc[["init.HLfit"]] <- merged$"init_HLfit" 
+# Either the processed is not recycled, or it is recycled and fitmv_body() is directly called.
 # So this is created once and stays there indefinitely unless we reinit it.
 #   Then is is read by fitmv_by -> .calc_optim_args_mv -> {init.HLfit <- optim_blob$inits$`init.HLfit`}
-# which provides the actual init.HLfit of the HLCor.args within fitmv_body
+# which provides the actual init.HLfit of the HLCor.args within fitmv_body (but see (3)!)
 #   In p4m calls it is useful to reinit it if the dynoffset is modified.
 #
 # control$port_env (seek also [["control"]]$port_env) 
@@ -339,12 +344,14 @@ reshape2long  <- function(data, types) {
 # It seems it is operative only if I use .reinit_processed(init_HLfit=init.HLfit)
 .reinit_processed <- function(
     processed, 
-    new_offsets, # when .dynoffset and off are updated ; Xb term must be added in HL...bofy
+    new_offsets, # when .dynoffset and off are updated ; Xb term must be added in HL...body
     inits_by_xLM, # reset between fitmv_body calls (2)
-    objective, # reset between fitmv_body calls (3)
     init_HLfit # whenever there is some init.HLfit to take into account (4)
     # add 'data' case?
-) {
+) {  
+  processed$port_env$objective  <- -Inf # Always reset between fitmv_body calls (3)
+  processed$port_env$port_fit_values  <- NULL # Always reset between fitmv_body calls (3) (! otherwise .get_init_beta() uses it)
+  
   if ( ! missing(new_offsets)) {
     if ( ! is.null(X_off_Xb_fn <- processed$X_off_Xb_fn)) { 
       processed$off <- 
@@ -356,8 +363,6 @@ reshape2long  <- function(data, types) {
   }
   if ( ! missing(inits_by_xLM)) 
     processed$envir$inits_by_xLM <- inits_by_xLM
-  if ( ! missing(objective))  
-    processed$port_env$objective  <- objective
   if ( ! missing(init_HLfit))
     processed$init_HLfit <- init_HLfit
   invisible(NULL)
@@ -414,20 +419,21 @@ reshape2long  <- function(data, types) {
     valid_rows <- multinom_info$valid_rows
     has_dynoffset <- multinom_info$has_dynoffset
     data  <- processed$data # the *processed* data
-    .reinit_processed(processed=processed, 
-                      # inits_by_xLM=NULL, # There one case below where we might not want this
-                      objective= -Inf) # hopefully offsets has been left up to date by previous computations
+    .reinit_processed(processed=processed)
+                      # inits_by_xLM=NULL, # There is one case below where we might not want this.
+    # hopefully offsets has been left up to date by previous computations
   } else {
     if (missing(types)) stop("Argument 'types' is missing.")
     mc <- .cast_as_fitmv_call(mc)
-    ## First data$.dynoffset needed before further preprocessing:  _TODO_
     null_init_dynoffset <- is.null(data$.dynoffset)
-    if (null_init_dynoffset) data$.dynoffset <- 0 # only for .get_surrogate_info() call
-
+    
     ## multinom_info, but data may be reshaped in to.long case.
     if (is.null(multinom_info)) { # This case is avoided when this code 
       # is reached through a .get_LUarglist_from_p4m_call() call,
       # BUT it does routinely occur otherwise.
+      
+      # data$.dynoffset first needed to pass data checks in .get_surrogate_info -> .preprocess()
+      if (null_init_dynoffset) data$.dynoffset <- 0 
       surrogate_info <- .get_surrogate_info(mc, data) 
       has_dynoffset <- surrogate_info$has_dynoffset
       if (length(types) != sum(has_dynoffset)) 
@@ -553,7 +559,7 @@ reshape2long  <- function(data, types) {
     time1 <- Sys.time()
     if ( ! problem) {
       if ("v_h" %in% next_inits) init.HLfit$v_h <- ranef(curr_mvp, type="bare.init")
-      if ("fixef" %in% next_inits) init.HLfit$fixef <- fixef(curr_mvp)
+      if ("fixef" %in% next_inits) init.HLfit$fixef <- fixef(curr_mvp, keep_fixed=FALSE)
     }
     if (is_processed_call) { # direct update on fitmv_body call
       processed$data  <- data # with new .dynoffset
@@ -562,7 +568,6 @@ reshape2long  <- function(data, types) {
       .reinit_processed(processed=processed, 
                         new_offsets=model.offset.HLfit(curr_mvp, data=data),
                         inits_by_xLM=NULL, 
-                        objective= -Inf,
                         init_HLfit= init.HLfit
       )
       # The current control$port_env (with scaled values) will be used to initialize the next iteration,
@@ -584,9 +589,21 @@ reshape2long  <- function(data, types) {
         p4mPQLcall=p4mcall, curr_mvp, multinom_info = multinom_info, log_mnsizes = log_mnsizes)
       PQL_already_run <- TRUE
       data$.dynoffset <- info_from_pql$dynoffset
-      curr_mvp <- update(curr_mvp, data=data, # extra fitmv call to handle convergence problem
-                         init.HLfit=info_from_pql$init.HLfit, 
-                         init=newinits, control.HLfit=control.HLfit, control=control) 
+      if (is_processed_call) {
+        # Cf comment on .reformat_p4m_controls
+        processed$data$.dynoffset <- data$.dynoffset
+        .reinit_processed(processed=processed, 
+                          new_offsets=model.offset.HLfit(curr_mvp, data=data),
+                          inits_by_xLM=NULL, 
+                          init_HLfit= info_from_pql$init.HLfit
+        )
+        mc[["control.HLfit"]] <- control.HLfit
+        curr_mvp <- eval(mc,parent.frame()) #  eval(fitmv_body,...)
+      } else {
+        curr_mvp <- update(curr_mvp, data=data, # extra fitmv call to handle convergence problem
+                           init.HLfit=info_from_pql$init.HLfit, 
+                           init=newinits, control.HLfit=control.HLfit, control=control) 
+      }
     } 
     
     output.dynoffset <- .get_new_dynoffset_from_fit(
@@ -624,6 +641,11 @@ reshape2long  <- function(data, types) {
     control$nloptr$xtol_rel <- substitute(
       4e-6*max(1,val),   list(val=Scrit/tol)
     )
+    if (is_processed_call) {
+      mc[["control.HLfit"]] <- control.HLfit
+      mc[["control"]][["bobyqa"]][["rhoend"]] <- control$bobyqa$rhoend
+      mc[["control"]][["nloptr"]][["xtol_rel"]] <- control$nloptr$xtol_rel
+    }
     dScrit <- Scrit-oldScrit
     dOcrit <- Ocrit-oldOcrit
     if (notwarned && abs(dlogL) < tol) {
@@ -751,7 +773,7 @@ reshape2long  <- function(data, types) {
     if (logLik(curr_mvp) > p4m_port_env$logL+0.0001) {
       p4m_port_env$logL <- logLik(curr_mvp)    
       p4m_port_env$"init.HLfit" <- list(v_h=ranef(curr_mvp, type="bare.init"),
-                                        fixef=fixef(curr_mvp))
+                                        fixef=fixef(curr_mvp, keep_fixed=FALSE))
       # print(head(p4m_port_env$"init.HLfit"$"v_h"), digits=6)
     }
   }
@@ -760,7 +782,7 @@ reshape2long  <- function(data, types) {
     curr_mvp$call <- p4mcall
     curr_mvp$p4m_info <- list(Ocrit=Ocrit, Scrit=Scrit, it=it, mnsizes=mnsizes,
                               multinom_info=multinom_info) 
-    curr_mvp$how$fnname <- "pois4mlogit"
+    curr_mvp$how$fnname <- "pois4mlogit" # DESPITE this being the .p4m_by_iters() source
   }
   class(curr_mvp) <- c("pois4mlogit",class(curr_mvp))
   curr_mvp 
@@ -781,27 +803,17 @@ reshape2long  <- function(data, types) {
   objective <- .get_objective(fitobject)
   proc_info <- list(objective=objective) 
   
-  if (TRUE) { # no processed call: nonstandard use of the hlcorcall argument
-    # Here preprocessing will be called, 
-    #   in each iteration within the call of .p4m_by_iters() in .numInfo_objfn(), 
-    # 
-    ## its time to define another objfn (____F I X M E____)
-
-    # .get_HLCorcall_4_p4m(template4objfn) cannot be used without additional programming
-
-    optr <- .safe_opt(init=unlist(skeleton), objfn = .numInfo_objfn, objfn.extras=objfn.extras,
-                      LowUp = LowUp,
-                      lower=unlist(LowUp$lower),upper=unlist(LowUp$upper),
-                      verbose=FALSE,
-                      # additional arguments for .numInfo_objfn:
-                      skeleton=skeleton, 
-                      hlcorcall=template4objfn, # .p4m_by_iters() call; cannot be a processed HLCorcall (HLCor.obj|HLfit.obj) as p4m iterations are needed
-                      transf=transf, # signals transformed input (init, skeleton, LowUp). 
-                      full_beta=fixef(fitobject), 
-                      objective=proc_info$objective, 
-                      moreargs=.get_moreargs(fitobject), ...)
-    
-  } else eval(.lot_of_crap_from_earlier_attempts)
+  optr <- .safe_opt(init=unlist(skeleton), objfn = .numInfo_objfn, objfn.extras=objfn.extras,
+                    LowUp = LowUp,
+                    lower=unlist(LowUp$lower),upper=unlist(LowUp$upper),
+                    verbose=FALSE,
+                    # additional arguments for .numInfo_objfn:
+                    skeleton=skeleton, 
+                    hlcorcall=template4objfn, # .p4m_by_iters() call; cannot be a processed HLCorcall (HLCor.obj|HLfit.obj) as p4m iterations are needed
+                    transf=transf, # signals transformed input (init, skeleton, LowUp). 
+                    full_beta=fixef(fitobject), 
+                    objective=proc_info$objective, 
+                    moreargs=.get_moreargs(fitobject), ...)
 
   list(optr=optr,
        transf=transf, # signals transformed input. FALSE when called from numInfo(), 
@@ -822,6 +834,7 @@ reshape2long  <- function(data, types) {
 #  But confint for p4m fits sets it to FALSE, so the multiple pois4mlogit calls()
 #  won't produce multiple warnings (although the first can, provided
 #  confint is called while 'warned_glm_poisson_rates_0' is FALSE).
+#
 .reformat_p4m_controls <- function(control, has_bar, p4m=NULL, 
                                    p4m_reactvt_warn=TRUE, ppc_reactvt_warn=FALSE) {
   if ( ! length(control)) {
@@ -835,7 +848,7 @@ reshape2long  <- function(data, types) {
     if ( ! is.null(p4m)) control[["p4m"]] <- p4m 
     
   }
-  if (is.null(control[["use_proc_call"]])) control[["use_proc_call"]] <- FALSE
+  if (is.null(control[["use_proc_call"]])) control[["use_proc_call"]] <- FALSE 
   if (is.null(control[["p4m"]])) control[["p4m"]] <- ""
   control[["dyndyn"]] <- (control[["p4m"]]=="W")
   if (has_bar) {
@@ -895,17 +908,21 @@ reshape2long  <- function(data, types) {
   # THis template4objfn typically already has an init.HLfit.
   # The next line controls the init of the first .p4m_by_iters() within .p4m_by_outer_optim()
   template4objfn[["init.HLfit"]] <- list(fixef=na.omit(fixef(mvp)), v_h=mvp$v_h)
-  if (length(template4objfn[["init"]])) { # tested by numInfo(BbyP) as numInfo() adds init values,
+  if (length(template4objfn[["init"]])) { # numInfo() adds init values,
     # potentially creating a conflict between init and fixed value.
+    # This block is tested by numInfo(BbyP).
     template4objfn[["init"]] <- eval(template4objfn[["init"]])
     cskeleton <- .canonizeRanPars(skeleton, corr_info = mvp$ranef_info$sub_corr_info, 
                                   rC_transf=.spaMM.data$options$rC_transf)
     template4objfn[["init"]] <- .remove_from_cP(template4objfn[["init"]],u_names=names(unlist(cskeleton)))
   }
+  template4objfn["lower"] <- template4objfn["upper"] <- NULL # (from user-level call) 
+  if ( ! is.null(template4objfn$processed)) template4objfn$processed[["CONTROL"]][["p4m_boo_use_proc"]] <- TRUE
   template4objfn # .p4m_by_iters call
-  # TRY template4objfn$processed <- # not the right return element
-  #        .get_HLCorcall_4_p4m(template4objfn$processed
 }
+
+# get_proc_p4m_bi_call() is called to build the initial .p4m_by_iters call 
+# = the 1st step in pois4mlogit().
 # .get_proc_p4m_bi_call() vs .get_proc_call_4_p4m():
 # .get_proc_p4m_bi_call() returns the input .p4m_by_iters() call after
 # adding $processed, while .get_proc_call_4_p4m()
@@ -1006,6 +1023,10 @@ pois4mlogit <- function(submodels, data, to.long=FALSE,
   # end 1st step
   
   ##### 2ND STEP
+  control$port_env$.dynoffset <- NULL
+  control$port_env$bestfit <- NULL
+  # control$port_env$logL <- NULL # That's the final one at the end of a {.p4m_by_oo -> p4m_by_iters call} so not yet present
+  # control$port_env$init.HLfit <- NULL # same
   if (nchar(p4mcontrol)>1L) {
     mc[["control"]][["p4m"]] <- substr(p4mcontrol,2,2) # "H" by default.
     if (control[["use_proc_call"]]) {
@@ -1138,7 +1159,7 @@ pois4mlogit <- function(submodels, data, to.long=FALSE,
       if (missing(tol)) mc[["tol"]] <- 1e-6
       # ideally the p4m should have been simply "H" in this case: has_bar but not has_ranPars2fit.
       # we would need to detect this case before the first step while currently has_ranPars2fit is evaluated after.
-      mvp <- eval(mc, parent.frame()) #### final .p4m_by_iters # ____F I X M E____ not consistently spprec through all steps? (trace .solve_IRLS_as_ZX)
+      mvp <- eval(mc, parent.frame()) #### final .p4m_by_iters # ____F I X M E____? not consistently spprec through all steps? (trace .solve_IRLS_as_ZX)
       if (mvp$warnings$succInnerNotConv) { # unique .p4m_by_iters of second (H) step has been interrupted.
         mvp$warnings$succInnerNotConv <- "Last step of pois4mlogit fit interrupted." 
       } else mvp$warnings$succInnerNotConv <- NULL

@@ -60,7 +60,7 @@ Wilson AJ, et al. (2010) An ecologist's guide to the animal model. Journal of An
 # residual variances 'phi' must then be fixed to some negligible values 
 # in order to avoid non-identifiability.
 
-if (spaMM.getOption("example_maxtime")>7) { 
+if (spaMM.getOption("example_maxtime")>5) { 
   data("Gryphon")
   gry_prec <- as_precision(Gryphon_A)
   gry_GE <- fitmv(
@@ -75,7 +75,7 @@ if (spaMM.getOption("example_maxtime")>7) {
   # according to Supplementary File 3 of Wilson et al., p.7:
 
   lambda_table <- summary(gry_GE, digits=5,verbose=FALSE)$lambda_table 
-  by_spaMM <- na.omit(unlist(lambda_table[,c("Var.","Corr.")]))[1:6]
+  by_spaMM <- na.omit(unlist(lambda_table[,c("Var.","Cor.1")]))[1:6]
   by_asreml <- c(3.368449,12.346304,3.849875,17.646017,0.381463,0.401968)
   by_spaMM/by_asreml-1  # relative differences ~ O(1e-4)
 

@@ -15,13 +15,15 @@ try(testthat::test_that(paste0("criterion was ",signif(crit,4)," from 5.733443")
 ## Crude way to the same result:
 if (spaMM.getOption("example_maxtime")>0.9) {  
   objfn <- function(nu) {  
-    #cat(nu," ")
     fit <- HLfit(broken ~ transfers, data=freight, family = COMPoisson(nu=nu), method="ML")
+    # cat(nu," ", logLik(fit),"; ")
     logLik(fit)
   }
   optr <- optim(1,objfn,lower=0.05,upper=10,method="L-BFGS-B",control=list(fnscale=-1))
-  crit <- diff(range(optr$par,5.781804 )) 
-  try(testthat::test_that(paste0("criterion was ",signif(crit,4)," from 5.781804"), testthat::expect_true(crit<1e-6))) # decimals depend COMPoisson approxs again
+  (crit <- diff(range(optr$par,5.781804 )) )
+  # Test useful to detect programming issues in the preamble of the family function:
+  testthat::test_that(paste0("criterion was ",signif(crit,4)," from 5.781804"), 
+                      testthat::expect_true(crit<1e-6)) # decimals depend COMPoisson approxs again
 }
 # GLMM with under-dispersed conditional response
 (compmm <- HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10), method="ML"))

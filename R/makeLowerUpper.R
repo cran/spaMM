@@ -25,14 +25,8 @@
   }
 }
 
-
+# Called by .calc_optim_args()
 .wrap_calc_famdisp_lowup <- function(processed, family=processed$family, prior.weights=processed$prior.weights) {
-  
-  # Old comment: "provide famdisp_lowup bc LUarglist, which is returned in the fit object, 
-  # should not include 'processed'"
-  # Not quiteclear, but suggests it's for reuse of LUarglist. This provides element famdisp_lowup of
-  # LUarglist, so I should check the usage ____F I X M E____ of the latter, as this code appears to duplicate bounds
-  # provided elsewhere (with distinction rdisPars/named dispersion parameters, and acounting for prior weights)
   lo <- switch(family$family,
                "COMPoisson" = 0.05, # no prior.weights handling for COMPoisson 
                "beta_resp" = 1e-6/prior.weights, # '/'pw bc the disp param is here a prec param: precision =prec*pw must be within 1e-6, 1e6

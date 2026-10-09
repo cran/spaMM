@@ -124,7 +124,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w, rhs) 
   } else {
     # see tests_private/test-perm_wd2hdv2w.R for how I tested this code in a debug session.
-    if (length(perm <- sort.list(BLOB$CHMfactor_wd2hdv2w@perm))) {
+    if (length(BLOB$CHMfactor_wd2hdv2w@perm)) {
       locinv_factor_wd2hdv2w <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w, 
                                               b=solve(BLOB$CHMfactor_wd2hdv2w, system="P"), 
                                               system="L") 
@@ -360,7 +360,10 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     rhs <- BLOB$invsqrtwranef * B
     if (.is_evaluated("inv_factor_wd2hdv2w",BLOB)) { ## can be assigned elsewhere by lev_lambda <- BLOB$inv_factor_wd2hdv2w <- ....
       rhs <- drop(BLOB$inv_factor_wd2hdv2w %*% rhs)
-    } else rhs <- drop(Matrix::solve(BLOB$CHMfactor_wd2hdv2w,rhs,system="L"))
+    } else{ 
+      if (length(BLOB$CHMfactor_wd2hdv2w@perm)) rhs <- solve(BLOB$CHMfactor_wd2hdv2w, b=rhs, system="P")
+      rhs <- drop(solve(BLOB$CHMfactor_wd2hdv2w, b=rhs, system="L")) 
+    } 
     # No sign => no  invIm2QtdQ_Z factor
     # nonSPD => we use the regularized WLS_mat so do not consider invIm2QtdQ_Z factor here even though it is defined
     # sign SPD => still using QR and exact Hessian here so we use the invIm2QtdQ_Z factor. (vs decorr where we use chol)
@@ -461,12 +464,12 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   if (which=="hatval") {return(BLOB$hatval) }  ## used in get_hatvalues  ##  REML hatval computation (also named hatval_ZX)
   if (which=="R_scaled_blob") { ## used for LevMar
     if (is.null(BLOB$R_scaled_blob)) {
-      tmp <- X <- BLOB$R_scaled[ , BLOB$sortPerm] ## crossfac
+      tmp <- unperm_crf_scaled <- BLOB$R_scaled[ , BLOB$sortPerm] ## crossfac
       xx <- tmp@x
       xx <- xx*xx
       tmp@x <- xx
-      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp=colSums(tmp), 
-                                 XDtemplate=.XDtemplate(X,upperTri=FALSE))
+      BLOB$R_scaled_blob <- list(unperm_crf_scaled=unperm_crf_scaled, unperm_diag_wHw=colSums(tmp), 
+                                 XDtemplate=.XDtemplate(unperm_crf_scaled,upperTri=FALSE))
     }
     return(BLOB$R_scaled_blob)
   } 
@@ -475,35 +478,48 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       # We want the *columns* of these R's to match the unpermuted v_h, 
       # It may not be necessary that the factor is triangular as long as we only use its tcrossprod. 
       if (BLOB$u_h_cols_on_left) { 
-        unperm_R_scaled_v_h <- BLOB$R_scaled[BLOB$sortPerm_u_h,BLOB$sortPerm_u_h, drop=FALSE]
+        unperm_crf_scaled_v_h <- BLOB$R_scaled[BLOB$sortPerm_u_h,BLOB$sortPerm_u_h, drop=FALSE] # crossfac of scaled hessian block
+        # but we want a tcrossfac for consistency with use of CHMfactor_wd2hdv2w
+        unperm_tcrf_scaled_v_h <- t(unperm_crf_scaled_v_h)
       } else {
-        R_scaled_v_h <-  as(BLOB$CHMfactor_wd2hdv2w,"CsparseMatrix") 
-        unperm_R_scaled_v_h <- 
-          as(BLOB$CHMfactor_wd2hdv2w, "pMatrix") %*% R_scaled_v_h  
+        tcrf_scaled_v_h <-  as(BLOB$CHMfactor_wd2hdv2w,"CsparseMatrix") # but CHMfactor is tcrossfac of scaled Hessian...
+        unperm_tcrf_scaled_v_h <- 
+          as(BLOB$CHMfactor_wd2hdv2w, "pMatrix") %*% tcrf_scaled_v_h  
       }
 
-      tmp <- unperm_R_scaled_v_h 
+      tmp <- unperm_tcrf_scaled_v_h 
       xx <- tmp@x
       xx <- xx*xx
       tmp@x <- xx
-      unperm_diag_RtR_scaled_v_h <- rowSums(tmp)
-      BLOB$R_scaled_v_h_blob <- list(unperm_R_scaled_v_h=unperm_R_scaled_v_h, # used to get the CHM factor
-                                     unperm_diag_RtR_scaled_v_h=unperm_diag_RtR_scaled_v_h # used to get dampDpD
-                                     # XDtemplate=.XDtemplate(unperm_R_scaled_v_h, upperTri=NA) # used in QR method
+      unperm_diag_wHw <- rowSums(tmp) # rowSums~diag(tcrossprod)
+      BLOB$R_scaled_v_h_blob <- list(unperm_tcrf_scaled_v_h=unperm_tcrf_scaled_v_h, # used to get the CHM factor
+                                     unperm_diag_wHw=unperm_diag_wHw # used to get dampDpD
+                                     # XDtemplate=.XDtemplate(t(unperm_tcrf_scaled_v_h), upperTri=NA) # used in QR method
                                      )
     }
     return(BLOB$R_scaled_v_h_blob)
   } 
-  if (which=="XD_CHM_info") { # for LevMar_step_v_h
-    if (is.null(BLOB$XD_CHM_info)) {
-      X <- BLOB$R_scaled_v_h_blob$unperm_R_scaled_v_h 
+  if (which=="XD_CHM_info_v_h") { # for LevMar_step_v_h
+    if (is.null(BLOB$XD_CHM_info_v_h)) {
+      X <- BLOB$R_scaled_v_h_blob$unperm_tcrf_scaled_v_h 
       tcrossX <- .tcrossprod(X, chk_sparse2mat = FALSE, as_sym = TRUE)
-      BLOB$XD_CHM_info <- list(
+      BLOB$XD_CHM_info_v_h <- list(
         tcrossX = tcrossX, 
         template_CHM = Cholesky(.dsCsum(tcrossX, .symDiagonal(n=ncol(X))), LDL=FALSE, perm=TRUE) 
       )
     }
-    return(BLOB$XD_CHM_info)
+    return(BLOB$XD_CHM_info_v_h)
+  }
+  if (which=="XD_CHM_info_b_v") { # for LevMar_step
+    if (is.null(BLOB$XD_CHM_info_b_v)) {
+      X <- t(BLOB$R_scaled_blob$unperm_crf_scaled) 
+      tcrossX <- .tcrossprod(X, chk_sparse2mat = FALSE, as_sym = TRUE)
+      BLOB$XD_CHM_info_b_v <- list(
+        tcrossX = tcrossX, 
+        template_CHM = Cholesky(.dsCsum(tcrossX, .symDiagonal(n=ncol(X))), LDL=FALSE, perm=TRUE) 
+      )
+    }
+    return(BLOB$XD_CHM_info_b_v)
   }
   if (which=="R_beta_blob") {
     if (is.null(BLOB$R_beta_blob)) {
@@ -558,25 +574,35 @@ get_from_MME.sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B
   resu <- switch(which,
                  "LevMar_step" = {
                    R_scaled_blob <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="R_scaled_blob")
-                   dampDpD <- damping*R_scaled_blob$diag_pRtRp ## NocedalW p. 266
-                   # Extend the X in X'X = P'R'RP:
-                   list(dVscaled_beta=.damping_to_solve_QR(XDtemplate=R_scaled_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
-                        dampDpD = dampDpD) 
+                   dampDpD <- damping*R_scaled_blob$unperm_diag_wHw ## NocedalW p. 266
+                   if (TRUE) {
+                     XD_CHM_info_b_v <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="XD_CHM_info_b_v")
+                     list(dVscaled_beta = .damping_to_solve_CHM(XD_CHM_info=XD_CHM_info_b_v,
+                                                           dampDpD=dampDpD, rhs=LMrhs), 
+                          dampDpD = dampDpD) 
+                     
+                   } else {
+                     # Extend the X in X'X = P'R'RP:
+                     list(dVscaled_beta=.damping_to_solve_QR(XDtemplate=R_scaled_blob$XDtemplate, 
+                                                             dampDpD=dampDpD, rhs=LMrhs), 
+                          dampDpD = dampDpD) 
+                     
+                   }
                  },
                  "LevMar_step_v_h" = {
                    R_scaled_v_h_blob <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="R_scaled_v_h_blob")
+                   dampDpD <- damping*R_scaled_v_h_blob$unperm_diag_wHw ## NocedalW p. 266
                    if (TRUE) {
-                     XD_CHM_info <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="XD_CHM_info")
-                     dampDpD <- damping*R_scaled_v_h_blob$unperm_diag_RtR_scaled_v_h ## NocedalW p. 266
-                     list(dVscaled = .damping_to_solve_CHM(XD_CHM_info=XD_CHM_info,
+                     XD_CHM_info_v_h <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="XD_CHM_info_v_h")
+                     list(dVscaled = .damping_to_solve_CHM(XD_CHM_info=XD_CHM_info_v_h,
                                                            dampDpD=dampDpD, rhs=LMrhs), 
                           dampDpD = dampDpD) 
                    } else { # D_E_V_E_L
                      BLOB <- attr(sXaug,"BLOB")
+                     unperm_crf_scaled_v_h <- t(BLOB$R_scaled_v_h_blob$unperm_tcrf_scaled_v_h)
                      XDtemplate <- # patch inefficace, only for devel (otherwise XDtemplate 
                        # should be precomputed in R_scaled_v_h_blob, as for other uses of .damping_to_solve_QR())
-                       .XDtemplate(t(BLOB$R_scaled_v_h_blob$unperm_R_scaled_v_h), upperTri=NA)
-                     dampDpD <- damping*R_scaled_v_h_blob$unperm_diag_RtR_scaled_v_h ## NocedalW p. 266
+                       .XDtemplate(unperm_crf_scaled_v_h, upperTri=NA)
                      # Extend the X in X'X = P'R'RP: 
                      list(dVscaled = .damping_to_solve_QR(XDtemplate=XDtemplate, 
                                                        dampDpD=dampDpD, rhs=LMrhs), 

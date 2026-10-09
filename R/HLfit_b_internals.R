@@ -10,7 +10,8 @@
 .post_process_family_it <- function(family, ranFix, char_mv_it) {
   if (family$family=="COMPoisson") {
     if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars 
-      # ____F I X M E______ resid.model for the nu of the COMPoisson: not API, not tried?. Should try and tidy.
+      stop("'resid.model' is not fully implemented fro COMPoisson family.") 
+      # _TODO_ Finish implem resid.model for COMPoisson? Low on list. tests nu=0 in .CMP functions cannot work
       disp_env <- family$resid.model
       if (is.null(disp_env$scaled_X)) {
         disp_env$beta <- rdisPars # fixed rdisPars
@@ -513,6 +514,10 @@
   fixed_adjacency_info
 }
 
+# .scale(beta=beta_eta,X=X.pv) (currently) requires that beta_eta does not contain extra params
+# So any of the sources for init.HLfit must respect this constraint.
+# => I implemented fixef(., keep_fixed), for confitn in particular.
+# An alternative would be to modify .scale(), or .get_init_beta() itself. 
 .get_init_beta <- function(processed, pforpv, init.HLfit, X.pv=processed$AUGI0_ZX$X.pv) {
   beta_eta <- processed$port_env$port_fit_values$fixef # scaled
   if (is.null(beta_eta)) { # then we look at user value and scale it <=> user values must be unscaled.

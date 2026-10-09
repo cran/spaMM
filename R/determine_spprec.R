@@ -25,7 +25,7 @@
   }
 })
 
-.determine_spprec_from_fast_G_diagnosis <- function(G_diagnosis, nc, nr, corr_info, ZAlist) {
+.determine_spprec_from_G_diagnosis <- function(G_diagnosis, nc, nr, corr_info, ZAlist) {
   
   # The old crit uses cross_ZL to measure de **corr cost, presumably bc it was faster (?)
   dimZL <- G_diagnosis$dimZL
@@ -72,58 +72,66 @@
   if (inherits(X.pv,"sparseMatrix") && ncol(X.pv)> sum(unlist(lapply(ZAlist,ncol)))) return(FALSE)
   
   Xi_cols <- attr(ZAlist, "Xi_cols")
-  nc <- sum(unlist(lapply(ZAlist,ncol)))
   corr_info <- processed$corr_info
-  any_corrMatrix_is_spprec <- (any(sapply(corr_info$corrMatrices,inherits,"precision")) ||
-                                 any(.unlist(lapply(corr_info$corr_families,`[[`, "type"))=="precision")
-  ) ## derives from inherits(corrMatrix,"precision")
-  
-  if (any_corrMatrix_is_spprec) {
-    anyRandomSlope <- any(Xi_cols>1L) ## FIXME seems oK for later code but semantically sloppy, cf (X-1|id) terms)
-    if (anyRandomSlope && processed$For!="fitme") {
-      .warn_once_not_fitme(processed)
-    } else sparse_precision <- TRUE ## force sparse
-  } else {
-    sparse_precision <- .spaMM.data$options$sparse_precision ## global user control
-  }
+  sparse_precision <- .spaMM.data$options$sparse_precision ## global user control
   ## best decision rule not obvious. For adjacency, trade off between repeated sparse Cholesky and a eigen() . 
-  if (is.null(sparse_precision)) {
+  
+  if (is.null(sparse_precision)) { 
+    # Inner rho estimation sufficient condition not to use spprec:
     exp_ranef_types <- attr(ZAlist,"exp_ranef_types")
     any_adj <- any(exp_ranef_types %in% c("SAR_WWt","adjacency"))
     if (any_adj) {
-      inner_estim_adj_rho <- ( processed$For=="HLCor" || (.get_cP_stuff(init.HLfit,"rho",count=TRUE)))
+      inner_estim_adj_rho <- ( processed$For=="HLCor" || .get_cP_stuff(init.HLfit,"rho",count=TRUE))
       if (inner_estim_adj_rho) sparse_precision <- FALSE
-      # } else if (all(exp_ranef_types=="(.|.)") # && 
-      #           # HLmethod=="ML(0,0,1)" # processed value for PQL/L
-      #            ) {
-      ## see comments below
-      #   sparse_precision <- nr<3*nc
     } 
-    # WHEN I CHANGE THE CODE HERE, I MUST CHECK THE CONTENTS OF help("sparse_precision")
-    if (is.null(sparse_precision)) {
-      ## mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|longitude+latitude,margin=2,levels=2, coarse=4)... better in spprec
-      any_IMRF <- any(exp_ranef_types== "IMRF")
-      if (any_IMRF) {
-        if (FALSE) { 
-          G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
-          sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<0.05))
-          if (FALSE && ! sparse_precision ) {
-            cat(cli::col_red(unlist(G_diagnosis)))
-            cat(cli::col_red(sparse_precision))
-          }
-        } else sparse_precision <- TRUE  # always for IMRF
-      } else {
-        G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
-        if (G_diagnosis$fast) {
-          sparse_precision <- .determine_spprec_from_fast_G_diagnosis(
-            G_diagnosis=G_diagnosis, nc=nc, nr=nr, corr_info=corr_info, ZAlist=ZAlist)
-        } else {
-          sparse_precision <- (names(which.min(G_diagnosis$costs))=="spprec")
-        }
-      }
-    }
-  } else if (sparse_precision && is.numeric(.getPar(init.HLfit,"rho"))) {
-    stop("Conflicting option 'sparse_precision' and argument init.HLfit$rho")
+  } else if (sparse_precision && .get_cP_stuff(init.HLfit,"rho",count=TRUE)) {
+    stop("Conflicting global option 'sparse_precision' and argument init.HLfit$rho")
   }
+
+  if (is.null(sparse_precision)) { # Check for IMRF, sufficient condition
+    ## mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|longitude+latitude,margin=2,levels=2, coarse=4)... better in spprec
+    any_IMRF <- any(exp_ranef_types== "IMRF")
+    if (any_IMRF) {
+      if (FALSE) { 
+        G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
+        sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<0.05))
+        if (FALSE && ! sparse_precision ) {
+          cat(cli::col_red(unlist(G_diagnosis)))
+          cat(cli::col_red(sparse_precision))
+        }
+      } else sparse_precision <- TRUE  # always for IMRF
+    } 
+  }
+
+  # WHEN I CHANGE THE CODE HERE, I MUST CHECK THE CONTENTS OF help("sparse_precision")
+  
+  if (is.null(sparse_precision)) { # Check for things like a single large ARp:
+    is_precMat_s <- sapply(corr_info$corrMatrices,inherits,"precision")
+    is_precFam_s <- corr_info$corr_families 
+    for (rd in seq_along(is_precFam_s)) {
+      precFam_rd <- is_precFam_s[[rd]]
+      is_precFam_s[[rd]] <- 
+        inherits(precFam_rd,"corr_family") && identical(precFam_rd[["type"]],"precision")
+    }
+    is_precFam_s <- .unlist(is_precFam_s)
+    is_prec_s <-  is_precMat_s | is_precFam_s 
+    if (all(is_prec_s)) {
+      anyRandomSlope <- any(Xi_cols>1L) ## FIXME seems oK for later code but semantically sloppy, cf (X-1|id) terms)
+      if (anyRandomSlope && processed$For!="fitme") {
+        .warn_once_not_fitme(processed)
+      } else if (nc >100L) sparse_precision <- TRUE ## force sparse
+    } 
+  }
+  
+  if (is.null(sparse_precision)) { # General case
+    G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
+    if (G_diagnosis$fast) {
+      sparse_precision <- .determine_spprec_from_G_diagnosis(
+        G_diagnosis=G_diagnosis, nc=nc, nr=nr, corr_info=corr_info, ZAlist=ZAlist)
+    } else {
+      sparse_precision <- (names(which.min(G_diagnosis$costs))=="spprec")
+    }
+  }
+  
   return(sparse_precision)
 }

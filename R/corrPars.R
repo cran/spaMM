@@ -80,7 +80,8 @@ if (FALSE) {  ## DOC:
 
 # getPar extract values from a list of lists, controlling that there is no redundancies between the lists => useful to *merge* lists 
 # but in fact I do not seem to use this facility. .getPar() is applied to 'ranFix' (once to 'fixed')
-# Argument 'which' can be any way of indexing a list
+# Argument 'which' can be any way of indexing a list.
+# Return the number found ( which may be tested as ~TRUE) if 'count' is TRUE, else check + retiurn valueof param.
 .getPar <- function(parlist,name,which=NULL, count=FALSE) { ## see .get_cP_stuff() to extract from first level or from an optional corrPars element !
   if ( ! is.null(which)) parlist <- parlist[[which]] 
   val <- parlist[[name]] 

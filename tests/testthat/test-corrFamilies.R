@@ -79,8 +79,8 @@ if (spaMM.getOption("example_maxtime")>10) {
   }
   
   {
-    cat(cli::col_yellow("ARp; ")) 
-    {
+    
+    { cat(cli::col_yellow("ARp; ")) 
       ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
       AR1fit <- fitme(lh ~ 1 + AR1(1|time), data=ts, method="REML")
       ARpfit <- fitme(lh ~ 1 + ARp(1|time), data=ts, method="REML")
@@ -100,8 +100,8 @@ if (spaMM.getOption("example_maxtime")>10) {
       p4 <- get_predVar(ARpfit, newdata=ts[2:4,])
       testthat::expect_true(diff(range(p1-p2,p1-p3,p1-p4))<2e-8)
     }
-    cat(cli::col_yellow("ARMA; ")) 
-    {
+    
+    { cat(cli::col_yellow("ARMA; ")) 
       ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
       ARMAfit <- fitme(lh ~ 1 + ARMA(1|time,p=1,q=1), data=ts, method="REML")
       p1 <- predict(ARMAfit)[2:4,]

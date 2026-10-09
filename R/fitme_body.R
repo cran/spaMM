@@ -103,7 +103,7 @@ fitme_body <- function(processed,
     anyHLCor_obj_args$skeleton <- structure(init.optim,
                                             type=relist(rep("fix",length(initvec)),init.optim))
   }
-  .assignWrapper(anyHLCor_obj_args$processed,
+  .eval_into(anyHLCor_obj_args$processed,
                    paste0("return_only <- \"",proc1$objective,"APHLs\""))
   if (length(initvec)) {
     augZXy_phi_est <- NULL
@@ -119,7 +119,7 @@ fitme_body <- function(processed,
       time2 <- Sys.time()
       if (use_SEM) {
         if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
-          .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
+          .eval_into(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
         } ## else default visible in SEMbetalambda
         ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
         iterateSEMSmooth <- get("iterateSEMSmooth",envir = asNamespace("probitgem"), inherits=FALSE)
@@ -193,8 +193,8 @@ fitme_body <- function(processed,
   }
   #
   # not local to anyHLCor_obj_args$processed: change processed globally
-  .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
-  .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
+  .eval_into(HLCor.args$processed,"return_only <- NULL") 
+  .eval_into(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
   # Run in all cases to produce the full object (rather than only the optimization result):
   # _F I X M E_ It once looked as if the next call failed if (all) ranpars are 
   # inner estimated with init.HLfit values =NA. But I fail to replicate the pb.

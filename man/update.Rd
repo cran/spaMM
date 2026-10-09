@@ -21,7 +21,7 @@ if the response was specified as \code{I(foo^2)} the variable \code{foo} is not 
 However, in some cases, dynamic evaluation of the response variable may be helpful. For example, for bootstrapping hurdle models, the zero-truncated response may be specified as \code{I(count[presence>0] <- NA; count)} (where both the zero-truncated \code{count} and binary \code{presence} variables are both updated by the bootstrap simulation). In that case the names of the two variables to be updated is provided by setting (say)\cr
 \code{<fit object>$respNames <- c("presence", "count")}\cr
 for an hurdle model fit as a bivariate-response model, with first submodel for presence/absence, and second submodel for zero-truncated response. A full example is developed in the \dQuote{Gentle introduction} to \pkg{spaMM} (
-\url{https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref/-/blob/master/vignettePlus/spaMMintro.pdf}).
+\url{https://gitlab.in2p3.fr/francois.rousset/spamm-ref/-/blob/master/vignettePlus/spaMMintro.pdf}).
 Alternatively for univariate-response fits, use \cr 
 \code{<fit object>$respName <- "count"}
 

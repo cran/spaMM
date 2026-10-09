@@ -75,13 +75,19 @@
   resglm
 }
 
-
-
+# "init.optim' arg added solely for the purpose of providing Tw_index when needed.
+# (*) # The case of null Tw_index this 'should not' occur bc 
+#  .calc_optim_args() (on each submodel) calls .calc_init.optim_family_par() 
+# before it calls .more_init_optim() -> .calc_inits_by_xLM().
+# There are subtleties, e.g. .calc_init.optim_family_par() can itself call .get_inits_by_xLM() 
+# (without any useful init.optim arg, by necessity) to get eg an init NB_shape from overdispersion. 
+# Still .calc_init.optim_family_par() does not call .get_inits_by_xLM() for tweedie family.
 .calc_inits_by_xLM <- function(processed, X.pv=processed$AUGI0_ZX$X.pv, family=processed$family,
                                y=processed$y, ## requested by the formula
                                Y=.get_from_terms_info(terms_info=processed$main_terms_info, which="Y"),
                                prior.weights=processed$prior.weights,   ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
-                               off=processed$off
+                               off=processed$off,
+                               init.optim=NULL
 ) {
   overdisp <- NULL # only for R CMD check
   ## Prior to optimization the family parameters may not be assigned, so: 
@@ -108,7 +114,11 @@
     # : This helps for he GLM but not much otherwise. Other ideas ?
   } else if (orifamfam=="tweedie") {
     if (.is_fampar_missing(family=family,fampar="p")) {
-      assign("p",1.5,envir=environment(family$aic)) # ____F I X M E____ less arbitrary choices ? 
+      Tw_index <- init.optim[["Tw_index"]]
+      if (is.null(Tw_index)) { # see comment (*) above
+        Tw_index <- 1.5 
+      } 
+      assign("p",Tw_index,envir=environment(family$aic)) 
       # + remove these assignments after the glm fit ? they might hide bugs (but same for other fam pars ?)
     }
     if ( get("q_missing", environment(family$aic), inherits = FALSE)) {
@@ -239,7 +249,11 @@
     } 
     beta_eta <- c(coefficients(resxlm)) ## this may include NA's. Testcase: HLfit(Strength ~ Material*Preheating+Method,data=weld)
     #    "c is sometimes used for its side effect of removing attributes except names..."
-    if (all(names(beta_eta)=="X.pv")) { ## si la formula etait y ~X.pv-1
+    if (all(names(beta_eta)=="X.pv")) { ## "si la formula etait y ~X.pv-1"
+      # or if beta_eta has no names, as in above
+      # resxlm <- .safe_llm(X.pv, Yy=drop(Y), prior.weights, off, family, processed, resu)
+      # eg, (nb1llm <- fitme(cases~I(prop.ag/10)+offset(log(expec)),family=negbin1(shape=1/2.94), data=scotlip))
+      # where X.pv is for the main response.
       names(beta_eta) <- colnames(resxlm$model$X.pv)
     } else names(beta_eta) <- gsub("^X\\.pv","",names(beta_eta)) ## removes initial "X.pv" without guessing any order or length
     resu$beta_eta <- beta_eta
@@ -251,9 +265,11 @@
 
 # function called within HLfit for missing inits... 
 # but also sometimes in fitme_body prior to optimization (cf complex condition for call of .eval_init_lambda_guess())
+# 'init.optim': ultimately passed to .calc_inits_by_xLM(), cf comment on the latter.
 .get_inits_by_xLM <- function(processed, reset=FALSE,
                               # args used only as promises:
-                              X.pv=processed$AUGI0_ZX$X.pv, family=processed$family) {
+                              X.pv=processed$AUGI0_ZX$X.pv, family=processed$family,
+                              init.optim=NULL) {
   if ( is.null(inits_by_xLM <- processed$envir$inits_by_xLM)) {
     if ( ! is.null(vec_nobs <- processed$vec_nobs) ) {
       do_eval <- rep(TRUE, length(vec_nobs))
@@ -288,7 +304,8 @@
                                                   y=processed$y[resp_range], ## requested by the formula
                                                   Y=.get_from_terms_info(terms_info=processed$main_terms_info, which="Y", mv_it=mv_it), 
                                                   prior.weights=processed$prior.weights[[mv_it]], ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
-                                                  off=processed$off[resp_range] )
+                                                  off=processed$off[resp_range],
+                                                  init.optim=init.optim)
         # in mv cases the benefits of promises in .calc_inits_by_xLM() return value are lost (__F I X M E___):
         beta_eta[col_range] <- new_mvlist[[mv_it]]$beta_eta
         lambdas[mv_it] <- new_mvlist[[mv_it]]$lambda
@@ -308,7 +325,7 @@
       if ( .has_X_off_betas(processed)) {
         X.pv <- environment(processed$X_off_Xb_fn)$X_fixed
       } else X.pv <- processed$AUGI0_ZX$X.pv
-      processed$envir$inits_by_xLM <- .calc_inits_by_xLM(processed, X.pv=X.pv) # univariate response case: 
+      processed$envir$inits_by_xLM <- .calc_inits_by_xLM(processed, X.pv=X.pv, init.optim=init.optim) # univariate response case: 
                                       # returns an environment with promises for deviance-dependent elements
       # This occurs for mv fits in context
       # .calc_optim_args_mv() - .calc_optim_args() - .more_init_optim(proc_it, processed) -

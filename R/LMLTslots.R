@@ -154,7 +154,7 @@
                                           nrow = q) %*% t(vectors[, pos, drop = FALSE])
   })
   res$vcov_varpar <- h_inv 
-  .assignWrapper(hlcorcall$processed, paste0("return_only <- NULL"))  # currently we call vcov() in .get_covbeta() so we need a full return object (but this could be improved) 
+  .eval_into(hlcorcall$processed, paste0("return_only <- NULL"))  # currently we call vcov() in .get_covbeta() so we need a full return object (but this could be improved) 
   Jac <- jacobian(func = .get_covbeta, x = unlist(skeleton), hlcorcall=hlcorcall, skeleton=skeleton, 
                             # fitobject=fitobject, 
                             transf=transf) # with one col for each element of skeleton

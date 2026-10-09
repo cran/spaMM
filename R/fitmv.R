@@ -149,7 +149,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   } else if ( ! inherits(hlcor,"HLfitlist")) {
     X2X <- eval(oricall[["X2X"]], parent.frame())
     if (inherits(X2X,"call")) { # genX2X call
-      if (deparse(X2X[[1]])=="genX2X") { # ____F I X M E____ allow user-def'd function ?
+      if ("names_ori" %in% names(formals(deparse(X2X[[1]])))) { # Allows in principle other fns than genX2X
         X2X[["names_ori"]] <- attr(hlcor$X.pv,"cols_lhs_X2X")
         X2X <- eval(X2X) 
       } else warning("Fit object's 'X2X' element remains a call: this may be a problem in post-fit operations such as predict().")

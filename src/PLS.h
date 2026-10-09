@@ -17,7 +17,7 @@ SEXP lmwith_sparse_LDL_oT( SEXP XX, SEXP yy,
                            bool returntQ, // I G N O R E D but for consistent interface (cf get_from_default.Matrix)
                            bool returnR, bool pivot ){
   if (printDebug || print_sparse_QR)   Rcout <<"begin lmwith_sparse_LDL_oT()"<<std::endl;
-  const Eigen::MappedSparseMatrix<double> X(as<Eigen::MappedSparseMatrix<double> >(XX));
+  const Eigen::Map<Eigen::SparseMatrix<double>> X(as<Eigen::Map<Eigen::SparseMatrix<double>>>(XX));
   int nc=X.cols();
   Eigen::SparseMatrix<double> XtX(nc,nc); // resize necessary before rankUpdate
   XtX= X.transpose() * X;
@@ -48,7 +48,7 @@ SEXP lmwith_sparse_LL_oT( SEXP XX, SEXP yy,
                            bool returntQ, // I G N O R E D but for consistent interface (cf get_from_default.Matrix)
                            bool returnR, bool pivot ){
   if (printDebug || print_sparse_QR)   Rcout <<"begin lmwith_sparse_LL_oT()"<<std::endl;
-  const Eigen::MappedSparseMatrix<double> X(as<Eigen::MappedSparseMatrix<double> >(XX));
+  const Eigen::Map<Eigen::SparseMatrix<double>> X(as<Eigen::Map<Eigen::SparseMatrix<double>>>(XX));
   int nc=X.cols();
   Eigen::SparseMatrix<double> XtX(nc,nc); // resize necessary before rankUpdate
   XtX= X.transpose() * X;
@@ -79,7 +79,7 @@ SEXP lmwith_sparse_QR_oT( SEXP XX, SEXP yy,
                         bool returntQ, // I N H I B I T E D
                         bool returnR){
   if (printDebug || print_sparse_QR)   Rcout <<"debut lmwith_sparse_QRp()"<<std::endl;
-  const Eigen::MappedSparseMatrix<double> X(as<Eigen::MappedSparseMatrix<double> >(XX));
+  const Eigen::Map<Eigen::SparseMatrix<double>> X(as<Eigen::Map<Eigen::SparseMatrix<double>>>(XX));
   Eigen::SparseQR< Eigen::SparseMatrix<double, Eigen::ColMajor> ,  OrderingType > QRp(X);
   List resu=List::create();
   if (! Rf_isNull(yy)) {

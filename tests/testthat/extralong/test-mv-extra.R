@@ -1376,7 +1376,7 @@ if (FALSE) {
 
   if (requireNamespace("multcomp", quietly = TRUE)) {
     library(multcomp)
-    #summary(glht(asMM,mcp("varld" = "Tukey"), coef.=fixef.HLfit)) # documented limitation # but ____F I X M E____ think about a fix?
+    #summary(glht(asMM,mcp("varld" = "Tukey"), coef.=fixef.HLfit)) # limitation documented in help(fitmv) # but ____F I X M E____ think about a fix?
   }
 }
 spaMM.options(spaMM_tol_ori) 

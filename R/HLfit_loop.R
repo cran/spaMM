@@ -383,7 +383,7 @@
   if (nrand) { # (models[["eta"]]=="etaHGLM") {
     ## Finalize initial values for lambda
     loopout_blob$lambda_est <- .HLfit_finalize_init_lambda(models, init.lambda, processed, ZAL, cum_n_u_h, 
-                                                           vec_n_u_h, n_u_h, ranCoefs_blob) # mv __FIXME__ ->.calc_fam_corrected_guess() uses total nrand rather than nrand for submodels that contain the ranef
+                                                           vec_n_u_h, n_u_h, ranCoefs_blob) 
     loopout_blob$u_h <- processed$u_h_v_h_from_v_h(loopout_blob$v_h, lower.v_h=NULL, upper.v_h=NULL)
     loopout_blob$wranefblob <- processed$updateW_ranefS(u_h=loopout_blob$u_h,v_h=loopout_blob$v_h,lambda=loopout_blob$lambda_est) ## initialization !
     loopout_blob$ZAL <- ZAL

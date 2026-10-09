@@ -6,7 +6,7 @@ if (FALSE) {
   source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-composite-antisym.R") 
   # some of the fits are slow: (~1mn total):
   source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-paternity-3ranefs.R") 
-  # This one is definitely slower (2-3 mn ?):
+  # This one was definitely slower but now 15s:
   if (FALSE) source("D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-pois4mlogit-confint.R") 
 } else  cat(cli::bg_green(cli::col_black("\nRun private test-pois4mlogit-... R files once in a while.")))
 
@@ -102,7 +102,7 @@ if (spaMM.getOption("example_maxtime")>15) {
     
   } 
   
-  { # with ranCoefs
+  { # with ranCoefs, and use_proc_call
     data(clinics)
     (fitClinics <- fitme(cbind(npos,nneg)~1+treatment+(treatment|clinic),
                          family=binomial(),data=clinics))
@@ -110,10 +110,23 @@ if (spaMM.getOption("example_maxtime")>15) {
     (clinicp4m <- pois4mlogit(submodels = list(
       list(npos ~ offset(.dynoffset) + 1+ treatment+(treatment|clinic), family = poisson()),
       list(nneg ~ offset(.dynoffset) + 0, family = poisson())), control=list(p4m="oH"), 
-      progress=1L+interactive(), verbose=c(TRACE=FALSE),
+      progress=1L, verbose=c(TRACE=FALSE),
       lower=list(ranCoefs=list("1"=c(0,-0.9,0))), 
       upper=list(ranCoefs=list("1"=c(200,0.9,200))), # control.HLfit=list(LevenbergM=FALSE),
       data = clinics, types=c("npos","nneg"), n_iter=100L, tol=c(1e-5,1e-5)))
+    
+    (clinicp4m_upc <- pois4mlogit(submodels = list(
+      list(npos ~ offset(.dynoffset) + 1+ treatment+(treatment|clinic), family = poisson()),
+      list(nneg ~ offset(.dynoffset) + 0, family = poisson())), control=list(p4m="oH", use_proc_call=TRUE), 
+      progress=1L, verbose=c(TRACE=FALSE),
+      lower=list(ranCoefs=list("1"=c(0,-0.9,0))), 
+      upper=list(ranCoefs=list("1"=c(200,0.9,200))), # control.HLfit=list(LevenbergM=FALSE),
+      data = clinics, types=c("npos","nneg"), n_iter=100L, tol=c(1e-5,1e-5)))
+    (crit <- diff(range(logLik(fitClinics), logLik(clinicp4m_upc), logLik(clinicp4m))))
+    
+    testthat::test_that(paste0("Whether p4m use_proc_call gives correct result for fitClinics (ranCoefs):",signif(crit,4)," >1e-5"),
+                        testthat::expect_true(crit<1e-5) )
+    
   }
   
 } else {cat(cli::bg_green(cli::col_black("Mixed-effect models not run in 'fast' tests.")))}
@@ -187,7 +200,7 @@ if (FALSE) { ## trying to test identifiability... but some fits converge immedia
   (unidentif <- pois4mlogit(submodels = list(
     list(yellow ~ offset(.dynoffset) + phenotype, family = poisson()),
     list(blue ~ offset(.dynoffset) + phenotype, family = poisson())),
-    data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L+interactive()))
+    data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L))
   
   if (FALSE) {
     # low_pot bug... but before that, .makeMatp4m() generates a rank deficient sXaug 
@@ -196,14 +209,14 @@ if (FALSE) { ## trying to test identifiability... but some fits converge immedia
     (unidentif <- pois4mlogit(submodels = list(
       list(yellow ~ offset(.dynoffset) + phenotype+(1|grp), family = poisson()),
       list(blue ~ offset(.dynoffset) + phenotype+(1|grp), family = poisson())),
-      data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L+interactive()))
+      data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L))
   }
   if (FALSE) {
     # Ultimately same cause, different bug. But after many more iterations + diagnosis
     (unidentif <- pois4mlogit(submodels = list(
       list(yellow ~ offset(.dynoffset) + phenotype, family = poisson()),
       list(blue ~ offset(.dynoffset) + phenotype+(1|grp), family = poisson())),
-      data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L+interactive()))
+      data = toydata, X2X=X_4to3, types=c("yellow","blue"), progress=1L))
   }
 }
 

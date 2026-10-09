@@ -54,7 +54,7 @@
   #
   p4m_port_env <- hlcorcall[["control"]]$port_env
   # This .numInfo_objfn() is called by numInfo() and by .p4m_by_outer_optim().
-  # control$port_env is provided by .p4m_by_outer_optim() -> .get_template4objfn()
+  # control$port_env is provided by .p4m_by_outer_optim() -> .get_template4objfn() .
   # When numInfo() controls all ranPars, 
   #   it calls pois4mlogit() itself calling .p4m_by_iters() but not .p4m_by_outer_optim(). 
   #   Then, p4m_port_env is absent from hlcorcall$control and thus .numInfo is unaffected. 
@@ -64,10 +64,16 @@
   if ((beyond_1st_p4m_by_iters_in_p4m_by_outer_optim <- 
        ( ! is.null(.dynoffset <- p4m_port_env$.dynoffset)))) {
     hlcorcall$data$".dynoffset" <- .dynoffset
-    hlcorcall$"init.HLfit" <- p4m_port_env$"init.HLfit" # correct but .p4m_by_iters also sees the copy in p4m_port_env.
+    hlcorcall$"init.HLfit" <- p4m_port_env$"init.HLfit" # correct but .p4m_by_iters also sees this copy in p4m_port_env.
   }
+  # if ( ! is.null(p4m_port_env)) {
+  #   hlcorcall$processed$ranCoefs_blob2 <- .process_ranCoefs(hlcorcall$processed,
+  #                                                           ranCoefs = hlcorcall$fixed$ranCoefs, 
+  #                                                           use_tri_CORREL = TRUE)
+  # }
   refit <- eval(hlcorcall)
   if (inherits(refit,"pois4mlogit") && is.environment(p4m_port_env)) { # if in_p4m_by_outer_optim...
+    # Communication between different .p4m_by_iters() calls within .p4m_by_outer_optim():
     if ((is_1st_p4m_by_iters_in_p4m_by_outer_optim <- 
          is.null(p4m_port_env$.dynoffset)) ||
         logLik(refit) > logLik(p4m_port_env$bestfit)) {
@@ -262,7 +268,7 @@
   if (is.list(processed)) {
     proc1 <- processed[[1L]]
   } else proc1 <- processed
-  .assignWrapper(processed, paste0("return_only <- \"",proc1$objective,"APHLs\""))
+  .eval_into(processed, paste0("return_only <- \"",proc1$objective,"APHLs\""))
   # I must clean the preprocessed info for fixed ranCoefs...
   if (! is.null(ranpars$trRanCoefs)) {
     rancoefs <- .ranCoefsInv(ranpars$trRanCoefs, rC_transf= .spaMM.data$options$rC_transf)
@@ -481,12 +487,13 @@ numInfo <- function(fitobject,
                     return.="",
                     # method.args=list(eps=1e-4, d=0.0001, zero.tol=sqrt(.Machine$double.eps/7e-7), r=4, v=2, show.details=FALSE),
                     ...) {
-  ## We need an X_off_Xb_fn so that the etaFix is used to build an offset. 
-  ## IRLS function do not really handle etaFix. We need an etaFix at preprocessing stage so that columns are suppressed from AUGI0_ZX$X.pv
-  ## => => get_HLCorcall(fitobject, ... etaFix=list(beta=fixef(fitobject)))
-  ## Currently X_off_Xb_fn is set by .preprocess() only given an init beta, not a given beta, _____F I X M E_____ check whether this comment is still correct.
-  ##    => we set up it in this function
-  
+  ## We need an X_off_Xb_fn so that  HLCorcall(., etaFix) is used 
+  ## to build an offset by HLfit_body -> .get_off().
+  ## X_off_Xb_fn is set at preprocessing stage, so that columns are suppressed from AUGI0_ZX$X.pv, 
+  ## either (not relevant here) by init$beta (at preprocessing, for outer beta estimation)
+  ## or by an etaFix at preprocessing:
+  ## get_HLCorcall(fitobject, ... etaFix=list(beta=fixef(fitobject)))
+
   ### REML: the resulting SEs are consistent with those from the beta table... (with keepInREML used in numInfo())
   is_REML <- .REMLmess(fitobject,return_message=FALSE)
   is_PQL_sl <- fitobject$HL[1L]==0L # fixed effects estimated by h-lik
@@ -625,7 +632,7 @@ numInfo <- function(fitobject,
   }
   if ( ! ("df" %in% attrs)) attr(resu,"df") <- NULL
 
-  # .assignWrapper(processed, paste0("return_only <- NULL")) # Not necess bc $processed is created by the local get_HLCorcall() and freed when this fn is exited. 
+  # .eval_into(processed, paste0("return_only <- NULL")) # Not necess bc $processed is created by the local get_HLCorcall() and freed when this fn is exited. 
   if (transf) {
     jacTransf <- .ad_hoc_jac_transf(canon_skeleton, moreargs=.get_moreargs(fitobject))
     resu <- as.matrix(crossprod(jacTransf, resu %*% jacTransf))

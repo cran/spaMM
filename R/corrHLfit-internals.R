@@ -98,6 +98,10 @@ if (TRUE) {
   return(trRancoef) 
 }
 
+# Called by .smooth_regul()
+# This provides a covmat whose minimal eigenvalue is 4*epsi, 
+# constrained to respect the input 'covmat's variances and correlations indicated by the
+# 'fixedS' matrix of indicators.
 .singular_fixed <- function(covmat, 
                             fixeds, # 'fixeds' are 0|1 weights rather than a corrmatrix
                             epsi) {

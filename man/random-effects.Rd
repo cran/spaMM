@@ -1,6 +1,7 @@
 \name{random-effects}
 \alias{AMatrices}
 \alias{random-effects}
+\alias{Beta-distribution-random-effects}
 \title{
 Structure of random effects
 }
@@ -54,4 +55,6 @@ toyfit <- fitme(y~0+(1|fac), data=toydata,
                 covStruct=covstruct, method="REML")
 ranef(toyfit) # 2 values
 get_ZALMatrix(toyfit) # two-column incidence matrix for random effect 
+
+# See also examples with Beta(logit) random-effects in help("spaMM-package").
 }

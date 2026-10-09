@@ -40,7 +40,7 @@ if (FALSE) {
                    "\nSee {.topic [spaMM](spaMM::spaMM)} for a short introduction,",
                    "\n'news(package='spaMM')' for news,",
                    "\nand 'citation('spaMM')' for proper citation.",
-                   "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
+                   "\nFurther infos, slides, etc. at https://gitlab.in2p3.fr/francois.rousset/spamm-ref.\n")
     # https://github.com/r-lib/cli/issues/589:
     cli::cli_inform(mess, class = "packageStartupMessage")
     if (.spaMM.data$options$dec2spp) 
@@ -62,7 +62,7 @@ if (FALSE) {
                    "\nSee 'help('spaMM')' for a short introduction,",
                    "\n'news(package='spaMM')' for news,",
                    "\nand 'citation('spaMM')' for proper citation.",
-                   "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
+                   "\nFurther infos, slides, etc. at https://gitlab.in2p3.fr/francois.rousset/spamm-ref.\n")
     packageStartupMessage(mess)
   # }
 }

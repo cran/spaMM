@@ -293,45 +293,23 @@
   processed$AUGI0_ZX$ZAfix <- ZAfix
 }
 
-.evalWrapper <- function(object,
-                         element, ## using try() has a visible impact on speed. Hence, the element must exist in the envir.
-                         from=NULL) { ## exported for programming purposes
-  if (  is.list(object)) {
-    if (is.null(from)) from <- seq_len(length(object))
-    if (length(from)>1L) {
-      resu <- vector("list",length(from))
-      for (id in seq_len(length(from))) {
-        resu[[id]] <- eval(str2lang(element),envir=object[[id]])
-      }
-      names(resu) <- names(object[from])
-      return(resu) ## a list, e.g a data list
-    } else {
-      object <- object[[from]]
-    } 
-  } 
-  resu <- eval(str2lang(element),envir=object) ## try(eval(parse(text=element),envir=object),silent = TRUE)
-  ## if (inherits(resu,"try-error")) resu <- NULL
-  return(resu)
-}
-
-# .assignWrapper <- function(object,assignment) {
-#   if (  is.list(object)) {
-#     #    for (it in seq_len(length((object))) {eval(parse(text=paste0("object[[",it,"]]$",element," <- ",value)))} 
-#     ## fails bc nam loses its enclosing "s :
-#     #for (nam in names(object)) {eval(parse(text=paste0("object[[",nam,"]]$",element," <- ",value)))} 
-#     for (nam in names(object)) {eval(parse(text=paste0("object[[\"",nam,"\"]]$",assignment)))} 
-#   } else eval(parse(text=paste0("object$",assignment)))
-#   ## no need to return the modified environment
-# }
-.assignWrapper <- function(object,assignment) { ## not using assign(), to allow eg. verbose['warn'] <- ... instead of simple variable name    # older version ".setProcessed" (<2.2.119) did not use de envir argument; this was tricky
+# Differs from a single assign() in that
+# (1) verbose['warn'] <- TRUE may be evaluated in the environment 'object' 
+#     and this is not equivalent to an assign to "verbose";
+# (2) it handles a list of environments.
+# This function does NOT return its evaluation in contrast to the next one.
+.eval_into <- function(object,assignment) { 
   if (  is.list(object)) {
     for (it in seq_along(object)) eval(parse(text=assignment),envir=object[[it]]) 
   } else eval(str2lang(assignment),envir=object)
   ## no need to return the modified environment
-} # _____F I X M E_____ this looks like a naive syntax
+} 
+
+# .evalWrapper() has been moved to probitgem as it does not seem to be used elsewhere.
+
 
 # called for each ranef which has no init lambda.
-# For univar fits, all calls have identical effect so very slight inefficiency _____F I X M E_____
+# For univar fits=single family, the 'guess' may still differ for different ranefs.
 # Check of consistency after rewriting:
 # D:/home/francois/travail/stats/spaMMplus/spaMM/package/doc_code/calc_fam_corrected_guess.R
 .calc_fam_corrected_guess <- function(guess, For, processed, link_=NULL, q_=NULL, nrand=NULL) {
@@ -1228,11 +1206,12 @@
 # This converts the 'control' argument of a fitting fn into the "CONTROL" argument
 # of .preprocess.
 # Callit it on its own result may be wrong (p4m being lost from the return value).
-.reformat.CONTROL <- function(ppc_reactvt_warn=TRUE, dyndyn=FALSE, 
+.reformat.CONTROL <- function(ppc_reactvt_warn=TRUE, dyndyn=FALSE, p4m_boo_use_proc=FALSE,
                               p4m="", ...) {
   if (is.null(ppc_reactvt_warn)) ppc_reactvt_warn <- TRUE
   if (is.null(dyndyn) || p4m !="H") dyndyn <- FALSE
-  list(ppc_reactvt_warn=ppc_reactvt_warn, dyndyn=dyndyn)
+  if (is.null(p4m_boo_use_proc)) p4m_boo_use_proc <- FALSE
+  list(ppc_reactvt_warn=ppc_reactvt_warn, dyndyn=dyndyn, p4m_boo_use_proc=p4m_boo_use_proc)
 }
   
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
@@ -1352,7 +1331,7 @@
       stop("'data' is not a data.frame.")
     }
     main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=famfam, weights=validData_info$weights) ## design matrix X, Y... 
-    # :(____F I X M E___ only pb for non-API use of offset:) 
+    # :(____F I X M E___ this is a pb only if user makes non-API use of offset; but one that makes sense:) 
     # here offset must have length EXcluding NA rows, 
     # while in .GetValidData_info offset must have length including NA rows.
     # => offset(rep(...)) does not work when rows must be removed.

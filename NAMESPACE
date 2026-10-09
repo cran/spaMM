@@ -1,5 +1,5 @@
 exportPattern("^[[:alpha:]]+") 
-export(".evalWrapper", ".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
+export(".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
        ".crossprod", ".tcrossprod",  ".stripOffset", ".stripRanefs", ".modify_list") ## probitgem
 export(".HLfit_body_augZXy", ".solve_IRLS_as_ZX", ".solve_IRLS_as_spprec") ## must be exported to be traceable
